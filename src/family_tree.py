@@ -1,7 +1,10 @@
 from src.person import Person
 from src.relationship import Relationship
-
-
+import os
+import gedcom
+import json
+from gedcom.element.element import Element
+from gedcom.parser import Parser
 class FamilyTree:
     def __init__(self, root_person: Person = None):
         """
@@ -103,4 +106,141 @@ class FamilyTree:
         for child_person in person.get_children(self):
             self.display_tree(child_person.user_id, indent + 1)
 
+    def import_gedcom(self, gedcom_file_path):
+        """
+        Imports data from a GEDCOM file, adding persons and relationships to the family tree.
+
+        Args:
+            gedcom_file_path (str): The path to the GEDCOM file.
+
+        Raises:
+            ImportError: If the `gedcom` library is not installed.
+            ValueError: If the provided file is not a GEDCOM file or if there's an issue parsing the GEDCOM data.
+        """
+        if not os.path.exists(gedcom_file_path):
+            raise FileNotFoundError(f"File not found: {gedcom_file_path}")
+        
+        try:
+            import gedcom
+        except ImportError:
+            raise ImportError("The 'gedcom' library is required to parse GEDCOM files. Please install it.")
+
+        if not gedcom_file_path.lower().endswith(".ged"):
+            raise ValueError("The file is not a GEDCOM file (.ged)")
+
+        try:
+            with open(gedcom_file_path, 'r', encoding="utf-8") as ged_file:
+                gedcom_data = gedcom.parse(ged_file)
+
+                for record in gedcom_data:
+                    if record.tag == 'INDI':
+                        person_id = record.xref_id.replace("@", "")
+                        first_name = ""
+                        last_name = ""
+                        for subrecord in record.sub_records:
+                            if subrecord.tag == "NAME":
+                                name_parts = subrecord.value.split("/")
+                                if len(name_parts) >= 2:
+                                    first_name = name_parts[0].strip()
+                                    last_name = name_parts[1].strip()
+                        person = Person(person_id, first_name, last_name, None, None)
+                        self.add_person(person)
+        except Exception as e:
+            raise ValueError(f"Error parsing GEDCOM file: {e}")
+
+    def export_gedcom(self, file_path:str):
+        """
+        Exports the family tree data to a GEDCOM file.
+
+        Args:
+            file_path (str): The path to save the GEDCOM file.
+
+        Raises:
+            ImportError: If the `gedcom` library is not installed.
+            ValueError: If the file format is incorrect or if there's an issue creating the GEDCOM data.
+        """
+        if not file_path.lower().endswith(".ged"):
+            raise ValueError("The file format is not .ged")
+
+        try:
+            gedcom_file = open(file_path, "w", encoding="utf-8")
+        except ImportError:
+            raise ImportError("The 'gedcom' library is required to export GEDCOM files. Please install it.")
+        
+        gedcom_file.write("0 HEAD\n")
+        gedcom_file.write("1 SOUR Dzinza\n")
+        gedcom_file.write("1 GEDC\n")
+        gedcom_file.write("2 VERS 5.5.5\n")
+        gedcom_file.write("2 FORM LINEAGE-LINKED\n")
+        
+        for user_id, node in self.person_nodes.items():
+            person: Person = node["person"]
+            gedcom_file.write(f"0 @{person.user_id}@ INDI\n")
+            gedcom_file.write(f"1 NAME {person.get_names()[0].get('name', '')} /{person.get_names()[1].get('name', '')}/\n")
+            gedcom_file.write(f"2 GIVN {person.get_names()[0].get('name', '')}\n")
+            gedcom_file.write(f"2 SURN {person.get_names()[1].get('name', '')}\n")
+            gedcom_file.write(f"1 SEX {person.gender or 'U'}\n")
+            gedcom_file.write(f"1 BIRT\n")
+        gedcom_file.write("0 TRLR\n")
+        gedcom_file.close()
+
+    def import_json(self, file_path):
+        """
+        Imports family tree data from a JSON file.
+
+        Args:
+            file_path (str): The path to the JSON file.
+
+        Raises:
+            ImportError: If the `json` library is not available.
+            ValueError: If the file format is not JSON or if there are issues with the JSON data.
+        """
+        if not file_path.lower().endswith(".json"):
+            raise ValueError("File is not a JSON file")
+        try:
+            with open(file_path, "r", encoding="utf-8") as file:
+                try:
+                    data = json.load(file)
+                except json.JSONDecodeError:
+                    raise ValueError("Invalid JSON format")
+        except ImportError:
+            raise ImportError("The 'json' library is required to work with JSON files. Please install it.")
+        
+        for person_data in data.get("persons", []):
+            person_id = person_data.get("person_id")
+            first_name = person_data.get("first_name")
+            last_name = person_data.get("last_name")
+            date_of_birth = person_data.get("date_of_birth")
+            place_of_birth = person_data.get("place_of_birth")
+            
+            if not person_id or not first_name or not last_name:
+                raise ValueError("Missing required fields for person")
+
+            person = Person(person_id, first_name, last_name, date_of_birth, place_of_birth)
+            person.names = person_data.get("names", [])
+            person.gender = person_data.get("gender")
+            person.romanization = person_data.get("romanization")
+            person.transliteration = person_data.get("transliteration")
+            person.religious_affiliations = person_data.get("religious_affiliations", [])
+            person.current_location = person_data.get("current_location")
+            person.privacy_settings = person_data.get("privacy_settings")
+            person.biography = person_data.get("biography", "")
+            person.date_of_death = person_data.get("date_of_death")
+            person.place_of_death = person_data.get("place_of_death")
+            person.profile_photo = person_data.get("profile_photo")
+            person.relationships = person_data.get("relationships", {})
+            person.documents = person_data.get("documents", [])
+            person.media = person_data.get("media", [])
+            person.military_service_records = person_data.get("military_service_records", [])
+            person.educational_history = person_data.get("educational_history", [])
+            person.occupational_history = person_data.get("occupational_history", [])
+            person.medical_history = person_data.get("medical_history", [])
+            person.dna_haplogroups = person_data.get("dna_haplogroups", [])
+            person.physical_characteristics = person_data.get("physical_characteristics", [])
+            person.languages_spoken = person_data.get("languages_spoken", [])
+            person.immigration_naturalization_records = person_data.get("immigration_naturalization_records", [])
+            self.add_person(person)
+
+    def export_json(self, file_path):
+        pass
 
