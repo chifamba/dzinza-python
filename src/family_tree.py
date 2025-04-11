@@ -1,5 +1,6 @@
 from src.person import Person
 from src.relationship import Relationship
+from src.audit_log import AuditLog
 from src.encryption import DataEncryptor
 from urllib.parse import urlparse
 import os
@@ -13,7 +14,7 @@ from datetime import datetime
 
 
 class FamilyTree:
-    def __init__(self, root_person: Person = None, encryption_key:str="default_key"):
+    def __init__(self, root_person: Person = None, encryption_key:str="default_key", audit_log:AuditLog=None):
         
         """
         Initializes the FamilyTree with an optional root person.
@@ -32,11 +33,13 @@ class FamilyTree:
         self.root_person = root_person
         self.encryption_key = encryption_key
         self.data_encryptor = DataEncryptor()
+        self.audit_log = audit_log if audit_log else AuditLog()
         self.person_nodes = {}
         if root_person:
             self.person_nodes[root_person.user_id] = {"person": root_person, "parent": None, "children": []}
 
-    def add_person(self, person: Person, parents: list[Person] = None):
+    def add_person(self, person: Person, parents: list[Person] = None, user_id:str = "system"):
+
         """
         Adds a person to the family tree.
         
@@ -72,6 +75,8 @@ class FamilyTree:
         relationship_errors = self.check_relationship_consistency(person.user_id)
         if relationship_errors:
             raise ValueError(f"Invalid relationships data: {', '.join(relationship_errors)}")
+        
+        self.audit_log.log_event(user_id, "person_added", f"Person with ID {person.user_id} added")
 
 
 
@@ -100,7 +105,7 @@ class FamilyTree:
         return errors
 
 
-    def link_persons(self, relationship: Relationship):
+    def link_persons(self, relationship: Relationship, user_id:str = "system"):
         person1 = self.get_person_by_id(relationship.person1_id)
         person2 = self.get_person_by_id(relationship.person2_id)
 
@@ -114,6 +119,7 @@ class FamilyTree:
         relationship_errors += self.check_relationship_consistency(person2_id)
         if relationship_errors:
             raise ValueError(f"Invalid relationships data: {', '.join(relationship_errors)}")
+        self.audit_log.log_event(user_id, "relationship_added", f"Relationship of type {relationship.relationship_type} added between {person1.user_id} and {person2.user_id}")
 
 
     def add_relationship(self, relationship: Relationship):
@@ -207,7 +213,7 @@ class FamilyTree:
         if not person_data:
             return
 
-        person = person_data["person"]
+        person = person_data["person"]        
         print("  " * indent + f"ID: {person.user_id}, Name: {person.get_names()}")
         
         for rel in person.relationships:
@@ -215,7 +221,7 @@ class FamilyTree:
                 self.display_tree(rel.person1_id, indent + 1)
 
 
-
+    
     def import_gedcom(self, gedcom_file_path):
         """
         Imports data from a GEDCOM file, adding persons and relationships to the family tree.
@@ -265,7 +271,7 @@ class FamilyTree:
                                         birth_place = sub_subrecord.value
 
                         person = Person(person_id, first_name, last_name, birth_date, birth_place)
-                        self.add_person(person)                        
+                        self.add_person(person)
                         persons[person_id] = person
 
                     elif record.tag == 'FAM':
@@ -281,10 +287,9 @@ class FamilyTree:
                                 children.append(subrecord.value.replace("@", ""))
 
                         if husband and wife and persons.get(husband) and persons.get(wife):
-                            self.link_persons(Relationship(husband, wife, "spouse"))                            
+                            self.link_persons(Relationship(husband, wife, "spouse"))
                         for child in children:                            
                             if persons.get(child) and persons.get(husband) and persons.get(wife):
-                                
                             self.link_persons(Relationship(child, husband, "child"))
                             self.link_persons(Relationship(child, wife, "child"))
         except Exception as e:
@@ -327,7 +332,7 @@ class FamilyTree:
         gedcom_file.close()
 
     def import_json(self, file_path):
-        """
+        """ 
         Imports family tree data from a JSON file.
 
         Args:
@@ -336,26 +341,25 @@ class FamilyTree:
         Raises:
             ImportError: If the `json` library is not available.
             ValueError: If the file format is not JSON or if there are issues with the JSON data.
-        """
+        """        
+
         if not file_path.lower().endswith(".json"):
             raise ValueError("File is not a JSON file")
         try:
             with open(file_path, "r", encoding="utf-8") as file:
                 try:
+
                     encrypted_data = json.load(file)
                     decrypted_data = self.data_encryptor.decrypt_data(encrypted_data["data"], self.encryption_key)
                     data = json.loads(decrypted_data)
                 except json.JSONDecodeError:
+
                     raise ValueError("Invalid JSON format")
         except ImportError:
             raise ImportError("The 'json' library is required to work with JSON files. Please install it.")
         except ValueError as e:
             raise ValueError(f"Error decrypting data: {e}")
         
-
-
-
-
 
         for person_data in data.get("persons", []):
             
@@ -406,11 +410,13 @@ class FamilyTree:
             if errors:
                 raise ValueError(f"Invalid person data in {person_id}: {', '.join(errors)}")
             for rel in person.relationships:
+
                 rel_obj = Relationship(rel["person1_id"], rel["person2_id"], rel["relationship_type"])
                 self.link_persons(rel_obj)
 
             
-            self.add_person(person)            
+            self.add_person(person)
+            
 
 
     def export_json(self, file_path):
@@ -508,11 +514,16 @@ class FamilyTree:
     
     def merge_persons(self, person1: Person, person2: Person):
         """Merges the data of person2 into person1 and removes person2 from the tree."""
+
         if person1.user_id not in self.person_nodes or person2.user_id not in self.person_nodes:
             raise ValueError("One of the persons not found")
 
+        
+        
+
         person1.names = person2.names
-        person1.gender = person2.gender
+        person1.gender = person2.gender       
+        person1.date_of_birth = person2.date_of_birth
         person1.romanization = person2.romanization
         person1.transliteration = person2.transliteration
         person1.religious_affiliations = person2.religious_affiliations
@@ -523,8 +534,20 @@ class FamilyTree:
             if relationship.person1_id != person1.user_id:
                 self.link_persons(relationship)
                 
-        self.person_nodes.pop(person2.user_id)
 
+        self.audit_log.log_event("system", "person_updated", f"Person with ID {person1.user_id} updated, merged person with id: {person2.user_id}")
+
+        self.person_nodes.pop(person2.user_id)
+        self.audit_log.log_event("system", "person_deleted", f"Person with ID {person2.user_id} deleted")
+        
+    
+    def delete_person(self, person_id: str):
+        if person_id not in self.person_nodes:
+            raise ValueError(f"Person with ID {person_id} not found")
+
+        person = self.get_person_by_id(person_id)
+        self.audit_log.log_event("system", "person_deleted", f"Person with ID {person_id} deleted")
+        self.person_nodes.pop(person_id)
     def check_all_relationship_consistency(self):
         errors = []
         for person_id in self.person_nodes.keys():
@@ -558,6 +581,7 @@ class FamilyTree:
                     errors = self.validate_person_data(person)
                     if errors:
                         raise ValueError(f"Invalid person data: {', '.join(errors)}")
+
 
                     self.add_person(person)
         except ImportError:
