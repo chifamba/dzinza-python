@@ -26,6 +26,22 @@ class UserManager:
              raise ValueError("User is already a trusted user")
         user.increase_trust_level()
 
+    def promote_to_family_historian(self, user_id):
+        user = self.users.get(user_id)
+        if not user:
+            raise ValueError("User does not exist")
+        if user.role == 'family_historian':
+            raise ValueError("User is already a family historian")
+        user.set_role('family_historian')
+
+    def demote_to_basic(self, user_id):
+        user = self.users.get(user_id)
+        if not user:
+            raise ValueError("User does not exist")
+        if user.role == 'basic':
+            raise ValueError('User is already a basic user')
+        user.set_role('basic')
+
     def demote_to_basic(self, user_id):
         user = self.users.get(user_id)
         if not user:

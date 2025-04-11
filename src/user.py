@@ -13,6 +13,7 @@ class User:
         self.password = password
         self.trust_level = 1
         self.role = 'basic'  # Default role
+        self.family_group_spaces = []
 
     def increase_trust_level(self):
         """
@@ -48,3 +49,31 @@ class User:
         if role not in valid_roles:
             raise ValueError(f"Invalid role: {role}. Valid roles are: {valid_roles}")
         self.role = role
+    
+    def add_family_group(self, family_group_id):
+        """
+        Adds a family group to the user's family group spaces.
+
+        Args:
+            family_group_id (int): The ID of the family group to add.
+
+        Raises:
+            ValueError: If the family group is already in the list.
+        """
+        if family_group_id in self.family_group_spaces:
+            raise ValueError(f"Family group {family_group_id} is already in the user's family group spaces.")
+        self.family_group_spaces.append(family_group_id)
+
+    def remove_family_group(self, family_group_id):
+        """
+        Removes a family group from the user's family group spaces.
+
+        Args:
+            family_group_id (int): The ID of the family group to remove.
+
+        Raises:
+            ValueError: If the family group is not in the list.
+        """
+        if family_group_id not in self.family_group_spaces:
+            raise ValueError(f"Family group {family_group_id} is not in the user's family group spaces.")
+        self.family_group_spaces.remove(family_group_id)
