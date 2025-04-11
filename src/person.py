@@ -1,6 +1,7 @@
 from src.family_tree import FamilyTree
 
-class Person:    
+
+class Person:
     def __init__(self, person_id, first_name, last_name, date_of_birth, place_of_birth, date_of_death=None, place_of_death=None, family_tree = None):
         self.names = []
         self.person_id = person_id
@@ -20,6 +21,7 @@ class Person:
         self.family_tree:FamilyTree = family_tree
         self.profile_photo = None
         self.relationships = {}
+        self.init_extended_relationships()
         self.documents: list[str] = []
         self.media: list[str] = []
         self.military_service_records: list[str] = []
@@ -29,6 +31,22 @@ class Person:
         self.dna_haplogroups: list[str] = []
         self.physical_characteristics: list[str] = []
         self.languages_spoken: list[str] = []
+        self.immigration_naturalization_records: list[str] = []
+        self.cultural_relationships = {}
+        self.godparents: list[str] = []
+        self.foster_relationships: list[str] = []
+        self.guardian_relationships: list[str] = []
+        self.tribal_clan_affiliations: list[str] = []
+        self.historical_context_relationships = {}
+        self.relationship_timeline = {}
+        self.custom_relationships = {}
+
+    def init_extended_relationships(self):
+        self.relationships["grandparents"] = []
+        self.relationships["aunt_uncles"] = []
+        self.relationships["cousins"] = []
+        self.relationships["inlaws"] = []
+        self.relationships["extended_family"] = []
 
     def add_name(self, name, type, culture):
         new_name = {"name": name, "type": type, "culture": culture}
@@ -41,13 +59,13 @@ class Person:
 
     def set_romanization(self, romanization:str):
         self.romanization = romanization
-    
+
     def get_romanization(self) -> str:
         return self.romanization
-    
+
     def set_transliteration(self, transliteration: str):
         self.transliteration = transliteration
-    
+
     def get_transliteration(self) -> str:
         return self.transliteration
     
@@ -104,6 +122,31 @@ class Person:
             self.relationships["sibling"] = []
         self.relationships["sibling"].append(sibling_id)
 
+    def add_grandparent(self, grandparent_id):
+        if "grandparents" not in self.relationships:
+            raise ValueError("Relationship not found")
+        if grandparent_id in self.relationships["grandparents"]:
+            raise ValueError("Person is already in this relationship")
+        self.relationships["grandparents"].append(grandparent_id)
+
+    def add_aunt_uncle(self, aunt_uncle_id):
+        if "aunt_uncles" not in self.relationships:
+            raise ValueError("Relationship not found")
+        if aunt_uncle_id in self.relationships["aunt_uncles"]:
+            raise ValueError("Person is already in this relationship")
+        self.relationships["aunt_uncles"].append(aunt_uncle_id)
+
+    def add_cousin(self, cousin_id):
+        if "cousins" not in self.relationships:
+            raise ValueError("Relationship not found")
+        if cousin_id in self.relationships["cousins"]:
+            raise ValueError("Person is already in this relationship")
+        self.relationships["cousins"].append(cousin_id)
+
+    def add_inlaw(self, inlaw_id):
+        if inlaw_id in self.relationships.get("inlaws", []):
+            raise ValueError("Person is already in this relationship")
+        self.relationships["inlaws"].append(inlaw_id)
     def get_parents(self) -> list:
         parents_ids = self.relationships.get("parent", [])
         return [self.family_tree.get_person(parent_id) for parent_id in parents_ids]
@@ -119,6 +162,93 @@ class Person:
     def get_siblings(self) -> list:
         siblings_ids = self.relationships.get("sibling", [])
         return [self.family_tree.get_person(sibling_id) for sibling_id in siblings_ids]
+    
+    def add_extended_family(self, extended_family_id: str):
+        if "extended_family" not in self.relationships:
+            raise ValueError("Relationship not found")
+        if extended_family_id in self.relationships["extended_family"]:
+            raise ValueError("Person is already in this relationship")
+        self.relationships["extended_family"].append(extended_family_id)
+    
+    def get_grandparents(self) -> list:
+        grandparents_ids = self.relationships.get("grandparents", [])
+        return [self.family_tree.get_person(gp_id) for gp_id in grandparents_ids]
+    
+    def get_aunt_uncles(self) -> list:
+        aunt_uncles_ids = self.relationships.get("aunt_uncles", [])
+        return [self.family_tree.get_person(au_id) for au_id in aunt_uncles_ids]
+    
+    def get_cousins(self) -> list:
+        cousins_ids = self.relationships.get("cousins", [])
+        return [self.family_tree.get_person(c_id) for c_id in cousins_ids]
+
+    def add_cultural_relationship(self, relationship_type: str, related_person_id: str):
+        if relationship_type not in self.cultural_relationships:
+            self.cultural_relationships[relationship_type] = []
+        if related_person_id in self.cultural_relationships[relationship_type]:
+            raise ValueError(
+                f"Person {related_person_id} already has relationship type {relationship_type} with this person."
+            )
+        self.cultural_relationships[relationship_type].append(related_person_id)
+
+    def remove_cultural_relationship(self, relationship_type, related_person_id):
+        if relationship_type not in self.cultural_relationships:
+            raise ValueError("Relationship type not found")
+        if related_person_id not in self.cultural_relationships[relationship_type]:
+            raise ValueError("Person not found in this relationship")
+        self.cultural_relationships[relationship_type].remove(related_person_id)
+
+    def get_cultural_relationships(self) -> dict:
+        return self.cultural_relationships
+
+    def add_godparent(self, godparent_id: str):
+        if godparent_id in self.godparents:
+            raise ValueError("Godparent already added")
+        self.godparents.append(godparent_id)
+
+    def remove_godparent(self, godparent_id: str):
+        if godparent_id not in self.godparents:
+            raise ValueError("Godparent not found")
+        self.godparents.remove(godparent_id)
+
+    def get_godparents(self) -> list:
+        return self.godparents
+
+    def add_foster_relationship(self, person_id: str):
+        if person_id in self.foster_relationships:
+            raise ValueError("Person already added to foster relationships")
+        self.foster_relationships.append(person_id)
+
+    def remove_foster_relationship(self, person_id: str):
+        if person_id not in self.foster_relationships:
+            raise ValueError("Person not found in foster relationships")
+        self.foster_relationships.remove(person_id)
+
+    def get_foster_relationships(self) -> list:
+        return self.foster_relationships
+
+    def add_guardian_relationship(self, person_id: str):
+        if person_id in self.guardian_relationships:
+            raise ValueError("Person already added to guardian relationships")
+        self.guardian_relationships.append(person_id)
+
+    def remove_guardian_relationship(self, person_id: str):
+        if person_id not in self.guardian_relationships:
+            raise ValueError("Person not found in guardian relationships")
+        self.guardian_relationships.remove(person_id)
+
+    def get_guardian_relationships(self) -> list:
+        return self.guardian_relationships
+
+    def add_tribal_clan_affiliation(self, affiliation: str):
+        self.tribal_clan_affiliations.append(affiliation)
+
+    def remove_tribal_clan_affiliation(self, affiliation: str):
+        self.tribal_clan_affiliations.remove(affiliation)
+
+    def get_tribal_clan_affiliations(self) -> list:
+        return self.tribal_clan_affiliations
+
 
     def set_family_tree(self, family_tree: FamilyTree):
         self.family_tree = family_tree
@@ -234,3 +364,42 @@ class Person:
     def get_languages_spoken(self):
         return self.languages_spoken
     
+    def add_historical_context_relationship(self, relationship_type: str, context: str):
+        if relationship_type not in self.historical_context_relationships:
+            self.historical_context_relationships[relationship_type] = []
+        self.historical_context_relationships[relationship_type].append(context)
+
+    def remove_historical_context_relationship(self, relationship_type: str, context: str):
+        if relationship_type not in self.historical_context_relationships:
+            raise ValueError("Relationship type not found")
+        if context not in self.historical_context_relationships[relationship_type]:
+            raise ValueError("Context not found for this relationship type")
+        self.historical_context_relationships[relationship_type].remove(context)
+
+    def get_historical_context_relationships(self) -> dict:
+        return self.historical_context_relationships
+    
+    def add_relationship_event(self, person_id:str, event:str, date:str):
+        if person_id not in self.relationship_timeline:
+            self.relationship_timeline[person_id] = []
+        self.relationship_timeline[person_id].append({"event": event, "date": date})
+    
+    def get_relationship_timeline(self) -> dict:
+        return self.relationship_timeline
+    
+    def add_custom_relationship(self, relationship_name: str, person_id: str):
+        if relationship_name not in self.custom_relationships:
+            self.custom_relationships[relationship_name] = []
+        if person_id in self.custom_relationships[relationship_name]:
+            raise ValueError(f"Person {person_id} already has relationship {relationship_name} with this person.")
+        self.custom_relationships[relationship_name].append(person_id)
+
+    def remove_custom_relationship(self, relationship_name: str, person_id: str):
+        if relationship_name not in self.custom_relationships:
+            raise ValueError(f"Relationship {relationship_name} not found.")
+        if person_id not in self.custom_relationships[relationship_name]:
+            raise ValueError(f"Person {person_id} not found in relationship {relationship_name}.")
+        self.custom_relationships[relationship_name].remove(person_id)
+
+    def get_custom_relationships(self) -> dict:
+        return self.custom_relationships
