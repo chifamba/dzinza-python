@@ -33,6 +33,14 @@ class UserManager:
         if user.role == 'family_historian':
             raise ValueError("User is already a family historian")
         user.set_role('family_historian')
+    
+    def add_trust_points(self, user_id, points):
+        user = self.users.get(user_id)
+        if not user:
+            raise ValueError("User does not exist")
+
+        user.add_trust_points(points)
+
 
     def demote_to_basic(self, user_id):
         user = self.users.get(user_id)
