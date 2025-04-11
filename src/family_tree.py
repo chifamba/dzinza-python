@@ -1,4 +1,5 @@
 from src.person import Person
+from src.relationship import Relationship
 
 class FamilyTree:
     def __init__(self, root_person: Person = None):
@@ -22,6 +23,16 @@ class FamilyTree:
 
         if parent:
             self.person_nodes[parent.user_id]["children"].append(person)
+
+    def add_relationship(self, relationship: Relationship):
+        person1 = relationship.person1
+        person2 = relationship.person2
+
+        if person1.user_id not in self.person_nodes or person2.user_id not in self.person_nodes:
+            raise ValueError("One or both persons are not in the family tree")
+
+        person1.add_relationship(relationship)
+        person2.add_relationship(relationship)
 
 
     def get_person(self, person_id: int):
