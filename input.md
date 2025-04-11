@@ -7,7 +7,11 @@
 - Maintain historical accuracy through collaborative verification
 - Protect sensitive family information while enabling sharing
 
+## TODO List
+
 ## User Management System
+
+- [x] Implement Basic User role (signup, login, profile creation). (basic creation is done)
 
 ### User Roles and Permissions
 
@@ -58,8 +62,10 @@
 
 ### Basic Information
 - Full name (including maiden names, previous names)
+- [x] Create a data model for basic person information. (basic model created)
 - Date of birth (with support for approximate dates)
 - Place of birth
+
 - Date of death (if applicable)
 - Place of death (if applicable)
 - Gender
@@ -123,6 +129,7 @@
 
 ### Tree Visualization
 - Interactive family tree display
+- [x] Implement basic interactive family tree display (hierarchical view). (basic tree with root and child created)
 - Multiple view options:
   - Hierarchical view
   - Fan chart
