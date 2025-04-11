@@ -23,11 +23,29 @@ class UserManager:
         if not user:
             raise ValueError("User does not exist")
         if user.trust_level >= 2:
-            raise ValueError("User is already a trusted user")
+             raise ValueError("User is already a trusted user")
         user.increase_trust_level()
 
     def demote_to_basic(self, user_id):
         user = self.users.get(user_id)
         if not user:
             raise ValueError("User does not exist")
-        user.trust_level = 1
+        if user.role == 'basic':
+            raise ValueError('User is already a basic user')
+        user.set_role('basic')
+
+    def promote_to_administrator(self, user_id):
+        user = self.users.get(user_id)
+        if not user:
+            raise ValueError("User does not exist")
+        if user.role == 'administrator':
+            raise ValueError("User is already an administrator")
+        user.set_role('administrator')
+    
+    def demote_to_basic(self, user_id):
+        user = self.users.get(user_id)
+        if not user:
+            raise ValueError("User does not exist")
+        if user.role == 'basic':
+            raise ValueError('User is already a basic user')
+        user.set_role('basic')
