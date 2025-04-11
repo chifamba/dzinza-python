@@ -31,11 +31,10 @@ def main():
     password_4 = "password101"
     user_manager.create_user(user4_id, email4, password_4)
 
-    # Get users using their IDs
-    user1 = user_manager.get_user(user1_id)
-    user2 = user_manager.get_user(user2_id)
 
     # Add trust points to the second user
+    user2 = user_manager.get_user(user2_id)
+
     user_manager.add_trust_points(user2_id, 150)
 
     # Print user information before applying trust decay
@@ -59,19 +58,37 @@ def main():
     # Promote the first user to administrator
     user_manager.promote_to_administrator(user1_id)
 
-    # Promote the second user to Family Historian
-    user_manager.promote_to_family_historian(user2_id)
-
     # Promote the first user to a trusted user
     user_manager.promote_to_trusted(user1_id)
+
+    # Get the first user object
+    user1 = next((user for user in user_manager.users.values() if user.user_id == user1_id), None)
+
 
     # Create an instance of FamilyTree
     family_tree = FamilyTree()
 
     # Create persons
-    person1 = Person(id=1, first_name="John", last_name="Doe", date_of_birth="1980-01-01", place_of_birth="New York", date_of_death=None, place_of_death=None, gender="Male", current_location="Los Angeles", biography="A short biography of John", privacy="public")
-    person2 = Person(id=2, first_name="Jane", last_name="Doe", date_of_birth="2000-01-01", place_of_birth="Los Angeles", date_of_death=None, place_of_death=None, gender="Female", current_location="Los Angeles", biography="A short biography of Jane", privacy="public")
-    person3 = Person(id=3, first_name="Peter", last_name="Doe", date_of_birth="2003-01-01", place_of_birth="Los Angeles", date_of_death=None, place_of_death=None, gender="Male", current_location="Los Angeles", biography="A short biography of Peter", privacy="public")
+    person1 = Person(id=1, first_name="John", last_name="Doe")
+    person2 = Person(id=2, first_name="Jane", last_name="Doe")
+    person3 = Person(id=3, first_name="Peter", last_name="Doe")
+
+    #set info to person1
+    person1.set_biography("A short biography of John")
+    person1.set_date_of_birth("1980-01-01")
+    person1.set_place_of_birth("New York")
+    person1.set_date_of_death("2023-01-01")
+    person1.set_place_of_death("Los Angeles")
+    person1.set_gender("Male")
+    person1.set_current_location("Los Angeles")
+    person1.set_privacy_settings("public")
+
+    # Set a profile photo for the first person
+    person1.set_profile_photo("https://example.com/profile1.jpg")
+
+    # Set documents and media for first person
+    person1.add_document("https://example.com/document1.pdf")
+    person1.add_media("https://example.com/media1.mp4")
 
     # Add persons to the family tree using the new methods
     family_tree.add_person(person1)  # Add person1 as root
@@ -102,6 +119,25 @@ def main():
     # Test get_spouses method (no spouses yet)
     # Test get_spouses (no spouses yet)
     print(f"Spouses of {person1.first_name}: {[spouse.first_name for spouse in person1.get_spouses(family_tree)]}")  # Should print an empty list
+
+    # Test get profile photo
+    print(f"Profile photo of {person1.first_name}: {person1.get_profile_photo()}")
+
+    # Test get documents and media
+    print(f"Documents of {person1.first_name}: {person1.get_documents()}")
+    print(f"Media of {person1.first_name}: {person1.get_media()}")
+
+    # Print Person 1 info
+    print(f"Person 1 biography : {person1.get_biography()}")
+    print(f"Person 1 Date of birth : {person1.date_of_birth}")
+    print(f"Person 1 place of birth : {person1.place_of_birth}")
+    print(f"Person 1 Date of death : {person1.date_of_death}")
+    print(f"Person 1 place of death : {person1.place_of_death}")
+    print(f"Person 1 gender : {person1.gender}")
+    print(f"Person 1 current location : {person1.current_location}")
+    print(f"Person 1 privacy settings : {person1.privacy}")
+
+
 
 if __name__ == "__main__":
     main()

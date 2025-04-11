@@ -5,12 +5,19 @@ class Person:
         self.person_id = person_id
         self.first_name = first_name
         self.last_name = last_name
+        self.gender = None
+        self.current_location = None
+        self.privacy_settings = None
+        self.biography = ""
         self.date_of_birth = date_of_birth
         self.place_of_birth = place_of_birth
         self.date_of_death = date_of_death
         self.place_of_death = place_of_death
         self.family_tree:FamilyTree = family_tree
+        self.profile_photo = None
         self.relationships = {}
+        self.documents: list[str] = []
+        self.media: list[str] = []
 
     def add_parent(self, parent_id):
         if "parent" not in self.relationships:
@@ -50,3 +57,26 @@ class Person:
     
     def set_family_tree(self, family_tree:FamilyTree):
         self.family_tree = family_tree
+
+    def set_profile_photo(self, url):
+        self.profile_photo = url
+
+    def get_profile_photo(self):
+        return self.profile_photo
+    
+    def add_document(self, document: str):
+        self.documents.append(document)
+
+    def remove_document(self, document: str):
+        if document in self.documents:
+            self.documents.remove(document)
+        else:
+            raise ValueError("Document not found")
+
+    def get_documents(self) -> list:
+        return self.documents
+
+    def add_media(self, media: str):
+        self.media.append(media)
+    
+    
