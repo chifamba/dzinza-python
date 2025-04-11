@@ -31,39 +31,54 @@ class FamilyTree:
             self.person_nodes[root_person.user_id] = {"person": root_person, "parent": None, "children": []}
 
     def add_person(self, person: Person, parents: list[Person] = None):
+        """
+        Adds a person to the family tree.
+        """
+
+        
+
         errors = self.validate_person_data(person)
         if errors:
             raise ValueError(f"Invalid person data: {', '.join(errors)}")
 
-        if not self.root_person and parents:
-            raise ValueError("Cannot add a person with parents if the tree is empty")        
+                
         if person.user_id in self.person_nodes:
             raise ValueError("Person already exists in the family tree")
 
+        
+        if not self.root_person and not parents:
+            self.root_person = person
+        elif self.root_person and not parents and len(self.person_nodes) > 0:
+            raise ValueError("Cannot add a root person if the tree already has a root")
+        elif not self.root_person and parents:
+            raise ValueError("Cannot add a person with parents if the tree is empty")
+
+        self.person_nodes[person.user_id] = {"person": person, "relationships": []}
         if parents:
             for parent in parents:
-                if parent.user_id not in self.person_nodes:
-                    raise ValueError(f"Parent with ID {parent.user_id} not found in the family tree")
-
-        if not self.root_person and not parents:
-             self.root_person = person
-        elif self.root_person and not parents:
-            raise ValueError("Cannot add a root person if the tree already has a root")
-
-        self.person_nodes[person.user_id] = {"person": person, "parents": parents or [], "children": []}
+                self.link_persons(Relationship(person.user_id, parent.user_id, "child"))
 
         if parents:
             for parent in parents:
                 self.person_nodes[parent.user_id]["children"].append(person)
+        
+        relationship_errors = self.check_relationship_consistency(person.user_id)
+        if relationship_errors:
+            raise ValueError(f"Invalid relationships data: {', '.join(relationship_errors)}")
+
+
 
     def validate_person_data(self, person: Person):
         """Validate the person data."""
         errors = []
-        if not person.names:
+        if not person.get_names():
             errors.append("Names cannot be empty")
         if not isinstance(person.date_of_birth, datetime):
             errors.append("Date of birth is not valid")
-        if person.date_of_death and not isinstance(person.date_of_death, datetime):
+        if person.date_of_death and (not isinstance(person.date_of_death, datetime) ):
+            try:
+                person.date_of_death = datetime.strptime(person.date_of_death, "%Y-%m-%d %H:%M:%S")
+            except:
             errors.append("Date of death is not valid")
         if person.profile_photo and not urlparse(person.profile_photo).scheme:
             errors.append("Profile photo is not a valid URL")
@@ -77,42 +92,21 @@ class FamilyTree:
             errors.append("Gender must be male or female")
         return errors
 
-    
-    def add_person_old(self, person: Person, parents: list[Person] = None):
-        if not self.root_person and parents:
-            raise ValueError("Cannot add a person with parents if the tree is empty")        
-        if person.user_id in self.person_nodes:
-            raise ValueError("Person already exists in the family tree")
 
-        if parents:
-            for parent in parents:
-                if parent.user_id not in self.person_nodes:
-                    raise ValueError(f"Parent with ID {parent.user_id} not found in the family tree")
-
-        if not self.root_person and not parents:
-             self.root_person = person
-        elif self.root_person and not parents:
-            raise ValueError("Cannot add a root person if the tree already has a root")
-
-        self.person_nodes[person.user_id] = {"person": person, "parents": parents or [], "children": []}
-
-        if parents:
-            for parent in parents:
-                self.person_nodes[parent.user_id]["children"].append(person)
-
-    def link_persons(self, person1_id, person2_id, relationship_type):
-        person1 = self.get_person_by_id(person1_id)
-        person2 = self.get_person_by_id(person2_id)
+    def link_persons(self, relationship: Relationship):
+        person1 = self.get_person_by_id(relationship.person1_id)
+        person2 = self.get_person_by_id(relationship.person2_id)
 
         if not person1 or not person2:
             raise ValueError("One or both persons not found in the family tree")
         
-        if relationship_type == 'parent':
-            person2.add_parent(person1_id)
-            person1.add_child(person2_id)
-        elif relationship_type == 'child':
-            person1.add_parent(person2_id)
-            person2.add_child(person1_id)
+        person1.add_relationship(relationship)
+        person2.add_relationship(relationship)
+        
+        relationship_errors = self.check_relationship_consistency(person1_id)
+        relationship_errors += self.check_relationship_consistency(person2_id)
+        if relationship_errors:
+            raise ValueError(f"Invalid relationships data: {', '.join(relationship_errors)}")
 
 
     def add_relationship(self, relationship: Relationship):
@@ -122,6 +116,53 @@ class FamilyTree:
         if person1.user_id not in self.person_nodes or person2.user_id not in self.person_nodes:
             raise ValueError("One or both persons are not in the family tree")
 
+        relationship_errors = self.check_relationship_consistency(person1.user_id)
+        relationship_errors += self.check_relationship_consistency(person2.user_id)
+        if relationship_errors:
+            raise ValueError(f"Invalid relationships data: {', '.join(relationship_errors)}")
+
+        person1.add_relationship(relationship)
+        person2.add_relationship(relationship)
+
+
+    def check_relationship_consistency(self, person_id: str):
+        errors = []
+        person = self.get_person_by_id(person_id)
+        if not person:
+            raise ValueError(f"Person with ID {person_id} not found")
+        
+        # Check Parents
+        for parent_id in person.relationships.get("parent", []):
+            parent = self.get_person_by_id(parent_id)
+            if not parent or person_id not in parent.relationships.get("child", []):
+                errors.append(f"Inconsistent parent relationship with parent {parent_id}")
+
+            # Check Children
+            for rel in person.relationships:
+                if rel.relationship_type == "child":
+                    child = self.get_person_by_id(rel.person1_id)
+                    if not child or rel.person2_id not in child.relationships.get("parent", []):
+                        errors.append(f"Inconsistent child relationship with child {child.user_id}")
+
+            # Check Spouses
+            for rel in person.relationships:
+                if rel.relationship_type == "spouse":
+                    spouse = self.get_person_by_id(rel.person1_id)
+                    if not spouse or rel.person2_id not in spouse.relationships.get("spouse", []):
+                        errors.append(f"Inconsistent spouse relationship with spouse {spouse.user_id}")
+
+            # Check Siblings
+            for rel in person.relationships:
+                if rel.relationship_type == "sibling":
+                    sibling = self.get_person_by_id(rel.person1_id)
+                    if not sibling:
+                        errors.append(f"Inconsistent sibling relationship with sibling {sibling.user_id}")
+                    else:
+                        person_parents = set([rel.person2_id for rel in person.relationships if rel.relationship_type == "parent"])
+                        sibling_parents = set([rel.person2_id for rel in sibling.relationships if rel.relationship_type == "parent"])
+                        if not person_parents.intersection(sibling_parents):
+                            errors.append(f"Inconsistent sibling relationship with sibling {sibling.user_id}: Different parents")
+
         person1.add_relationship(relationship)
         person2.add_relationship(relationship)
 
@@ -129,6 +170,15 @@ class FamilyTree:
         person_data = self.person_nodes.get(person_id)
         return person_data["person"] if person_data else None
     
+    def check_all_relationship_consistency(self):
+        errors = []
+        for person_id in self.person_nodes.keys():
+            errors.extend(self.check_relationship_consistency(person_id))
+        return errors
+
+
+
+
     def get_person_by_id(self, person_id: int):
         person_data = self.person_nodes.get(person_id)
         return person_data["person"] if person_data else None
@@ -155,8 +205,11 @@ class FamilyTree:
         person = person_data["person"]
         print("  " * indent + f"ID: {person.user_id}, Name: {person.get_names()}")
         
-        for child_person in person.get_children(self):
-            self.display_tree(child_person.user_id, indent + 1)
+        for rel in person.relationships:
+            if rel.relationship_type == "child":
+                self.display_tree(rel.person1_id, indent + 1)
+
+
 
     def import_gedcom(self, gedcom_file_path):
         """
@@ -195,11 +248,38 @@ class FamilyTree:
                                 if len(name_parts) >= 2:
                                     first_name = name_parts[0].strip()
                                     last_name = name_parts[1].strip()
-                        person = Person(person_id, first_name, last_name, None, None)
+                        birth_date = None
+                        birth_place = None
+                        for subrecord in record.sub_records:
+                            if subrecord.tag == "BIRT":
+                                for sub_subrecord in subrecord.sub_records:
+                                    if sub_subrecord.tag == "DATE":
+                                        birth_date = sub_subrecord.value
+                                    if sub_subrecord.tag == "PLAC":
+                                        birth_place = sub_subrecord.value
+
+                        person = Person(person_id, first_name, last_name, birth_date, birth_place)
                         self.add_person(person)
+                    elif record.tag == 'FAM':
+                        husband = ""
+                        wife = ""
+                        children = []
+                        for subrecord in record.sub_records:
+                            if subrecord.tag == 'HUSB':
+                                husband = subrecord.value.replace("@", "")
+                            if subrecord.tag == 'WIFE':
+                                wife = subrecord.value.replace("@", "")
+                            if subrecord.tag == 'CHIL':
+                                children.append(subrecord.value.replace("@", ""))
+
+                        if husband and wife:
+                            self.link_persons(Relationship(husband, wife, "spouse"))
+                        for child in children:
+                            self.link_persons(Relationship(child, husband, "child"))
+                            self.link_persons(Relationship(child, wife, "child"))
         except Exception as e:
             raise ValueError(f"Error parsing GEDCOM file: {e}")
-
+    
     def export_gedcom(self, file_path:str):
         """
         Exports the family tree data to a GEDCOM file.
@@ -272,7 +352,10 @@ class FamilyTree:
                 raise ValueError("Missing required fields for person")
 
             person = Person(person_id, first_name, last_name, date_of_birth, place_of_birth)
-            person.names = person_data.get("names", [])
+            
+            person_names = person_data.get("names", [])
+            person.names = person_names
+            
             person.gender = person_data.get("gender")
             person.romanization = person_data.get("romanization")
             person.transliteration = person_data.get("transliteration")
@@ -298,7 +381,9 @@ class FamilyTree:
             errors = self.validate_person_data(person)
             if errors:
                 raise ValueError(f"Invalid person data: {', '.join(errors)}")
-            self.add_person(person)
+            
+            self.add_person(person)            
+
 
     def export_json(self, file_path):
         """
@@ -388,10 +473,20 @@ class FamilyTree:
         if person1.user_id not in self.person_nodes or person2.user_id not in self.person_nodes:
             raise ValueError("One of the persons not found")
 
-        for key, value in person2.__dict__.items():
-             setattr(person1, key, value)
+        person1.names = person2.names
+        person1.gender = person2.gender
+        person1.romanization = person2.romanization
+        person1.transliteration = person2.transliteration
+        person1.religious_affiliations = person2.religious_affiliations
+        person1.profile_photo = person2.profile_photo
+        person1.relationships = person2.relationships
+
+        for relationship in person2.relationships:
+            if relationship.person1_id != person1.user_id:
+                self.link_persons(relationship)
+                
         self.person_nodes.pop(person2.user_id)
-    def import_csv(self, file_path):
+    def import_csv(self, file_path: str):
         """
         Imports family tree data from a CSV file.
         Args:
@@ -416,6 +511,11 @@ class FamilyTree:
                         raise ValueError("Missing required fields for person")
 
                     person = Person(person_id, first_name, last_name, date_of_birth, place_of_birth)
+
+                    errors = self.validate_person_data(person)
+                    if errors:
+                        raise ValueError(f"Invalid person data: {', '.join(errors)}")
+
                     self.add_person(person)
         except ImportError:
             raise ImportError("The 'csv' library is required to work with CSV files. Please install it.")
@@ -462,6 +562,11 @@ class FamilyTree:
                 date_of_birth = person_elem.get("date_of_birth")
                 place_of_birth = person_elem.get("place_of_birth")
                 person = Person(person_id, first_name, last_name, date_of_birth, place_of_birth)
+                
+                errors = self.validate_person_data(person)
+                if errors:
+                    raise ValueError(f"Invalid person data: {', '.join(errors)}")
+
                 self.add_person(person)
         except ImportError:
             raise ImportError("The 'xml.etree.ElementTree' library is required to work with XML files. Please install it.")

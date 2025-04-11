@@ -1,5 +1,6 @@
 from src.family_tree import FamilyTree
-
+from src.relationship import Relationship
+from typing import List
 
 class Person:
     def __init__(self, person_id, first_name, last_name, date_of_birth, place_of_birth, date_of_death=None, place_of_death=None, family_tree = None):
@@ -20,7 +21,7 @@ class Person:
         self.place_of_death = place_of_death
         self.family_tree:FamilyTree = family_tree
         self.profile_photo = None
-        self.relationships = {}
+        self.relationships:dict[str, List[Relationship]] = {}
         self.init_extended_relationships()
         self.documents: list[str] = []
         self.media: list[str] = []
@@ -102,26 +103,10 @@ class Person:
                 result.append(n)
         return result
 
-    def add_parent(self, parent_id):
-        if "parent" not in self.relationships:
-            self.relationships["parent"] = []
-        self.relationships["parent"].append(parent_id)
-
-    def add_child(self, child_id):
-        if "child" not in self.relationships:
-            self.relationships["child"] = []
-        self.relationships["child"].append(child_id)
-
-    def add_spouse(self, spouse_id):
-        if "spouse" not in self.relationships:
-            self.relationships["spouse"] = []
-        self.relationships["spouse"].append(spouse_id)
-
-    def add_sibling(self, sibling_id):
-        if "sibling" not in self.relationships:
-            self.relationships["sibling"] = []
-        self.relationships["sibling"].append(sibling_id)
-
+    def add_relationship(self, relationship:Relationship):
+        person_id = relationship.person2.person_id if relationship.person1 == self else relationship.person1.person_id
+        self.relationships.setdefault(person_id, []).append(relationship)
+        
     def add_grandparent(self, grandparent_id):
         if "grandparents" not in self.relationships:
             raise ValueError("Relationship not found")
@@ -148,20 +133,18 @@ class Person:
             raise ValueError("Person is already in this relationship")
         self.relationships["inlaws"].append(inlaw_id)
     def get_parents(self) -> list:
-        parents_ids = self.relationships.get("parent", [])
-        return [self.family_tree.get_person(parent_id) for parent_id in parents_ids]
+        return [relationship.person1 if relationship.person2 == self else relationship.person2 for person_id, relationships in self.relationships.items() for relationship in relationships if relationship.relationship_type == 'parent']
 
     def get_children(self) -> list:
-        children_ids = self.relationships.get("child", [])
-        return [self.family_tree.get_person(child_id) for child_id in children_ids]
+        return [relationship.person1 if relationship.person2 == self else relationship.person2 for person_id, relationships in self.relationships.items() for relationship in relationships if relationship.relationship_type == 'child']
 
     def get_spouses(self) -> list:
-        spouses_ids = self.relationships.get("spouse", [])
-        return [self.family_tree.get_person(spouse_id) for spouse_id in spouses_ids]
+        return [relationship.person1 if relationship.person2 == self else relationship.person2 for person_id, relationships in self.relationships.items() for relationship in relationships if relationship.relationship_type == 'spouse']
 
     def get_siblings(self) -> list:
-        siblings_ids = self.relationships.get("sibling", [])
-        return [self.family_tree.get_person(sibling_id) for sibling_id in siblings_ids]
+        return [relationship.person1 if relationship.person2 == self else relationship.person2 for person_id, relationships in self.relationships.items() for relationship in relationships if relationship.relationship_type == 'sibling']
+
+
     
     def add_extended_family(self, extended_family_id: str):
         if "extended_family" not in self.relationships:
