@@ -33,12 +33,17 @@ def main():
     password_4 = "password101"  # Password must be a string
     user_manager.create_user(user4_id, email4, password_4)
 
+    #Get users
+    user1 = user_manager.get_user(user1_id)
+    user2 = user_manager.get_user(user2_id)
+
+    # Add trust points to the second user
+    user_manager.add_trust_points(user2_id, 150)
+    print(f"User2 info : {user2.__dict__}")
+
     # Promote the first user to administrator
     user_manager.promote_to_administrator(user1_id)
     user_manager.promote_to_family_historian(user2_id)
-    
-    #Get the first user
-    user1 = user_manager.get_user(user1_id)
     
     # Promote the first user to a trusted user
     user_manager.promote_to_trusted(user1_id)
