@@ -8,14 +8,25 @@ from src.person import Person # Import the Person class
 def main():
     # Create an instance of UserManager
     user_manager = UserManager()
+    
+    # Create a new users with an id, email and password
+    user1_id = 1  # User ID must be an integer
+    email1 = "test1@example.com"  # Email must be a string
+    password_1 = "password123"  # Password must be a string
+    user_manager.create_user(user1_id, email1, password_1)
+    
+    user2_id = 2  # User ID must be an integer
+    email2 = "test2@example.com"  # Email must be a string
+    password_2 = "password456"  # Password must be a string
+    user_manager.create_user(user2_id, email2, password_2)
+    
+    #Get the first user
+    user1 = user_manager.get_user(user1_id)
+    
+    # Promote the first user to a trusted user
+    user_manager.promote_to_trusted(user1_id)
 
-    # Create a new user with an id, email and password
-    user_id = 1  # User ID must be an integer
-    email = "test@example.com"  # Email must be a string
-    password = "password123"  # Password must be a string
-    user_manager.create_user(user_id, email, password)
-
-    # Create an instance of FamilyTree
+    # Create an instance of FamilyTree  
     family_tree = FamilyTree()
 
     # Create two persons with ids
