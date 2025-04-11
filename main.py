@@ -1,6 +1,9 @@
 from src.family_tree import FamilyTree
 from src.person import Person
 from src.relationship import Relationship
+from src.user_management import UserManager
+from src.user_interface import UserProfileView, FamilyGroupView, PersonDetailView
+
 
 
 # Create a FamilyTree object
@@ -134,3 +137,31 @@ print(f"\nPerson1 info: {person1.get_person_info()}")
 print(f"\nPerson2 info: {person2.get_person_info()}")
 print(f"\nPerson3 info: {person3.get_person_info()}")
 print(f"\nPerson4 info: {person4.get_person_info()}")
+
+
+# Create a UserManager object
+user_manager = UserManager()
+
+# Create a user
+user = user_manager.create_user("user1", "test@test.com", "password")
+
+# Create a UserProfileView object and display the user's profile
+user_profile_view = UserProfileView(user)
+user_profile_view.display_profile()
+
+
+# Test FamilyGroupView class
+print("\nTesting FamilyGroupView...")
+try:
+    # Create a FamilyGroupView object
+    family_group_view = FamilyGroupView(family_tree)
+    # Display a family group
+    family_group_view.display_family_group([person1.person_id, person2.person_id, person3.person_id])
+except ValueError as e:
+    print(f"Error displaying family group: {e}")
+
+
+# Create a PersonDetailView object and display the details of person1
+print("\nTesting PersonDetailView...")
+person_detail_view = PersonDetailView(person1)
+person_detail_view.display_person_details()
