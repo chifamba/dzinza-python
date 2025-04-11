@@ -296,6 +296,44 @@ class FamilyTree:
         except ImportError:
             raise ImportError("The 'json' library is required to export JSON files. Please install it.")
     
+    def find_duplicates(self):
+        """
+        Finds and returns a list of lists containing possible duplicate persons in the family tree.
+        
+        Duplicates are determined by comparing names, date of birth, and place of birth.
+
+        Returns:
+            list: A list of lists, where each inner list contains potential duplicate Person objects.
+        """
+        duplicates = []
+        checked_pairs = set()
+
+        for id1, node1 in self.person_nodes.items():
+            for id2, node2 in self.person_nodes.items():
+                if id1 != id2 and (id1, id2) not in checked_pairs and (id2, id1) not in checked_pairs:
+                    person1:Person = node1["person"]
+                    person2:Person = node2["person"]
+                    checked_pairs.add((id1, id2))
+                    
+                    name1 = person1.get_names()
+                    name2 = person2.get_names()
+                    
+                    if not name1 or not name2:
+                        continue
+                    if person1.date_of_birth == person2.date_of_birth and person1.place_of_birth == person2.place_of_birth:
+                         if name1[0].get("name") == name2[0].get("name") and name1[1].get("name") == name2[1].get("name"):
+                            duplicates.append([person1, person2])
+
+        return duplicates
+    
+    def merge_persons(self, person1: Person, person2: Person):
+        """Merges the data of person2 into person1 and removes person2 from the tree."""
+        if person1.user_id not in self.person_nodes or person2.user_id not in self.person_nodes:
+            raise ValueError("One of the persons not found")
+
+        for key, value in person2.__dict__.items():
+             setattr(person1, key, value)
+        self.person_nodes.pop(person2.user_id)
     def import_csv(self, file_path):
         """
         Imports family tree data from a CSV file.
