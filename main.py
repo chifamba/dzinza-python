@@ -27,8 +27,15 @@ def main():
     password_3 = "password789"  # Password must be a string
     user_manager.create_user(user3_id, email3, password_3)
     
+    #Create the fourth user
+    user4_id = 4  # User ID must be an integer
+    email4 = "test4@example.com"  # Email must be a string
+    password_4 = "password101"  # Password must be a string
+    user_manager.create_user(user4_id, email4, password_4)
+
     # Promote the first user to administrator
     user_manager.promote_to_administrator(user1_id)
+    user_manager.promote_to_family_historian(user2_id)
     
     #Get the first user
     user1 = user_manager.get_user(user1_id)
