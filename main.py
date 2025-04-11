@@ -2,6 +2,7 @@ from src.user_management import UserManager  # Import the UserManager class
 from src.user import User  # Import the User class
 from src.family_tree import FamilyTree # Import the FamilyTree class
 from src.person import Person # Import the Person class
+import time
 
 
 # Main function
@@ -26,6 +27,7 @@ def main():
     email3 = "test3@example.com"  # Email must be a string
     password_3 = "password789"  # Password must be a string
     user_manager.create_user(user3_id, email3, password_3)
+
     
     #Create the fourth user
     user4_id = 4  # User ID must be an integer
@@ -39,6 +41,18 @@ def main():
 
     # Add trust points to the second user
     user_manager.add_trust_points(user2_id, 150)
+
+    print("Users info before apply decay:")
+    for user_id in user_manager.users:
+      user = user_manager.users[user_id]
+      print(f"User {user.user_id} info : {user.__dict__}")
+    
+    #Make user 2 inactive
+    time.sleep(35*24*60*60)
+    
+    #Apply decay
+    user_manager.apply_trust_decay()
+    print("Users info after apply decay:")
     print(f"User2 info : {user2.__dict__}")
 
     # Promote the first user to administrator
