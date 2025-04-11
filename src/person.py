@@ -13,7 +13,7 @@ class Person:
         self.transliteration = None
         self.religious_affiliations = []
         self.current_location = None
-        self.privacy_settings = None
+        self.privacy_settings = {}
         self.biography = ""
         self.date_of_birth = date_of_birth
         self.place_of_birth = place_of_birth
@@ -108,6 +108,30 @@ class Person:
         self.relationships.setdefault(person_id, []).append(relationship)
         
     def add_grandparent(self, grandparent_id):
+    def set_privacy_setting(self, field:str, privacy_level:str):
+        """
+        Sets the privacy level for a specific field.
+        
+        Args:
+            field (str): The name of the field (e.g., "date_of_birth", "place_of_birth").
+            privacy_level (str): The privacy level ("public", "private", "family_only", "godparents_only", "foster_only", "guardians_only").
+        
+        Raises:
+            ValueError: If the privacy level is invalid.
+        """
+        valid_privacy_levels = ["public", "private", "family_only", "godparents_only", "foster_only", "guardians_only"]
+        if privacy_level not in valid_privacy_levels:
+            raise ValueError(f"Invalid privacy level: {privacy_level}. Valid levels are: {', '.join(valid_privacy_levels)}")
+        self.privacy_settings[field] = privacy_level
+
+    def get_privacy_setting(self, field:str) -> str:
+        """
+        Gets the privacy level for a specific field.
+        
+        Args:
+            field (str): The name of the field.
+        """
+        return self.privacy_settings.get(field, "private")
         raise ValueError("Deprecated method")
         
 

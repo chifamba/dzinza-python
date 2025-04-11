@@ -1,8 +1,9 @@
 from src.family_tree import FamilyTree
 from src.person import Person
+from src.user import User
 from src.relationship import Relationship
 from src.user_management import UserManager
-from src.user_interface import UserProfileView, FamilyGroupView, PersonDetailView, RelationshipView
+from src.user_interface import UserProfileView, FamilyGroupView, PersonDetailView, RelationshipView, User
 
 
 
@@ -68,7 +69,8 @@ except Exception as e:
     print(f"An error occurred during JSON import: {e}")
 
 
-# Create persons
+# Create person1, the other persons are created in the json import
+# Create the persons
 person1 = Person("person1", "Name1", "LastName1", "1970-01-01", "Place1")
 person2 = Person("person2", "Name2", "LastName2", "1975-05-10", "Place2")
 person3 = Person("person3", "Name3", "LastName3", "1995-11-15", "Place3")
@@ -76,13 +78,12 @@ person4 = Person("person4", "Name4", "LastName4", "1998-03-20", "Place4")
 
 # Create and add persons to the tree
 family_tree.add_person(person1)
-family_tree.add_person(person2)
 family_tree.add_person(person3)
-family_tree.add_person(person4)
+
 
 # Create and add relationships to the tree
-relationship1 = Relationship(person1.person_id, person2.person_id, "spouse")
-relationship2 = Relationship(person3.person_id, person1.person_id, "child")
+relationship1 = Relationship(person1.person_id, person2.person_id, "spouse")  # person1 is the spouse of person2
+relationship2 = Relationship(person3.person_id, person1.person_id, "child")  # person3 is a child of person1
 relationship3 = Relationship(person4.person_id, person1.person_id, "child")
 family_tree.link_persons(relationship1)
 family_tree.link_persons(relationship2)
@@ -111,14 +112,14 @@ except ValueError as e:
 
 
 # Check the consistency of all the tree, must work correctly
-print(f"\nCheck the consistency of the entire tree")
+print(f"\nCheck the consistency of the entire tree...")
 family_tree.check_all_relationship_consistency()
 
 
 # Display the tree, must show the tree in hierarchical view
-print(f"\nDisplay the entire tree")
+print(f"\nDisplay the entire tree...")
 family_tree.display_tree()
-
+print(f"\n--------------------------------------------------------")
 
 # Generate and print the reports
 print("\nFamily Tree Report:")
@@ -131,6 +132,24 @@ print("\nCustom Report for person1 and person2 (name and date of birth):")
 custom_report = family_tree.generate_custom_report([person1.person_id, person2.person_id], ["names", "date_of_birth"])
 print(custom_report)
 
+print(f"\n--------------------------------------------------------")
+
+# Test the privacy settings of the Person class
+print("\nTesting privacy settings for person1...")
+# Set privacy settings for person1
+person1.set_privacy_setting("names", "public")
+person1.set_privacy_setting("date_of_birth", "private")
+person1.set_privacy_setting("place_of_birth", "family_only")
+person1.set_privacy_setting("date_of_death", "godparents_only")
+person1.set_privacy_setting("place_of_death", "foster_only")
+person1.set_privacy_setting("biography", "guardians_only")  
+
+# Print the privacy settings
+print(f"Privacy setting for names: {person1.get_privacy_setting('names')}")
+print(f"Privacy setting for date_of_birth: {person1.get_privacy_setting('date_of_birth')}")
+print(f"Privacy setting for place_of_birth: {person1.get_privacy_setting('place_of_birth')}")
+print(f"Privacy setting for biography: {person1.get_privacy_setting('biography')}")
+print(f"\n--------------------------------------------------------")
 # Test the new get_person_info method of the Person class
 print("\nTesting get_person_info method...")
 print(f"\nPerson1 info: {person1.get_person_info()}")
@@ -142,12 +161,43 @@ print(f"\nPerson4 info: {person4.get_person_info()}")
 # Create a UserManager object
 user_manager = UserManager()
 
-# Create a user
-user = user_manager.create_user("user1", "test@test.com", "password")
+# Create the users with different access levels
+guest_user:User = user_manager.create_user("guest", "guest@example.com", "password", access_level="guest")
+normal_user:User = user_manager.create_user("normal_user", "normal@example.com", "password")
+admin_user:User = user_manager.create_user("admin", "admin@example.com", "password", access_level="admin")
 
-# Create a UserProfileView object and display the user's profile
-user_profile_view = UserProfileView(user)
-user_profile_view.display_profile()
+# Add user2 as a spouse of person1
+family_tree.add_person(person2)
+relationship1 = Relationship(person1.person_id, person2.person_id, "spouse")
+family_tree.link_persons(relationship1)
+
+# Add user3 as a godparent of person1
+person1.add_godparent(person3.person_id)
+
+# Add user4 as a foster relationship of person1
+person1.add_foster_relationship(person4.person_id)
+
+print(f"\n--------------------------------------------------------")
+print("\nTesting UserProfileView with different access levels...")
+
+# Test UserProfileView with the guest user
+print("\nGuest User Profile:")
+user_profile_view_guest = UserProfileView(guest_user, person1)
+user_profile_view_guest.display_profile()
+
+# Test UserProfileView with the normal user
+print("\nNormal User Profile:")
+user_profile_view_normal = UserProfileView(normal_user, person1)
+user_profile_view_normal.display_profile()
+
+# Test UserProfileView with the admin user
+print("\nAdmin User Profile:")
+user_profile_view_admin = UserProfileView(admin_user, person1)
+user_profile_view_admin.display_profile()
+
+print(f"\n--------------------------------------------------------")
+
+
 
 
 # Test FamilyGroupView class
@@ -160,15 +210,16 @@ try:
 except ValueError as e:
     print(f"Error displaying family group: {e}")
 
+print(f"\n--------------------------------------------------------")
 
 # Create a PersonDetailView object and display the details of person1
 print("\nTesting PersonDetailView...")
 person_detail_view = PersonDetailView(person1)
 person_detail_view.display_person_details()
-
+print(f"\n--------------------------------------------------------")
 
 # Create a RelationshipView object and display the details of relationship1
-print("\nTesting RelationshipView...")
+print(f"\nTesting RelationshipView...")
 relationship_view = RelationshipView(relationship1)
 relationship_view.display_relationship()
 
@@ -193,4 +244,6 @@ print("\nSearch for persons with 'Place4' in their place_of_birth:")
 results = family_tree.search_person("Place4", ["place_of_birth"])
 for person in results:
     print(person)
+
+print(f"\n--------------------------------------------------------")
 

@@ -9,7 +9,7 @@ class UserManager:
     def create_user(self, user_id, email, password):
         if email in self.users or any(u.user_id == user_id for u in self.users.values()):
             raise ValueError("Email or user ID already in use")
-        user = User(user_id, email, password)
+        user = User(user_id, email, password, access_level='user')
         self.users[user.user_id] = user
         return user
 
@@ -47,8 +47,6 @@ class UserManager:
             if user.is_inactive():
                 if user.trust_points >= 50:
                   user.remove_trust_points(50)
-                else:
-                    user.remove_trust_points(user.trust_points)
 
         user.add_trust_points(points)
 
@@ -60,6 +58,7 @@ class UserManager:
         if user.role == 'basic':
             raise ValueError('User is already a basic user')
         user.set_role('basic')
+
 
     def demote_to_basic(self, user_id):
         user = self.users.get(user_id)

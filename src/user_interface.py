@@ -4,15 +4,42 @@ from src.person import Person
 from src.relationship import Relationship
 
 class UserProfileView:
-    def __init__(self, user: User):
-        self.user = user
+    def __init__(self, target_user: User, requesting_user:User):
+        self.target_user = target_user
+        self.requesting_user = requesting_user
 
     def display_profile(self):
         print("User Profile:")
-        print(f"  Name: {self.user.email}")
-        print(f"  Email: {self.user.email}")
-        print(f"  Role: {self.user.role}")
-        print(f"  Trust Level: {self.user.get_trust_level()}")
+        self.display_field("Name", self.target_user.email)
+        self.display_field("Email", self.target_user.email)
+        self.display_field("Role", self.target_user.role)
+        self.display_field("Trust Level", self.target_user.get_trust_level())
+
+    def display_field(self, field_name, field_value):
+        access_level = self.get_access_level(field_name)
+        if access_level:
+            print(f"  {field_name}: {field_value}")
+        else:
+            print(f"  {field_name}: Field is not accessible")
+
+    def get_access_level(self, field):
+        privacy_level = self.target_user.get_privacy_setting(field)
+        requesting_user_access_level = self.requesting_user.access_level
+
+        if privacy_level == "public":
+            return True
+        elif privacy_level == "private" and requesting_user_access_level == "admin":
+            return True
+        elif privacy_level == "family_only":
+            # Check if the requesting_user has a relationship of 'parent', 'child', or 'spouse' with the target_user
+            return any(rel.relationship_type in ["parent", "child", "spouse"] for rel in self.target_user.relationships)
+        elif privacy_level == "godparents_only" and self.requesting_user.user_id in self.target_user.godparents:
+            return True
+        elif privacy_level == "foster_only" and self.requesting_user.user_id in self.target_user.foster_relationships:
+            return True
+        elif privacy_level == "guardians_only" and self.requesting_user.user_id in self.target_user.guardian_relationships:
+            return True
+        return False
 
 
 class FamilyGroupView:
