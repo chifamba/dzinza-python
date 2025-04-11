@@ -20,8 +20,10 @@ def main():
     family_tree = FamilyTree()
 
     # Create two persons
-    person1 = Person(first_name="John", last_name="Doe", date_of_birth="1980-01-01")
-    person2 = Person(first_name="Jane", last_name="Doe", date_of_birth="2000-01-01")
+    person1 = Person(first_name="John", last_name="Doe", date_of_birth="1980-01-01", place_of_birth="New York", date_of_death=None, place_of_death=None, gender="Male", current_location="Los Angeles", biography="A short biography of John", privacy="public")
+    person2 = Person(first_name="Jane", last_name="Doe", date_of_birth="2000-01-01", place_of_birth="Los Angeles", date_of_death=None, place_of_death=None, gender="Female", current_location="Los Angeles", biography="A short biography of Jane", privacy="public")
+
+
 
     # Add persons to the family tree
     family_tree.add_person(person1) # Add the first person to the FamilyTree without parent (root)
