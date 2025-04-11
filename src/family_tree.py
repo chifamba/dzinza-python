@@ -2,7 +2,9 @@ from src.person import Person
 from src.relationship import Relationship
 import os
 import gedcom
+import csv
 import json
+import xml.etree.ElementTree as ET
 from gedcom.element.element import Element
 from gedcom.parser import Parser
 class FamilyTree:
@@ -179,7 +181,7 @@ class FamilyTree:
             gedcom_file.write(f"1 NAME {person.get_names()[0].get('name', '')} /{person.get_names()[1].get('name', '')}/\n")
             gedcom_file.write(f"2 GIVN {person.get_names()[0].get('name', '')}\n")
             gedcom_file.write(f"2 SURN {person.get_names()[1].get('name', '')}\n")
-            gedcom_file.write(f"1 SEX {person.gender or 'U'}\n")
+            gedcom_file.write(f"1 SEX {person.gender or 'U'}\n")            
             gedcom_file.write(f"1 BIRT\n")
         gedcom_file.write("0 TRLR\n")
         gedcom_file.close()
@@ -242,5 +244,147 @@ class FamilyTree:
             self.add_person(person)
 
     def export_json(self, file_path):
-        pass
+        """
+        Exports the family tree data to a JSON file.
+
+        Args:
+            file_path (str): The path to save the JSON file.
+
+        Raises:
+            ImportError: If the `json` library is not available.
+            ValueError: If the file format is incorrect or if there's an issue creating the JSON data.
+        """
+        if not file_path.lower().endswith(".json"):
+            raise ValueError("The file format is not .json")
+        try:
+            with open(file_path, "w", encoding="utf-8") as file:
+                
+                data = {"persons": []}
+                for person_id, node in self.person_nodes.items():
+                    person: Person = node["person"]
+                    person_data = {
+                        "person_id": person.user_id,
+                        "first_name": person.get_names()[0].get("name"),
+                        "last_name": person.get_names()[1].get("name"),
+                        "names": person.names,
+                        "gender": person.gender,
+                        "romanization": person.romanization,
+                        "transliteration": person.transliteration,
+                        "religious_affiliations": person.religious_affiliations,
+                        "current_location": person.current_location,
+                        "privacy_settings": person.privacy_settings,
+                        "biography": person.biography,
+                        "date_of_birth": person.date_of_birth,
+                        "place_of_birth": person.place_of_birth,
+                        "date_of_death": person.date_of_death,
+                        "place_of_death": person.place_of_death,
+                        "profile_photo": person.profile_photo,
+                        "relationships": person.relationships,
+                        "documents": person.documents,
+                        "media": person.media,
+                        "military_service_records": person.military_service_records,
+                        "educational_history": person.educational_history,
+                        "occupational_history": person.occupational_history,
+                        "medical_history": person.medical_history,
+                        "dna_haplogroups": person.dna_haplogroups,
+                        "physical_characteristics": person.physical_characteristics,
+                        "languages_spoken": person.languages_spoken,
+                        "immigration_naturalization_records": person.immigration_naturalization_records,
+                    }
+                    data["persons"].append(person_data)
+                json.dump(data, file, indent=4, ensure_ascii=False)
+        except ImportError:
+            raise ImportError("The 'json' library is required to export JSON files. Please install it.")
+    
+    def import_csv(self, file_path):
+        """
+        Imports family tree data from a CSV file.
+        Args:
+            file_path (str): The path to the CSV file.
+        Raises:
+            ImportError: If the `csv` library is not available.
+            ValueError: If the file format is not CSV or if there are issues with the CSV data.
+        """
+        if not file_path.lower().endswith(".csv"):
+            raise ValueError("File is not a CSV file")
+        try:
+            with open(file_path, "r", encoding="utf-8") as file:
+                reader = csv.DictReader(file)
+                for row in reader:
+                    person_id = row.get("person_id")
+                    first_name = row.get("first_name")
+                    last_name = row.get("last_name")
+                    date_of_birth = row.get("date_of_birth")
+                    place_of_birth = row.get("place_of_birth")
+
+                    if not person_id or not first_name or not last_name:
+                        raise ValueError("Missing required fields for person")
+
+                    person = Person(person_id, first_name, last_name, date_of_birth, place_of_birth)
+                    self.add_person(person)
+        except ImportError:
+            raise ImportError("The 'csv' library is required to work with CSV files. Please install it.")
+
+    def export_csv(self, file_path):
+        """
+        Exports the family tree data to a CSV file.
+        Args:
+            file_path (str): The path to save the CSV file.
+        Raises:
+            ImportError: If the `csv` library is not available.
+            ValueError: If the file format is not CSV or if there are issues creating the CSV data.
+        """
+        if not file_path.lower().endswith(".csv"):
+            raise ValueError("File is not a CSV file")
+        try:
+            with open(file_path, "w", newline="", encoding="utf-8") as file:
+                fieldnames = ["person_id", "first_name", "last_name", "date_of_birth", "place_of_birth"]
+                writer = csv.DictWriter(file, fieldnames=fieldnames)
+                writer.writeheader()
+                for person_id, node in self.person_nodes.items():
+                    person: Person = node["person"]
+                    writer.writerow({
+                        "person_id": person.user_id,
+                        "first_name": person.get_names()[0].get("name"),
+                        "last_name": person.get_names()[1].get("name"),
+                        "date_of_birth": person.date_of_birth,
+                        "place_of_birth": person.place_of_birth,
+                    })
+        except ImportError:
+            raise ImportError("The 'csv' library is required to work with CSV files. Please install it.")
+
+    def import_xml(self, file_path):
+        """Imports family tree data from an XML file."""
+        if not file_path.lower().endswith(".xml"):
+            raise ValueError("File is not an XML file")
+        try:
+            tree = ET.parse(file_path)
+            root = tree.getroot()
+            for person_elem in root.findall("person"):
+                person_id = person_elem.get("person_id")
+                first_name = person_elem.get("first_name")
+                last_name = person_elem.get("last_name")
+                date_of_birth = person_elem.get("date_of_birth")
+                place_of_birth = person_elem.get("place_of_birth")
+                person = Person(person_id, first_name, last_name, date_of_birth, place_of_birth)
+                self.add_person(person)
+        except ImportError:
+            raise ImportError("The 'xml.etree.ElementTree' library is required to work with XML files. Please install it.")
+        except ET.ParseError as e:
+            raise ValueError(f"Invalid XML format: {e}")
+
+    def export_xml(self, file_path):
+        """Exports the family tree data to an XML file."""
+        if not file_path.lower().endswith(".xml"):
+            raise ValueError("File is not an XML file")
+        try:
+            root = ET.Element("family_tree")
+            for _, node in self.person_nodes.items():
+                person = node["person"]
+                person_elem = ET.SubElement(root, "person", person_id=person.user_id, first_name=person.get_names()[0].get("name"), last_name=person.get_names()[1].get("name"), date_of_birth=person.date_of_birth, place_of_birth=person.place_of_birth)
+            tree = ET.ElementTree(root)
+            tree.write(file_path, encoding="utf-8", xml_declaration=True)
+        except ImportError:
+            raise ImportError("The 'json' library is required to export JSON files. Please install it.")
+    
 
