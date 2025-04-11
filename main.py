@@ -9,16 +9,26 @@ def main():
     # Create an instance of UserManager
     user_manager = UserManager()
     
-    # Create a new users with an id, email and password
+    # Create the first user with an id, email and password
     user1_id = 1  # User ID must be an integer
     email1 = "test1@example.com"  # Email must be a string
     password_1 = "password123"  # Password must be a string
     user_manager.create_user(user1_id, email1, password_1)
     
+    # Create the second user with an id, email and password
     user2_id = 2  # User ID must be an integer
     email2 = "test2@example.com"  # Email must be a string
     password_2 = "password456"  # Password must be a string
     user_manager.create_user(user2_id, email2, password_2)
+    
+    #Create the third user
+    user3_id = 3  # User ID must be an integer
+    email3 = "test3@example.com"  # Email must be a string
+    password_3 = "password789"  # Password must be a string
+    user_manager.create_user(user3_id, email3, password_3)
+    
+    # Promote the first user to administrator
+    user_manager.promote_to_administrator(user1_id)
     
     #Get the first user
     user1 = user_manager.get_user(user1_id)
