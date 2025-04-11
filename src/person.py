@@ -21,7 +21,7 @@ class Person:
         self.place_of_death = place_of_death
         self.family_tree:FamilyTree = family_tree
         self.profile_photo = None
-        self.relationships:dict[str, List[Relationship]] = {}
+        self.relationships:dict[str, List[Relationship]] = {} #key: person_id, value: list of Relationship
         self.init_extended_relationships()
         self.documents: list[str] = []
         self.media: list[str] = []
@@ -103,25 +103,23 @@ class Person:
                 result.append(n)
         return result
 
-    def add_relationship(self, relationship:Relationship):
-        person_id = relationship.person2.person_id if relationship.person1 == self else relationship.person1.person_id
+    def add_relationship(self, relationship: Relationship):
+        person_id = relationship.person2_id if relationship.person1_id == self.person_id else relationship.person1_id
         self.relationships.setdefault(person_id, []).append(relationship)
         
     def add_grandparent(self, grandparent_id):
-        if "grandparents" not in self.relationships:
-            raise ValueError("Relationship not found")
-        if grandparent_id in self.relationships["grandparents"]:
-            raise ValueError("Person is already in this relationship")
-        self.relationships["grandparents"].append(grandparent_id)
+        raise ValueError("Deprecated method")
+        
 
     def add_aunt_uncle(self, aunt_uncle_id):
-        if "aunt_uncles" not in self.relationships:
-            raise ValueError("Relationship not found")
-        if aunt_uncle_id in self.relationships["aunt_uncles"]:
-            raise ValueError("Person is already in this relationship")
-        self.relationships["aunt_uncles"].append(aunt_uncle_id)
+        raise ValueError("Deprecated method")
+        
 
     def add_cousin(self, cousin_id):
+        raise ValueError("Deprecated method")
+        
+
+    def add_inlaw(self, inlaw_id):
         if "cousins" not in self.relationships:
             raise ValueError("Relationship not found")
         if cousin_id in self.relationships["cousins"]:
@@ -129,21 +127,19 @@ class Person:
         self.relationships["cousins"].append(cousin_id)
 
     def add_inlaw(self, inlaw_id):
-        if inlaw_id in self.relationships.get("inlaws", []):
-            raise ValueError("Person is already in this relationship")
-        self.relationships["inlaws"].append(inlaw_id)
+        raise ValueError("Deprecated method")
+        
     def get_parents(self) -> list:
-        return [relationship.person1 if relationship.person2 == self else relationship.person2 for person_id, relationships in self.relationships.items() for relationship in relationships if relationship.relationship_type == 'parent']
+        return [self.family_tree.get_person_by_id(relationship.person1_id if relationship.person2_id == self.person_id else relationship.person2_id) for person_id, relationships in self.relationships.items() for relationship in relationships if relationship.relationship_type == 'parent']
 
     def get_children(self) -> list:
-        return [relationship.person1 if relationship.person2 == self else relationship.person2 for person_id, relationships in self.relationships.items() for relationship in relationships if relationship.relationship_type == 'child']
+        return [self.family_tree.get_person_by_id(relationship.person1_id if relationship.person2_id == self.person_id else relationship.person2_id) for person_id, relationships in self.relationships.items() for relationship in relationships if relationship.relationship_type == 'child']
 
     def get_spouses(self) -> list:
-        return [relationship.person1 if relationship.person2 == self else relationship.person2 for person_id, relationships in self.relationships.items() for relationship in relationships if relationship.relationship_type == 'spouse']
+        return [self.family_tree.get_person_by_id(relationship.person1_id if relationship.person2_id == self.person_id else relationship.person2_id) for person_id, relationships in self.relationships.items() for relationship in relationships if relationship.relationship_type == 'spouse']
 
     def get_siblings(self) -> list:
-        return [relationship.person1 if relationship.person2 == self else relationship.person2 for person_id, relationships in self.relationships.items() for relationship in relationships if relationship.relationship_type == 'sibling']
-
+        return [self.family_tree.get_person_by_id(relationship.person1_id if relationship.person2_id == self.person_id else relationship.person2_id) for person_id, relationships in self.relationships.items() for relationship in relationships if relationship.relationship_type == 'sibling']
 
     
     def add_extended_family(self, extended_family_id: str):
@@ -152,6 +148,7 @@ class Person:
         if extended_family_id in self.relationships["extended_family"]:
             raise ValueError("Person is already in this relationship")
         self.relationships["extended_family"].append(extended_family_id)
+        
     
     def get_grandparents(self) -> list:
         grandparents_ids = self.relationships.get("grandparents", [])
@@ -386,3 +383,54 @@ class Person:
 
     def get_custom_relationships(self) -> dict:
         return self.custom_relationships
+    
+    def get_person_info(self) -> dict:
+        """
+        Returns a dictionary with all the information of the person.
+        """
+        return {
+            "person_id": self.person_id,
+            "names": self.names,
+            "gender": self.gender,
+            "romanization": self.romanization,
+            "transliteration": self.transliteration,
+            "religious_affiliations": self.religious_affiliations,
+            "current_location": self.current_location,
+            "privacy_settings": self.privacy_settings,
+            "biography": self.biography,
+            "date_of_birth": self.date_of_birth,
+            "place_of_birth": self.place_of_birth,
+            "date_of_death": self.date_of_death,
+            "place_of_death": self.place_of_death,
+            "profile_photo": self.profile_photo,
+            "parents": [p.person_id for p in self.get_parents()],
+            "children": [c.person_id for c in self.get_children()],
+            "spouses": [s.person_id for s in self.get_spouses()],
+            "siblings": [s.person_id for s in self.get_siblings()],
+            "grandparents": self.relationships.get("grandparents", []),
+            "aunt_uncles": self.relationships.get("aunt_uncles", []),
+            "cousins": self.relationships.get("cousins", []),
+            "inlaws": self.relationships.get("inlaws", []),
+            "extended_family": self.relationships.get("extended_family", []),
+            "documents": self.documents,
+            "media": self.media,
+            "military_service_records": self.military_service_records,
+            "educational_history": self.educational_history,
+            "occupational_history": self.occupational_history,
+            "medical_history": self.medical_history,
+            "dna_haplogroups": self.dna_haplogroups,
+            "physical_characteristics": self.physical_characteristics,
+            "languages_spoken": self.languages_spoken,
+            "immigration_naturalization_records": self.immigration_naturalization_records,
+            "cultural_relationships": self.cultural_relationships,
+            "godparents": self.godparents,
+            "foster_relationships": self.foster_relationships,
+            "guardian_relationships": self.guardian_relationships,
+            "tribal_clan_affiliations": self.tribal_clan_affiliations,
+            "historical_context_relationships": self.historical_context_relationships,
+            "relationship_timeline": self.relationship_timeline,
+            "custom_relationships": self.custom_relationships
+        }
+
+    def __str__(self):
+        return str(self.get_person_info())

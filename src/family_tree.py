@@ -9,6 +9,7 @@ import xml.etree.ElementTree as ET
 from gedcom.element.element import Element
 from gedcom.parser import Parser
 from datetime import datetime
+
 class FamilyTree:
     def __init__(self, root_person: Person = None):
         """
@@ -57,8 +58,8 @@ class FamilyTree:
         if parents:
             for parent in parents:
                 self.link_persons(Relationship(person.user_id, parent.user_id, "child"))
-
-        if parents:
+                
+        if parents and self.person_nodes.get(parent.user_id):
             for parent in parents:
                 self.person_nodes[parent.user_id]["children"].append(person)
         
@@ -133,17 +134,18 @@ class FamilyTree:
         
         # Check Parents
         for parent_id in person.relationships.get("parent", []):
-            parent = self.get_person_by_id(parent_id)
-            if not parent or person_id not in parent.relationships.get("child", []):
-                errors.append(f"Inconsistent parent relationship with parent {parent_id}")
+            for rel in person.relationships:
+                if rel.relationship_type == "parent":
+                    parent = self.get_person_by_id(rel.person2_id)
+                    if not parent or not any(r.person1_id == person_id and r.relationship_type == "child" for r in parent.relationships):
+                        errors.append(f"Inconsistent parent relationship with parent {parent.user_id}")
 
             # Check Children
             for rel in person.relationships:
                 if rel.relationship_type == "child":
-                    child = self.get_person_by_id(rel.person1_id)
-                    if not child or rel.person2_id not in child.relationships.get("parent", []):
-                        errors.append(f"Inconsistent child relationship with child {child.user_id}")
-
+                    child = self.get_person_by_id(rel.person1_id)                        
+                    if not child or not any(r.person2_id == person_id and r.relationship_type == "parent" for r in child.relationships):
+                        errors.append(f"Inconsistent child relationship with child {child.user_id}")                
             # Check Spouses
             for rel in person.relationships:
                 if rel.relationship_type == "spouse":
@@ -153,19 +155,16 @@ class FamilyTree:
 
             # Check Siblings
             for rel in person.relationships:
-                if rel.relationship_type == "sibling":
+                if rel.relationship_type == "sibling" and rel.person1_id != person_id:
                     sibling = self.get_person_by_id(rel.person1_id)
                     if not sibling:
                         errors.append(f"Inconsistent sibling relationship with sibling {sibling.user_id}")
                     else:
-                        person_parents = set([rel.person2_id for rel in person.relationships if rel.relationship_type == "parent"])
-                        sibling_parents = set([rel.person2_id for rel in sibling.relationships if rel.relationship_type == "parent"])
-                        if not person_parents.intersection(sibling_parents):
+                        person_parents = set(r.person2_id for r in person.relationships if r.relationship_type == "parent")
+                        sibling_parents = set(r.person2_id for r in sibling.relationships if r.relationship_type == "parent")
+                        if not person_parents.intersection(sibling_parents) or len(person_parents.intersection(sibling_parents)) == 0:
                             errors.append(f"Inconsistent sibling relationship with sibling {sibling.user_id}: Different parents")
-
-        person1.add_relationship(relationship)
-        person2.add_relationship(relationship)
-
+        return errors
     def get_person(self, person_id: int):
         person_data = self.person_nodes.get(person_id)
         return person_data["person"] if person_data else None
@@ -237,6 +236,7 @@ class FamilyTree:
             with open(gedcom_file_path, 'r', encoding="utf-8") as ged_file:
                 gedcom_data = gedcom.parse(ged_file)
 
+                persons = {}
                 for record in gedcom_data:
                     if record.tag == 'INDI':
                         person_id = record.xref_id.replace("@", "")
@@ -259,7 +259,9 @@ class FamilyTree:
                                         birth_place = sub_subrecord.value
 
                         person = Person(person_id, first_name, last_name, birth_date, birth_place)
-                        self.add_person(person)
+                        self.add_person(person)                        
+                        persons[person_id] = person
+
                     elif record.tag == 'FAM':
                         husband = ""
                         wife = ""
@@ -272,9 +274,11 @@ class FamilyTree:
                             if subrecord.tag == 'CHIL':
                                 children.append(subrecord.value.replace("@", ""))
 
-                        if husband and wife:
-                            self.link_persons(Relationship(husband, wife, "spouse"))
-                        for child in children:
+                        if husband and wife and persons.get(husband) and persons.get(wife):
+                            self.link_persons(Relationship(husband, wife, "spouse"))                            
+                        for child in children:                            
+                            if persons.get(child) and persons.get(husband) and persons.get(wife):
+                                
                             self.link_persons(Relationship(child, husband, "child"))
                             self.link_persons(Relationship(child, wife, "child"))
         except Exception as e:
@@ -367,7 +371,7 @@ class FamilyTree:
             person.place_of_death = person_data.get("place_of_death")
             person.profile_photo = person_data.get("profile_photo")
             person.relationships = person_data.get("relationships", {})
-            person.documents = person_data.get("documents", [])
+            person.documents = person_data.get("documents", [])            
             person.media = person_data.get("media", [])
             person.military_service_records = person_data.get("military_service_records", [])
             person.educational_history = person_data.get("educational_history", [])
@@ -380,7 +384,11 @@ class FamilyTree:
 
             errors = self.validate_person_data(person)
             if errors:
-                raise ValueError(f"Invalid person data: {', '.join(errors)}")
+                raise ValueError(f"Invalid person data in {person_id}: {', '.join(errors)}")
+            for rel in person.relationships:
+                rel_obj = Relationship(rel["person1_id"], rel["person2_id"], rel["relationship_type"])
+                self.link_persons(rel_obj)
+
             
             self.add_person(person)            
 
@@ -486,7 +494,12 @@ class FamilyTree:
                 self.link_persons(relationship)
                 
         self.person_nodes.pop(person2.user_id)
-    def import_csv(self, file_path: str):
+
+    def check_all_relationship_consistency(self):
+        errors = []
+        for person_id in self.person_nodes.keys():
+            errors.extend(self.check_relationship_consistency(person_id))
+        return errors
         """
         Imports family tree data from a CSV file.
         Args:
@@ -587,4 +600,47 @@ class FamilyTree:
         except ImportError:
             raise ImportError("The 'json' library is required to export JSON files. Please install it.")
     
+
+    def generate_family_tree_report(self):
+        """
+        Generates a text-based report of the family tree.
+
+        Returns:
+            str: A string containing the family tree report.
+        """
+        report = "Family Tree Report:\n\n"
+        
+        def build_tree_string(person_id=None, indent=0):
+            tree_string = ""
+            if person_id is None:
+                if self.root_person is None:
+                    return "The family tree is empty."
+                person_id = self.root_person.user_id
+
+            person_data = self.person_nodes.get(person_id)
+            if not person_data:
+                return ""
+
+            person = person_data["person"]
+            tree_string += "  " * indent + f"ID: {person.user_id}, Name: {person.get_names()}\n"
+            
+            for rel in person.relationships:
+                if rel.relationship_type == "child":
+                    tree_string += build_tree_string(rel.person1_id, indent + 1)
+            return tree_string
+
+        report += build_tree_string()
+        return report
+
+    def generate_person_summary_report(self, person_id):
+        """Generates a summary report for a specific person."""
+        person = self.get_person_by_id(person_id)
+        if not person:
+            raise ValueError("Person not found")
+        return f"""
+        Person Summary Report for ID: {person_id}
+        Name: {person.get_names()}
+        Date of Birth: {person.date_of_birth}
+        """
+
 
