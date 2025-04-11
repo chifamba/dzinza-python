@@ -9,8 +9,6 @@
 
 ## TODO List
 
-## User Management System
-
 - [x] Implement Basic User role (signup, login, profile creation). (basic creation is done)
 
 ### User Roles and Permissions
@@ -59,19 +57,18 @@
 - Professional genealogist verification program
 
 ## Person Records
-
+- [x] Create a data model for basic person information. (basic model created)
 ### Basic Information
 - Full name (including maiden names, previous names)
 - [x] Create a data model for basic person information. (basic model created)
-- Date of birth (with support for approximate dates)
-- Place of birth
-
-- Date of death (if applicable)
-- Place of death (if applicable)
-- Gender
-- Current location
-- Biography/Life story
-- Privacy settings (public/private/family-only)
+- [x] Date of birth (with support for approximate dates)
+- [x] Place of birth
+- [x] Date of death (if applicable)
+- [x] Place of death (if applicable)
+- [x] Gender
+- [x] Current location
+- [x] Biography/Life story
+- [x] Privacy settings (public/private/family-only)
 - Multiple name formats for different cultures
 - Name romanization/transliteration
 - Religious/cultural affiliations
@@ -83,6 +80,7 @@
 - Physical characteristics
 - Languages spoken
 - Immigration/naturalization records
+- Add methods to find relationships of a person.
 
 ### Media Support
 - Profile photos (historical and current)
@@ -128,8 +126,8 @@
 ## Family Tree Features
 
 ### Tree Visualization
-- Interactive family tree display
 - [x] Implement basic interactive family tree display (hierarchical view). (basic tree with root and child created)
+- Interactive family tree display
 - Multiple view options:
   - Hierarchical view
   - Fan chart
