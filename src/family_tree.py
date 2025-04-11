@@ -1,5 +1,6 @@
 from src.person import Person
 from src.relationship import Relationship
+from urllib.parse import urlparse
 import os
 import gedcom
 import csv
@@ -7,6 +8,7 @@ import json
 import xml.etree.ElementTree as ET
 from gedcom.element.element import Element
 from gedcom.parser import Parser
+from datetime import datetime
 class FamilyTree:
     def __init__(self, root_person: Person = None):
         """
@@ -29,6 +31,54 @@ class FamilyTree:
             self.person_nodes[root_person.user_id] = {"person": root_person, "parent": None, "children": []}
 
     def add_person(self, person: Person, parents: list[Person] = None):
+        errors = self.validate_person_data(person)
+        if errors:
+            raise ValueError(f"Invalid person data: {', '.join(errors)}")
+
+        if not self.root_person and parents:
+            raise ValueError("Cannot add a person with parents if the tree is empty")        
+        if person.user_id in self.person_nodes:
+            raise ValueError("Person already exists in the family tree")
+
+        if parents:
+            for parent in parents:
+                if parent.user_id not in self.person_nodes:
+                    raise ValueError(f"Parent with ID {parent.user_id} not found in the family tree")
+
+        if not self.root_person and not parents:
+             self.root_person = person
+        elif self.root_person and not parents:
+            raise ValueError("Cannot add a root person if the tree already has a root")
+
+        self.person_nodes[person.user_id] = {"person": person, "parents": parents or [], "children": []}
+
+        if parents:
+            for parent in parents:
+                self.person_nodes[parent.user_id]["children"].append(person)
+
+    def validate_person_data(self, person: Person):
+        """Validate the person data."""
+        errors = []
+        if not person.names:
+            errors.append("Names cannot be empty")
+        if not isinstance(person.date_of_birth, datetime):
+            errors.append("Date of birth is not valid")
+        if person.date_of_death and not isinstance(person.date_of_death, datetime):
+            errors.append("Date of death is not valid")
+        if person.profile_photo and not urlparse(person.profile_photo).scheme:
+            errors.append("Profile photo is not a valid URL")
+        if any(doc and not urlparse(doc).scheme for doc in person.documents):
+            errors.append("One or more documents are not valid URLs")
+        if any(media and not urlparse(media).scheme for media in person.media):
+            errors.append("One or more media entries are not valid URLs")
+        if not person.biography:
+            errors.append("Biography cannot be empty")
+        if person.gender not in ["male", "female", None]:
+            errors.append("Gender must be male or female")
+        return errors
+
+    
+    def add_person_old(self, person: Person, parents: list[Person] = None):
         if not self.root_person and parents:
             raise ValueError("Cannot add a person with parents if the tree is empty")        
         if person.user_id in self.person_nodes:
@@ -218,6 +268,9 @@ class FamilyTree:
             if not person_id or not first_name or not last_name:
                 raise ValueError("Missing required fields for person")
 
+            if not person_id or not first_name or not last_name:
+                raise ValueError("Missing required fields for person")
+
             person = Person(person_id, first_name, last_name, date_of_birth, place_of_birth)
             person.names = person_data.get("names", [])
             person.gender = person_data.get("gender")
@@ -241,6 +294,10 @@ class FamilyTree:
             person.physical_characteristics = person_data.get("physical_characteristics", [])
             person.languages_spoken = person_data.get("languages_spoken", [])
             person.immigration_naturalization_records = person_data.get("immigration_naturalization_records", [])
+
+            errors = self.validate_person_data(person)
+            if errors:
+                raise ValueError(f"Invalid person data: {', '.join(errors)}")
             self.add_person(person)
 
     def export_json(self, file_path):
