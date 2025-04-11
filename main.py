@@ -1,11 +1,9 @@
 from src.family_tree import FamilyTree
 from src.person import Person
-from src.encryption import DataEncryptor
 from src.relationship import Relationship
 from src.user_management import UserManager
-from src.audit_log import AuditLog
+
 from src.user_interface import (
-    UserProfileView,
     FamilyGroupView,
     PersonDetailView,
     RelationshipView,
@@ -14,16 +12,11 @@ from src.user_interface import (
 
 print("\nTesting FamilyTree...")
 
-# Create a DataEncryptor object
-data_encryptor = DataEncryptor()
 
-# Create the encryption key
-encryption_key = "mysecretkey"
-audit_log = AuditLog()
 
 # Create a family tree
-family_tree = FamilyTree(encryption_key=encryption_key, audit_log=audit_log)
-print(f"\n--------------------------------------------------------")
+family_tree = FamilyTree()
+
 print(f"\n--------------------------------------------------------")
 print("\nTesting encryption in export and import json...")
 # Path to a sample JSON file with correct data
@@ -44,7 +37,7 @@ try:
     # Path to a sample JSON file with incorrect data
     json_file_path_import_incorrect = "test_incorrect.json"
     # Import the JSON file (should raise a ValueError)
-    family_tree_incorrect = FamilyTree(encryption_key=encryption_key)
+    family_tree_incorrect = FamilyTree()
     family_tree_incorrect.import_json(json_file_path_import_incorrect)
 except ValueError as e: 
 
@@ -57,7 +50,7 @@ except Exception as e:
 # Test JSON import again with the exported json, must work correctly
 try:
     #Create a new tree
-    family_tree_2 = FamilyTree(encryption_key=encryption_key, audit_log=audit_log)
+    family_tree_2 = FamilyTree()
     family_tree_2.import_json(json_file_path_export,"system")
     print("Json file imported successfully again")
     # Display the tree after importing again
@@ -67,21 +60,10 @@ except Exception as e:
 
 
 print(f"\n--------------------------------------------------------")
-print(f"\n--------------------------------------------------------")
-
-# Test encryption
-print(f"\nTesting encryption...")
-
-#Create a DataEncryptor object
 
 # Create the persons
 # Create person1 with the encryption key
-person1 = Person("person1", "Name1", "LastName1", "1970-01-01", "Place1", encryption_key=encryption_key)
-# Add some data to person1 that will be encrypted
-person1.add_biography("This is my biography")
-person1.add_medical_history("This is my medical history")
-person1.add_physical_characteristic("This is my physical characteristics")
-person1.add_dna_haplogroup("This is my dna haplogroup")
+person1 = Person("person1", "Name1", "LastName1", "1970-01-01", "Place1")
 # Create other persons
 person3 = Person("person3", "Name3", "LastName3", "1995-11-15", "Place3")
 person4 = Person("person4", "Name4", "LastName4", "1998-03-20", "Place4")
@@ -102,8 +84,6 @@ family_tree.link_persons(relationship1)
 family_tree.link_persons(relationship2)
 family_tree.link_persons(relationship3)
 # Check if the data was encrypted in person1
-
-print(f"Is the biography encrypted? {type(person1.biography) != str}")
 
 # Test relationship consistency, must work correctly
 print("\nTesting relationship consistency...")
@@ -160,9 +140,7 @@ person1.set_privacy_setting("place_of_birth", "family_only")  # only family
 person1.set_privacy_setting("date_of_death", "godparents_only")  # only godparents
 person1.set_privacy_setting("place_of_death", "foster_only")  # only foster
 person1.set_privacy_setting(
-    "biography", "guardians_only"
-)  # only guardians
-    
+    "place_of_birth", "guardians_only")  # only guardians
 # Print the privacy settings
 print(f"Privacy setting for names: {person1.get_privacy_setting('names')}")
 print(f"Privacy setting for date_of_birth: {person1.get_privacy_setting('date_of_birth')}")
@@ -206,48 +184,13 @@ person1.add_godparent(person3.person_id)
 
 # Add person4 as a foster relationship of person1, must exist in the tree
 person1.add_foster_relationship(person4.person_id)
+person2 = family_tree.get_person("person2")
+
 
 print(f"\n--------------------------------------------------------")
 
-print("\nTesting UserProfileView with different access levels...")
 
-# Test UserProfileView with the guest user
-print("\nGuest User Profile:")
-user_profile_view_guest = UserProfileView(guest_user, person1)
-user_profile_view_guest.display_profile()
 
-# Test UserProfileView with the normal user
-print("\nNormal User Profile:")
-user_profile_view_normal = UserProfileView(normal_user, person1)
-user_profile_view_normal.display_profile()
-
-# Test UserProfileView with the admin user
-print("\nAdmin User Profile:")
-
-user_profile_view_admin = UserProfileView(admin_user, person1)
-user_profile_view_admin.display_profile()
-
-print(f"\n--------------------------------------------------------")
-
-print(f"\n--------------------------------------------------------")
-
-# Test audit log for user creation, update and deletion
-print("\nTesting Audit Log entries for user management...")
-
-# Create a new user
-new_user = user_manager.create_user("newuser", "new@example.com", "password")
-
-# Update the user
-user_manager.update_user(new_user.user_id, "new_name")
-
-# Delete the new user
-user_manager.delete_user(new_user.user_id)
-
-# Print all logs
-print("\nAll Audit Log Entries:")
-all_logs = audit_log.get_log_entries()
-for log in all_logs:
-    print(log)
 
 # Get and print log entries for system
 print("\nLog entries for system:")
@@ -262,28 +205,6 @@ for log in create_logs:
     print(log)
 
 
-# Clear the log
-user_manager.audit_log.clear_log()
-audit_log.clear_log()
-print(f"\nLog cleared.")
-
-# Check if the log is empty
-print("\nIs the log empty?")
-print(len(audit_log.get_log_entries()) == 0 )
-
-
-
-
-# Test audit log for family tree changes
-print(f"\n--------------------------------------------------------")
-print("\nTesting Audit Log entries for family tree management...")
-
-# Log some events in the tree using different methods
-
-# Create a new person
-person5 = Person("person5", "Name5", "LastName5", "2000-01-01", "Place5")
-family_tree.add_person(person5, normal_user.user_id)
-
 # Add a relationship
 relationship4 = Relationship(person5.person_id, person3.person_id, "parent")
 family_tree.link_persons(relationship4, admin_user.user_id)
@@ -292,11 +213,6 @@ family_tree.link_persons(relationship4, admin_user.user_id)
 # Import the persons from the test.json (there is person2)
 family_tree.import_json("test.json", user_id=guest_user.user_id)
 
-# Get the logs and print them
-print("\nAll Audit Log Entries in the family tree:")
-all_logs = audit_log.get_log_entries()
-for log in all_logs:
-    print(log)
 
 
 # Test FamilyGroupView class, person2 is added when the json is imported

@@ -1,15 +1,14 @@
-from src.family_tree import FamilyTree
 from src.relationship import Relationship
-from src.encryption import DataEncryptor
 from typing import List
-
+import datetime
+    
 class Person:
-    def __init__(self, person_id, first_name, last_name, date_of_birth, place_of_birth, encryption_key, date_of_death=None, place_of_death=None, family_tree = None):
+    def __init__(self, person_id, user_id, first_name, last_name, date_of_birth, place_of_birth, date_of_death=None, place_of_death=None, family_tree = None):
         self.names = []
-        self.encryptor = DataEncryptor()
+        self.user_id = user_id
         self.person_id = person_id
         self.gender = None
-        self.add_name(name=first_name, type="first", culture="default")
+        self.add_name(name=first_name, type="first", culture="default") 
         self.add_name(name=last_name, type="last", culture="default")
         self.romanization = None
         self.transliteration = None
@@ -18,24 +17,22 @@ class Person:
         self.privacy_settings = {}
         self._biography = ""
         self.date_of_birth = date_of_birth
+        self.biography = ""
         self.place_of_birth = place_of_birth
         self.date_of_death = date_of_death
         self.place_of_death = place_of_death
-        self.family_tree:FamilyTree = family_tree
+        self.family_tree = family_tree
         self.profile_photo = None
-        self.encryption_key = encryption_key
         self.relationships:dict[str, List[Relationship]] = {} #key: person_id, value: list of Relationship
         self.init_extended_relationships()
-        self._documents: list[str] = []
-        self._media: list[str] = []
+        self.documents: list[str] = []
+        self.media: list[str] = []
         self.military_service_records: list[str] = []
         self.occupational_history: list[str] = []
-        self.medical_history: list[str] = []
-        self.dna_haplogroups: list[str] = []
-        self.physical_characteristics: list[str] = []
         self.languages_spoken: list[str] = []
-        self.immigration_naturalization_records: list[str] = []
+        self.physical_characteristics: list[str] = []
         self.cultural_relationships = {}
+        self.medical_history: list[str] = []
         self.godparents: list[str] = []
         self.foster_relationships: list[str] = []
         self.guardian_relationships: list[str] = []
@@ -43,57 +40,7 @@ class Person:
         self.historical_context_relationships = {}
         self.relationship_timeline = {}
         self.custom_relationships = {}
-        self.educational_history: list[str] = []
-    
-    @property
-    def biography(self):
-        """Decrypts and returns the biography."""
-        try:
-            return self.encryptor.decrypt_data(self._biography, self.encryption_key)
-        except ValueError:
-            return self._biography
-
-    @biography.setter
-    def biography(self, value):
-        """Encrypts the biography before storing."""
-        self._biography = self.encryptor.encrypt_data(value, self.encryption_key)
-
-    @property
-    def medical_history(self):
-        return [self.encryptor.decrypt_data(item, self.encryption_key) for item in self._medical_history] if hasattr(self,'_medical_history') else []
-
-    @medical_history.setter
-    def medical_history(self, value):
-        self._medical_history = [self.encryptor.encrypt_data(item, self.encryption_key) for item in value]
-
-    @property
-    def physical_characteristics(self):
-        return [self.encryptor.decrypt_data(item, self.encryption_key) for item in self._physical_characteristics] if hasattr(self,'_physical_characteristics') else []
-
-    @physical_characteristics.setter
-    def physical_characteristics(self, value):
-        self._physical_characteristics = [self.encryptor.encrypt_data(item, self.encryption_key) for item in value]
-
-    @property
-    def dna_haplogroups(self):
-        return [self.encryptor.decrypt_data(item, self.encryption_key) for item in self._dna_haplogroups] if hasattr(self,'_dna_haplogroups') else []
-
-    @dna_haplogroups.setter
-    def dna_haplogroups(self, value):
-        self._dna_haplogroups = [self.encryptor.encrypt_data(item, self.encryption_key) for item in value]
-
-    @property
-    def immigration_naturalization_records(self):
-        return [self.encryptor.decrypt_data(item, self.encryption_key) for item in self._immigration_naturalization_records] if hasattr(self,'_immigration_naturalization_records') else []
-
-    @immigration_naturalization_records.setter
-    def immigration_naturalization_records(self, value):
-        self._immigration_naturalization_records = [self.encryptor.encrypt_data(item, self.encryption_key) for item in value]
-
-    @property
-    def documents(self):
-        return [self.encryptor.decrypt_data(doc, self.encryption_key) for doc in self._documents] if hasattr(self,'_documents') else []
-
+        self.educational_history: list[str] = []  
 
     def init_extended_relationships(self):
         self.relationships["grandparents"] = []
@@ -161,7 +108,8 @@ class Person:
         self.relationships.setdefault(person_id, []).append(relationship)
         
     def add_grandparent(self, grandparent_id):
-    def set_privacy_setting(self, field:str, privacy_level:str):
+        pass
+    def set_privacy_setting(self, field: str, privacy_level: str):
         """
         Sets the privacy level for a specific field.
         
@@ -172,72 +120,84 @@ class Person:
         Raises:
             ValueError: If the privacy level is invalid.
         """
-        valid_privacy_levels = ["public", "private", "family_only", "godparents_only", "foster_only", "guardians_only"]
+        valid_privacy_levels = [
+            "public",
+            "private",
+            "family_only",
+            "godparents_only",
+            "foster_only",
+            "guardians_only",
+        ]
         if privacy_level not in valid_privacy_levels:
-            raise ValueError(f"Invalid privacy level: {privacy_level}. Valid levels are: {', '.join(valid_privacy_levels)}")
+            raise ValueError(
+                f"Invalid privacy level: {privacy_level}. Valid levels are: {', '.join(valid_privacy_levels)}"
+            )
         self.privacy_settings[field] = privacy_level
 
-    def get_privacy_setting(self, field:str) -> str:
+    def get_privacy_setting(self, field: str) -> str:
         """
         Gets the privacy level for a specific field.
-        
+
         Args:
             field (str): The name of the field.
         """
         return self.privacy_settings.get(field, "private")
-        raise ValueError("Deprecated method")
-        
 
-    def add_aunt_uncle(self, aunt_uncle_id):
-        raise ValueError("Deprecated method")
-        
-
-    def add_cousin(self, cousin_id):
-        raise ValueError("Deprecated method")
-        
 
     def add_inlaw(self, inlaw_id):
-        if "cousins" not in self.relationships:
+        if "inlaws" not in self.relationships:
             raise ValueError("Relationship not found")
-        if cousin_id in self.relationships["cousins"]:
+        if inlaw_id in self.relationships["inlaws"]:
             raise ValueError("Person is already in this relationship")
-        self.relationships["cousins"].append(cousin_id)
-
-    def add_inlaw(self, inlaw_id):
-        raise ValueError("Deprecated method")
-        
+        self.relationships["inlaws"].append(inlaw_id)
+    
     def get_parents(self) -> list:
-        return [self.family_tree.get_person_by_id(relationship.person1_id if relationship.person2_id == self.person_id else relationship.person2_id) for person_id, relationships in self.relationships.items() for relationship in relationships if relationship.relationship_type == 'parent']
+        parents = []
+        for person_id, relationships in self.relationships.items():
+            for relationship in relationships:
+                if relationship.relationship_type == 'parent':
+                    parents.append(relationship.person1_id if relationship.person2_id == self.person_id else relationship.person2_id)
+        return parents
 
     def get_children(self) -> list:
-        return [self.family_tree.get_person_by_id(relationship.person1_id if relationship.person2_id == self.person_id else relationship.person2_id) for person_id, relationships in self.relationships.items() for relationship in relationships if relationship.relationship_type == 'child']
+        children = []
+        for person_id, relationships in self.relationships.items():
+            for relationship in relationships:
+                if relationship.relationship_type == 'child':
+                    children.append(relationship.person1_id if relationship.person2_id == self.person_id else relationship.person2_id)
+        return children
 
     def get_spouses(self) -> list:
         return [self.family_tree.get_person_by_id(relationship.person1_id if relationship.person2_id == self.person_id else relationship.person2_id) for person_id, relationships in self.relationships.items() for relationship in relationships if relationship.relationship_type == 'spouse']
 
-    def get_siblings(self) -> list:
-        return [self.family_tree.get_person_by_id(relationship.person1_id if relationship.person2_id == self.person_id else relationship.person2_id) for person_id, relationships in self.relationships.items() for relationship in relationships if relationship.relationship_type == 'sibling']
-
-    
     def add_extended_family(self, extended_family_id: str):
         if "extended_family" not in self.relationships:
             raise ValueError("Relationship not found")
         if extended_family_id in self.relationships["extended_family"]:
             raise ValueError("Person is already in this relationship")
         self.relationships["extended_family"].append(extended_family_id)
-        
     
+    def get_siblings(self) -> list:
+        siblings = []
+        for person_id, relationships in self.relationships.items():
+            for relationship in relationships:
+                if relationship.relationship_type == 'sibling':
+                    siblings.append(relationship.person1_id if relationship.person2_id == self.person_id else relationship.person2_id)
+        return siblings
+
     def get_grandparents(self) -> list:
-        grandparents_ids = self.relationships.get("grandparents", [])
-        return [self.family_tree.get_person(gp_id) for gp_id in grandparents_ids]
-    
+        return self.relationships.get("grandparents", [])
+
     def get_aunt_uncles(self) -> list:
-        aunt_uncles_ids = self.relationships.get("aunt_uncles", [])
-        return [self.family_tree.get_person(au_id) for au_id in aunt_uncles_ids]
+        return self.relationships.get("aunt_uncles", [])
     
     def get_cousins(self) -> list:
-        cousins_ids = self.relationships.get("cousins", [])
-        return [self.family_tree.get_person(c_id) for c_id in cousins_ids]
+        return self.relationships.get("cousins", [])
+    
+    def get_inlaws(self) -> list:
+        return self.relationships.get("inlaws", [])
+    def get_extended_family(self) -> list:
+        return self.relationships.get("extended_family", [])
 
     def add_cultural_relationship(self, relationship_type: str, related_person_id: str):
         if relationship_type not in self.cultural_relationships:
@@ -297,17 +257,13 @@ class Person:
     def get_guardian_relationships(self) -> list:
         return self.guardian_relationships
 
-    def add_tribal_clan_affiliation(self, affiliation: str):
-        self.tribal_clan_affiliations.append(affiliation)
-
-    def remove_tribal_clan_affiliation(self, affiliation: str):
         self.tribal_clan_affiliations.remove(affiliation)
 
     def get_tribal_clan_affiliations(self) -> list:
         return self.tribal_clan_affiliations
 
 
-    def set_family_tree(self, family_tree: FamilyTree):
+    def set_family_tree(self, family_tree):
         self.family_tree = family_tree
 
     def set_profile_photo(self, url):
@@ -315,21 +271,6 @@ class Person:
 
     def get_profile_photo(self):
         return self.profile_photo
-
-
-    @documents.setter
-    def documents(self, documents):
-        """Encrypts the documents before storing."""
-        self._documents = [self.encryptor.encrypt_data(doc, self.encryption_key) for doc in documents]
-
-    @property
-    def media(self):
-        return [self.encryptor.decrypt_data(med, self.encryption_key) for med in self._media] if hasattr(self,'_media') else []
-
-    @media.setter
-    def media(self, medias):
-        """Encrypts the media before storing."""
-        self._media = [self.encryptor.encrypt_data(med, self.encryption_key) for med in medias]
 
 
 
@@ -392,15 +333,11 @@ class Person:
         else:
             raise ValueError("Record not found")
     
-    def get_medical_history(self) -> list:
-
     def remove_physical_characteristic(self, characteristic):
         if characteristic in self.physical_characteristics:
             self.physical_characteristics.remove(characteristic)
         else:
             raise ValueError("Characteristic not found")
-    
-
     def get_physical_characteristics(self):
         return self.physical_characteristics
     
@@ -463,6 +400,7 @@ class Person:
         Returns a dictionary with all the information of the person.
         """
         return {
+            "user_id": self.user_id,
             "person_id": self.person_id,
             "names": self.names,
             "gender": self.gender,
@@ -472,15 +410,11 @@ class Person:
             "current_location": self.current_location,
             "privacy_settings": self.privacy_settings,
             "biography": self.biography,
+            "medical_history": self.medical_history,
             "date_of_birth": self.date_of_birth,
             "place_of_birth": self.place_of_birth,
             "date_of_death": self.date_of_death,
             "place_of_death": self.place_of_death,
-            "profile_photo": self.profile_photo,
-            "parents": [p.person_id for p in self.get_parents()],
-            "children": [c.person_id for c in self.get_children()],
-            "spouses": [s.person_id for s in self.get_spouses()],
-            "siblings": [s.person_id for s in self.get_siblings()],
             "grandparents": self.relationships.get("grandparents", []),
             "aunt_uncles": self.relationships.get("aunt_uncles", []),
             "cousins": self.relationships.get("cousins", []),
@@ -491,11 +425,7 @@ class Person:
             "military_service_records": self.military_service_records,
             "educational_history": self.educational_history,
             "occupational_history": self.occupational_history,
-            "medical_history": self.medical_history,
-            "dna_haplogroups": self.dna_haplogroups,
             "physical_characteristics": self.physical_characteristics,
-            "languages_spoken": self.languages_spoken,
-            "immigration_naturalization_records": self.immigration_naturalization_records,
             "cultural_relationships": self.cultural_relationships,
             "godparents": self.godparents,
             "foster_relationships": self.foster_relationships,
@@ -507,4 +437,4 @@ class Person:
         }
 
     def __str__(self):
-        return str(self.get_person_info())
+        return f"Person(user_id={self.user_id}, person_id={self.person_id}, names={self.names})"

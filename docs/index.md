@@ -28,8 +28,6 @@ Dzinza is a Python library designed for managing genealogical data. It provides 
 -   **Security and Privacy:**
     -   Privacy settings for individual fields.
     -   Access control based on user roles and relationships.
-    -   Data encryption using AES.
-    -   Audit log to track changes.
 -   **Search and Filtering:**
     - Search persons by different attributes.
 
@@ -57,14 +55,12 @@ python
 from src.family_tree import FamilyTree
 from src.person import Person
 from src.relationship import Relationship
-from src.encryption import DataEncryptor
 
-# Create a DataEncryptor object
-data_encryptor = DataEncryptor()
-encryption_key = "your_encryption_key"
+
+
 
 # Create a FamilyTree object with encryption
-family_tree = FamilyTree(encryption_key=encryption_key)
+family_tree = FamilyTree()
 
 # Create persons
 person1 = Person("person1", "Name1", "LastName1", "1970-01-01", "Place1", encryption_key=encryption_key)
@@ -104,7 +100,6 @@ Person(person_id, first_name, last_name, date_of_birth, place_of_birth, encrypti
 -   `last_name` (str): Last name of the person.
 -   `date_of_birth` (str): Date of birth (YYYY-MM-DD).
 -   `place_of_birth` (str): Place of birth.
-- `encryption_key` (str): The encryption key to encrypt the data of this object.
 -   `date_of_death` (str, optional): Date of death (YYYY-MM-DD).
 -   `place_of_death` (str, optional): Place of death.
 -   `family_tree` (`FamilyTree`, optional): The family tree where this person belongs.

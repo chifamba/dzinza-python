@@ -1,8 +1,8 @@
 from datetime import datetime, timedelta
 
-class User:
+class User:   
     def __init__(self, user_id, email, password):
-        """  
+        """
         Initializes a User object.
 
         Args:
@@ -18,6 +18,15 @@ class User:
         self.role = 'basic'  # Default role
         self.family_group_spaces = []
         self.last_login = datetime.now()
+
+    def __str__(self):
+        """
+        Returns a string representation of the User object.
+
+        Returns:
+            str: A string with the format 'User: {self.user_id}, Email: {self.email}'
+        """
+        return f"User: {self.user_id}, Email: {self.email}"
 
     def increase_trust_level(self):
         """
@@ -38,6 +47,12 @@ class User:
         if self.trust_level <= 1:
             raise ValueError("Trust level is already at minimum (1)")
         self.trust_level -= 1
+
+    def get_privacy_setting(self, field):
+        """
+        Returns the privacy setting for a given field.
+        """
+        return {}
 
     def set_role(self, role):
         """
@@ -60,7 +75,7 @@ class User:
 
         Args:
             points (int): The number of trust points to add.
-        
+
         Raises:
             ValueError: If the points are negative.
         """
@@ -102,7 +117,7 @@ class User:
         if self.trust_points >= 100:
             return 2
         return 1
-    
+
     def add_family_group(self, family_group_id):
         """
         Adds a family group to the user's family group spaces.

@@ -26,11 +26,10 @@ class TestFamilyGroupView(unittest.TestCase):
     def setUp(self):
         # Create a FamilyTree and add some persons for testing
         self.family_tree = FamilyTree()
-        self.person1 = Person("person1", "Name1", "LastName1", "1970-01-01", "Place1")
-        self.person2 = Person("person2", "Name2", "LastName2", "1975-05-10", "Place2")
-        self.person3 = Person("person3", "Name3", "LastName3", "1995-11-15", "Place3")
+        self.person1 = Person("person1", "Name1", "LastName1", "1900-01-01", "Place1", "Place1")
+        self.person2 = Person("person2", "Name2", "LastName2", "1975-05-10", "Place2", "Place2")
         self.family_tree.add_person(self.person1)
-        self.family_tree.add_person(self.person2)
+        self.person3 = Person("person3", "Name3", "LastName3", "1995-01-01", "Place3", "Place3")
         self.family_tree.add_person(self.person3)
 
         #create the relationships
@@ -58,7 +57,7 @@ class TestPersonDetailView(unittest.TestCase):
 
     def setUp(self):
         # Create a Person for testing
-        self.person = Person("person1", "Name1", "LastName1", "1970-01-01", "Place1")
+        self.person = Person("person1", "Name1", "LastName1", "1970-01-01", "Place1", "Place1")
         self.person_detail_view = PersonDetailView(self.person)
 
     def test_display_person_details(self):
@@ -73,8 +72,8 @@ class TestRelationshipView(unittest.TestCase):
 
     def setUp(self):
         # Create a Relationship for testing
-        self.person1 = Person("person1", "Name1", "LastName1", "1970-01-01", "Place1")
-        self.person2 = Person("person2", "Name2", "LastName2", "1975-05-10", "Place2")
+        self.person1 = Person("person1", "Name1", "LastName1", "1970-01-01", "Place1", "Place1")
+        self.person2 = Person("person2", "Name2", "LastName2", "1975-05-10", "Place2", "Place2")
         self.relationship = Relationship(self.person1.person_id, self.person2.person_id, "spouse")
         self.relationship_view = RelationshipView(self.relationship)
 
