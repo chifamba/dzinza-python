@@ -2,6 +2,7 @@ from src.user_management import UserManager  # Import the UserManager class
 from src.user import User  # Import the User class
 from src.family_tree import FamilyTree # Import the FamilyTree class
 from src.person import Person # Import the Person class
+from src.relationship import Relationship # Import the Relationship class
 
 
 # Main function
@@ -25,7 +26,20 @@ def main():
     # Add persons to the family tree
     family_tree.add_person(person1) # Add the first person to the FamilyTree without parent (root)
     family_tree.add_person(person2, person1) # Add the second person to the FamilyTree with the first one as parent
+    
+    # Create a parent-child relationship between the two persons
+    parent_child_relationship = Relationship(person1, person2, "parent-child")
+    
+    # Add the relationship to the family tree
+    family_tree.add_relationship(parent_child_relationship)
+    
+    # Print the relationships of person1 and person2
+    print(f"Relationships of {person1.first_name}:")
+    for relationship in person1.relationships:
+        print(f"- {relationship.type} with {relationship.person2.first_name}")
+    print(f"Relationships of {person2.first_name}:")
+    for relationship in person2.relationships:
+        print(f"- {relationship.type} with {relationship.person1.first_name}")
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
