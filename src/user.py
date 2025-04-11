@@ -1,6 +1,8 @@
+from datetime import datetime, timedelta
+
 class User:
     def __init__(self, user_id, email, password):
-        """
+        """  
         Initializes a User object.
 
         Args:
@@ -15,6 +17,7 @@ class User:
         self.trust_points = 0
         self.role = 'basic'  # Default role
         self.family_group_spaces = []
+        self.last_login = datetime.now()
 
     def increase_trust_level(self):
         """
@@ -64,6 +67,7 @@ class User:
         if points < 0:
             raise ValueError("Points must be a positive number.")
         self.trust_points += points
+        self.last_login = datetime.now()
 
     def remove_trust_points(self, points):
         """
@@ -80,6 +84,7 @@ class User:
         if self.trust_points < points:
             raise ValueError("User does not have enough trust points.")
         self.trust_points -= points
+        self.last_login = datetime.now()
 
     def get_trust_level(self):
         """
@@ -125,3 +130,14 @@ class User:
         if family_group_id not in self.family_group_spaces:
             raise ValueError(f"Family group {family_group_id} is not in the user's family group spaces.")
         self.family_group_spaces.remove(family_group_id)
+
+    def is_inactive(self):
+        """
+        Checks if the user is inactive.
+
+        Returns:
+            bool: True if the user is inactive (last login more than 30 days ago), False otherwise.
+        """
+        thirty_days_ago = datetime.now() - timedelta(days=30)
+        return self.last_login < thirty_days_ago
+

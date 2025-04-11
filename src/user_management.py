@@ -1,5 +1,6 @@
 from src.user import User
-
+import datetime
+from datetime import timedelta
 
 class UserManager:
     def __init__(self):
@@ -38,6 +39,16 @@ class UserManager:
         user = self.users.get(user_id)
         if not user:
             raise ValueError("User does not exist")
+
+        user.add_trust_points(points)
+
+    def apply_trust_decay(self):
+        for user in self.users.values():
+            if user.is_inactive():
+                if user.trust_points >= 50:
+                  user.remove_trust_points(50)
+                else:
+                    user.remove_trust_points(user.trust_points)
 
         user.add_trust_points(points)
 
