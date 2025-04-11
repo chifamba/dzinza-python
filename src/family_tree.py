@@ -1,5 +1,6 @@
 from src.person import Person
 from src.relationship import Relationship
+from src.encryption import DataEncryptor
 from urllib.parse import urlparse
 import os
 import gedcom
@@ -10,8 +11,10 @@ from gedcom.element.element import Element
 from gedcom.parser import Parser
 from datetime import datetime
 
+
 class FamilyTree:
-    def __init__(self, root_person: Person = None):
+    def __init__(self, root_person: Person = None, encryption_key:str="default_key"):
+        
         """
         Initializes the FamilyTree with an optional root person.
 
@@ -27,6 +30,8 @@ class FamilyTree:
                     - children (list): A list of child Person objects.
         """
         self.root_person = root_person
+        self.encryption_key = encryption_key
+        self.data_encryptor = DataEncryptor()
         self.person_nodes = {}
         if root_person:
             self.person_nodes[root_person.user_id] = {"person": root_person, "parent": None, "children": []}
@@ -34,6 +39,7 @@ class FamilyTree:
     def add_person(self, person: Person, parents: list[Person] = None):
         """
         Adds a person to the family tree.
+        
         """
 
         
@@ -336,13 +342,27 @@ class FamilyTree:
         try:
             with open(file_path, "r", encoding="utf-8") as file:
                 try:
-                    data = json.load(file)
+                    encrypted_data = json.load(file)
+                    decrypted_data = self.data_encryptor.decrypt_data(encrypted_data["data"], self.encryption_key)
+                    data = json.loads(decrypted_data)
                 except json.JSONDecodeError:
                     raise ValueError("Invalid JSON format")
         except ImportError:
             raise ImportError("The 'json' library is required to work with JSON files. Please install it.")
+        except ValueError as e:
+            raise ValueError(f"Error decrypting data: {e}")
         
+
+
+
+
+
         for person_data in data.get("persons", []):
+            
+
+            if "encryption_key" in person_data:
+                person_data.pop("encryption_key")
+
             person_id = person_data.get("person_id")
             first_name = person_data.get("first_name")
             last_name = person_data.get("last_name")
@@ -408,41 +428,51 @@ class FamilyTree:
             raise ValueError("The file format is not .json")
         try:
             with open(file_path, "w", encoding="utf-8") as file:
-                
-                data = {"persons": []}
+                persons_data = []
                 for person_id, node in self.person_nodes.items():
                     person: Person = node["person"]
+
+                    # Get person information
+                    person_info = person.get_person_info()
+
                     person_data = {
-                        "person_id": person.user_id,
-                        "first_name": person.get_names()[0].get("name"),
-                        "last_name": person.get_names()[1].get("name"),
-                        "names": person.names,
-                        "gender": person.gender,
-                        "romanization": person.romanization,
-                        "transliteration": person.transliteration,
-                        "religious_affiliations": person.religious_affiliations,
-                        "current_location": person.current_location,
-                        "privacy_settings": person.privacy_settings,
-                        "biography": person.biography,
-                        "date_of_birth": person.date_of_birth,
-                        "place_of_birth": person.place_of_birth,
-                        "date_of_death": person.date_of_death,
-                        "place_of_death": person.place_of_death,
-                        "profile_photo": person.profile_photo,
-                        "relationships": person.relationships,
-                        "documents": person.documents,
-                        "media": person.media,
-                        "military_service_records": person.military_service_records,
-                        "educational_history": person.educational_history,
-                        "occupational_history": person.occupational_history,
-                        "medical_history": person.medical_history,
-                        "dna_haplogroups": person.dna_haplogroups,
-                        "physical_characteristics": person.physical_characteristics,
-                        "languages_spoken": person.languages_spoken,
-                        "immigration_naturalization_records": person.immigration_naturalization_records,
-                    }
-                    data["persons"].append(person_data)
-                json.dump(data, file, indent=4, ensure_ascii=False)
+                    "person_id": person_info["person_id"],
+                    "first_name": person_info["names"][0]["name"],
+                    "last_name": person_info["names"][1]["name"],
+                    "names": person_info["names"],
+                    "gender": person_info["gender"],
+                    "romanization": person_info["romanization"],
+                    "transliteration": person_info["transliteration"],
+                    "religious_affiliations": person_info["religious_affiliations"],
+                    "current_location": person_info["current_location"],
+                    "privacy_settings": person_info["privacy_settings"],
+                    "biography": person_info["biography"],
+                    "date_of_birth": person_info["date_of_birth"],
+                    "place_of_birth": person_info["place_of_birth"],
+                    "date_of_death": person_info["date_of_death"],
+                    "place_of_death": person_info["place_of_death"],
+                    "profile_photo": person_info["profile_photo"],
+                    "relationships": person_info["relationships"],
+                    "documents": person_info["documents"],
+                    "media": person_info["media"],
+                    "military_service_records": person_info["military_service_records"],
+                    "educational_history": person_info["educational_history"],
+                    "occupational_history": person_info["occupational_history"],
+                    "medical_history": person_info["medical_history"],
+                    "dna_haplogroups": person_info["dna_haplogroups"],
+                    "physical_characteristics": person_info["physical_characteristics"],
+                    "languages_spoken": person_info["languages_spoken"],
+                    "immigration_naturalization_records": person_info["immigration_naturalization_records"]
+                }
+                    persons_data.append(person_data)
+                data_to_encrypt = {"persons": persons_data}
+                json_data = json.dumps(data_to_encrypt)
+                
+                encrypted_data = self.data_encryptor.encrypt_data(json_data, self.encryption_key)
+
+                json.dump({"data": encrypted_data}, file, indent=4, ensure_ascii=False)
+                
+
         except ImportError:
             raise ImportError("The 'json' library is required to export JSON files. Please install it.")
     

@@ -1,10 +1,12 @@
 from src.family_tree import FamilyTree
 from src.relationship import Relationship
+from src.encryption import DataEncryptor
 from typing import List
 
 class Person:
-    def __init__(self, person_id, first_name, last_name, date_of_birth, place_of_birth, date_of_death=None, place_of_death=None, family_tree = None):
+    def __init__(self, person_id, first_name, last_name, date_of_birth, place_of_birth, encryption_key, date_of_death=None, place_of_death=None, family_tree = None):
         self.names = []
+        self.encryptor = DataEncryptor()
         self.person_id = person_id
         self.gender = None
         self.add_name(name=first_name, type="first", culture="default")
@@ -14,19 +16,19 @@ class Person:
         self.religious_affiliations = []
         self.current_location = None
         self.privacy_settings = {}
-        self.biography = ""
+        self._biography = ""
         self.date_of_birth = date_of_birth
         self.place_of_birth = place_of_birth
         self.date_of_death = date_of_death
         self.place_of_death = place_of_death
         self.family_tree:FamilyTree = family_tree
         self.profile_photo = None
+        self.encryption_key = encryption_key
         self.relationships:dict[str, List[Relationship]] = {} #key: person_id, value: list of Relationship
         self.init_extended_relationships()
-        self.documents: list[str] = []
-        self.media: list[str] = []
+        self._documents: list[str] = []
+        self._media: list[str] = []
         self.military_service_records: list[str] = []
-        self.educational_history: list[str] = []
         self.occupational_history: list[str] = []
         self.medical_history: list[str] = []
         self.dna_haplogroups: list[str] = []
@@ -41,6 +43,57 @@ class Person:
         self.historical_context_relationships = {}
         self.relationship_timeline = {}
         self.custom_relationships = {}
+        self.educational_history: list[str] = []
+    
+    @property
+    def biography(self):
+        """Decrypts and returns the biography."""
+        try:
+            return self.encryptor.decrypt_data(self._biography, self.encryption_key)
+        except ValueError:
+            return self._biography
+
+    @biography.setter
+    def biography(self, value):
+        """Encrypts the biography before storing."""
+        self._biography = self.encryptor.encrypt_data(value, self.encryption_key)
+
+    @property
+    def medical_history(self):
+        return [self.encryptor.decrypt_data(item, self.encryption_key) for item in self._medical_history] if hasattr(self,'_medical_history') else []
+
+    @medical_history.setter
+    def medical_history(self, value):
+        self._medical_history = [self.encryptor.encrypt_data(item, self.encryption_key) for item in value]
+
+    @property
+    def physical_characteristics(self):
+        return [self.encryptor.decrypt_data(item, self.encryption_key) for item in self._physical_characteristics] if hasattr(self,'_physical_characteristics') else []
+
+    @physical_characteristics.setter
+    def physical_characteristics(self, value):
+        self._physical_characteristics = [self.encryptor.encrypt_data(item, self.encryption_key) for item in value]
+
+    @property
+    def dna_haplogroups(self):
+        return [self.encryptor.decrypt_data(item, self.encryption_key) for item in self._dna_haplogroups] if hasattr(self,'_dna_haplogroups') else []
+
+    @dna_haplogroups.setter
+    def dna_haplogroups(self, value):
+        self._dna_haplogroups = [self.encryptor.encrypt_data(item, self.encryption_key) for item in value]
+
+    @property
+    def immigration_naturalization_records(self):
+        return [self.encryptor.decrypt_data(item, self.encryption_key) for item in self._immigration_naturalization_records] if hasattr(self,'_immigration_naturalization_records') else []
+
+    @immigration_naturalization_records.setter
+    def immigration_naturalization_records(self, value):
+        self._immigration_naturalization_records = [self.encryptor.encrypt_data(item, self.encryption_key) for item in value]
+
+    @property
+    def documents(self):
+        return [self.encryptor.decrypt_data(doc, self.encryption_key) for doc in self._documents] if hasattr(self,'_documents') else []
+
 
     def init_extended_relationships(self):
         self.relationships["grandparents"] = []
@@ -263,14 +316,22 @@ class Person:
     def get_profile_photo(self):
         return self.profile_photo
 
-    def add_document(self, document: str):
-        self.documents.append(document)
 
-    def remove_document(self, document: str):
-        if document in self.documents:
-            self.documents.remove(document)
-        else:
-            raise ValueError("Document not found")
+    @documents.setter
+    def documents(self, documents):
+        """Encrypts the documents before storing."""
+        self._documents = [self.encryptor.encrypt_data(doc, self.encryption_key) for doc in documents]
+
+    @property
+    def media(self):
+        return [self.encryptor.decrypt_data(med, self.encryption_key) for med in self._media] if hasattr(self,'_media') else []
+
+    @media.setter
+    def media(self, medias):
+        """Encrypts the media before storing."""
+        self._media = [self.encryptor.encrypt_data(med, self.encryption_key) for med in medias]
+
+
 
     def get_documents(self) -> list:
         return self.documents
@@ -332,18 +393,6 @@ class Person:
             raise ValueError("Record not found")
     
     def get_medical_history(self) -> list:
-        return self.medical_history
-
-    def set_dna_haplogroups(self, haplogroups):
-        self.dna_haplogroups = haplogroups
-    
-    def get_dna_haplogroups(self) -> list:
-        return self.dna_haplogroups
-
-    def add_physical_characteristic(self, characteristic):
-        if characteristic in self.physical_characteristics:
-            raise ValueError("Characteristic already exists")
-        self.physical_characteristics.append(characteristic)
 
     def remove_physical_characteristic(self, characteristic):
         if characteristic in self.physical_characteristics:
@@ -351,6 +400,7 @@ class Person:
         else:
             raise ValueError("Characteristic not found")
     
+
     def get_physical_characteristics(self):
         return self.physical_characteristics
     
@@ -434,8 +484,8 @@ class Person:
             "grandparents": self.relationships.get("grandparents", []),
             "aunt_uncles": self.relationships.get("aunt_uncles", []),
             "cousins": self.relationships.get("cousins", []),
-            "inlaws": self.relationships.get("inlaws", []),
-            "extended_family": self.relationships.get("extended_family", []),
+            "inlaws": [inlaw.person_id for inlaw in self.get_inlaws()],
+            "extended_family": [ex.person_id for ex in self.get_extended_family()],
             "documents": self.documents,
             "media": self.media,
             "military_service_records": self.military_service_records,
