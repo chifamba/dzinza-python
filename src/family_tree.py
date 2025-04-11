@@ -4,6 +4,20 @@ from src.relationship import Relationship
 
 class FamilyTree:
     def __init__(self, root_person: Person = None):
+        """
+        Initializes the FamilyTree with an optional root person.
+
+        Args:
+            root_person (Person, optional): The root person of the family tree. Defaults to None.
+
+        Attributes:
+            root_person (Person): The root person of the family tree.
+            person_nodes (dict): A dictionary to store each person's node information, keyed by user_id.
+                Each node contains:
+                    - person (Person): The Person object.
+                    - parents (list): A list of parent Person objects.
+                    - children (list): A list of child Person objects.
+        """
         self.root_person = root_person
         self.person_nodes = {}
         if root_person:
@@ -63,3 +77,30 @@ class FamilyTree:
     def get_person_by_id(self, person_id: int):
         person_data = self.person_nodes.get(person_id)
         return person_data["person"] if person_data else None
+    
+    def display_tree(self, person_id=None, indent=0):
+        """
+        Displays the family tree in a hierarchical view, starting from the specified person or the root.
+
+        Args:
+            person_id (int, optional): The ID of the person to start displaying the tree from. 
+                                        If None, starts from the root person. Defaults to None.
+            indent (int, optional): The current indentation level for hierarchical display. Defaults to 0.
+        """
+        if person_id is None:
+            if self.root_person is None:
+                print("The family tree is empty.")
+                return
+            person_id = self.root_person.user_id
+
+        person_data = self.person_nodes.get(person_id)
+        if not person_data:
+            return
+
+        person = person_data["person"]
+        print("  " * indent + f"ID: {person.user_id}, Name: {person.get_names()}")
+        
+        for child_person in person.get_children(self):
+            self.display_tree(child_person.user_id, indent + 1)
+
+

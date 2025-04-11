@@ -1,8 +1,15 @@
-from src.family_tree import FamilyTree
+from src.family_tree import FamilyTree, Person
+from src.user_management import UserManager
+from src.user import User
+import time
+from datetime import datetime
 
 
-class Person:
-    def __init__(self, person_id, first_name, last_name, date_of_birth, place_of_birth, date_of_death=None, place_of_death=None, family_tree = None):
+# Create a FamilyTree instance
+family_tree = FamilyTree()
+
+
+def __init__(self, person_id, first_name, last_name, date_of_birth, place_of_birth, date_of_death=None, place_of_death=None, family_tree=None):
         self.names = []
         self.person_id = person_id
         self.gender = None
@@ -403,3 +410,24 @@ class Person:
 
     def get_custom_relationships(self) -> dict:
         return self.custom_relationships
+
+
+# Example Usage
+
+# Create a UserManager instance
+user_manager = UserManager()
+
+# Create users
+user1 = user_manager.create_user("user1", "user1@example.com", "password")
+user2 = user_manager.create_user("user2", "user2@example.com", "password")
+user3 = user_manager.create_user("user3", "user3@example.com", "password")
+user4 = user_manager.create_user("user4", "user4@example.com", "password")
+
+person1 = Person(user1.user_id, "John", "Doe", "1980-01-01", "New York", family_tree=family_tree)
+person2 = Person(user2.user_id, "Jane", "Doe", "1982-05-15", "Los Angeles", family_tree=family_tree)
+person3 = Person(user3.user_id, "Peter", "Pan", "1990-03-20", "Neverland", family_tree=family_tree)
+person4 = Person(user4.user_id, "Wendy", "Darling", "1992-11-10", "London", family_tree=family_tree)
+
+
+# Add the persons to the family tree
+family_tree.add_person(person1)
