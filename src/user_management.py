@@ -1,18 +1,33 @@
 from src.user import User
 
+
 class UserManager:
     def __init__(self):
         self.users = {}
 
     def create_user(self, user_id, email, password):
-        if email in self.users:
-            raise ValueError("Email already in use")
+        if email in self.users or any(u.user_id == user_id for u in self.users.values()):
+            raise ValueError("Email or user ID already in use")
         user = User(user_id, email, password)
-        self.users[email] = user
+        self.users[user.user_id] = user
         return user
 
     def validate_user(self, email, password):
-        user = self.users.get(email)
+        user = next((u for u in self.users.values() if u.email == email), None)
         if user and user.password == password:
             return user
         return None
+
+    def promote_to_trusted(self, user_id):
+        user = self.users.get(user_id)
+        if not user:
+            raise ValueError("User does not exist")
+        if user.trust_level >= 2:
+            raise ValueError("User is already a trusted user")
+        user.increase_trust_level()
+
+    def demote_to_basic(self, user_id):
+        user = self.users.get(user_id)
+        if not user:
+            raise ValueError("User does not exist")
+        user.trust_level = 1
