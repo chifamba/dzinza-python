@@ -632,6 +632,23 @@ class FamilyTree:
         report += build_tree_string()
         return report
 
+    def search_person(self, query: str, fields: list[str]):
+        """
+        Searches for persons in the family tree that match the given query in the specified fields.
+
+        Args:
+            query (str): The query string to search for.
+            fields (list[str]): A list of fields (attributes of the Person class) to search within.
+
+        Returns:
+            list[Person]: A list of Person objects that match the query in the specified fields.
+        """
+        results = []
+        for node in self.person_nodes.values():
+            person:Person = node["person"]
+            if any(query.lower() in str(getattr(person, field, "")).lower() for field in fields):
+                results.append(person)
+        return results
     def generate_person_summary_report(self, person_id):
         """Generates a summary report for a specific person."""
         person = self.get_person_by_id(person_id)

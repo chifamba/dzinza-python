@@ -1,6 +1,7 @@
 from src.user import User
 from src.family_tree import FamilyTree
 from src.person import Person
+from src.relationship import Relationship
 
 class UserProfileView:
     def __init__(self, user: User):
@@ -40,3 +41,14 @@ class PersonDetailView:
         person_info = self.person.get_person_info()
         for key, value in person_info.items():
             print(f"  {key}: {value}")
+
+class RelationshipView:
+    def __init__(self, relationship: Relationship):
+        self.relationship = relationship
+
+    def display_relationship(self):
+        print("Relationship Details:")
+        print(f"  Person 1 ID: {self.relationship.person1_id}")
+        print(f"  Person 2 ID: {self.relationship.person2_id}")
+        print(f"  Relationship Type: {self.relationship.relationship_type}")
+        print(f"  Start Date: {self.relationship.start_date}, End Date: {self.relationship.end_date}, Description: {self.relationship.description}")

@@ -2,7 +2,7 @@ from src.family_tree import FamilyTree
 from src.person import Person
 from src.relationship import Relationship
 from src.user_management import UserManager
-from src.user_interface import UserProfileView, FamilyGroupView, PersonDetailView
+from src.user_interface import UserProfileView, FamilyGroupView, PersonDetailView, RelationshipView
 
 
 
@@ -165,3 +165,32 @@ except ValueError as e:
 print("\nTesting PersonDetailView...")
 person_detail_view = PersonDetailView(person1)
 person_detail_view.display_person_details()
+
+
+# Create a RelationshipView object and display the details of relationship1
+print("\nTesting RelationshipView...")
+relationship_view = RelationshipView(relationship1)
+relationship_view.display_relationship()
+
+
+# Test search_person method
+print("\nTesting search_person method...")
+
+# Search for persons with "Name" in their names
+print("\nSearch for persons with 'Name' in their names:")
+results = family_tree.search_person("Name", ["names"])
+for person in results:
+    print(person)
+
+# Search for persons with "1975" in their date_of_birth
+print("\nSearch for persons with '1975' in their date_of_birth:")
+results = family_tree.search_person("1975", ["date_of_birth"])
+for person in results:
+    print(person)
+
+# Search for persons with "Place4" in their place_of_birth
+print("\nSearch for persons with 'Place4' in their place_of_birth:")
+results = family_tree.search_person("Place4", ["place_of_birth"])
+for person in results:
+    print(person)
+
