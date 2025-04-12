@@ -1,158 +1,179 @@
+# src/user.py
 from datetime import datetime, timedelta
+from typing import List, Optional # Import necessary types
 
-class User:   
-    def __init__(self, user_id, email, password):
+VALID_ROLES = ['basic', 'trusted', 'administrator', 'family_historian', 'guest']
+TRUST_LEVEL_THRESHOLDS = {
+    1: 0,
+    2: 100,
+    3: 200,
+    4: 300,
+    5: 400
+} # Points required for each level
+
+class User:
+    """
+    Represents a user of the application.
+
+    Attributes:
+        user_id (str): Unique identifier for the user.
+        email (str): User's email address (used for login).
+        password_hash (str): Hashed password for security.
+        trust_points (int): Points accumulated based on activity and verification.
+        role (str): User role determining permissions (e.g., 'basic', 'trusted').
+        family_group_spaces (List[str]): IDs of family groups the user belongs to.
+        last_login (datetime): Timestamp of the last login.
+        created_at (datetime): Timestamp when the user was created.
+    """
+    def __init__(self, user_id: str, email: str, password_hash: str, role: str = 'basic'):
         """
         Initializes a User object.
 
         Args:
-            user_id (int): The unique identifier for the user.
+            user_id (str): The unique identifier for the user.
             email (str): The email address of the user.
-            password (str): The password of the user.
+            password_hash (str): The hashed password.
+            role (str): The initial role of the user. Defaults to 'basic'.
+
+        Raises:
+            ValueError: If the provided role is invalid.
         """
+        if role not in VALID_ROLES:
+            raise ValueError(f"Invalid role: {role}. Valid roles are: {VALID_ROLES}")
+
         self.user_id = user_id
         self.email = email
-        self.password = password
-        self.trust_level = 1
-        self.trust_points = 0
-        self.role = 'basic'  # Default role
-        self.family_group_spaces = []
-        self.last_login = datetime.now()
+        self.password_hash = password_hash # Store hash, not plain password
+        self.trust_points: int = 0
+        self.role: str = role
+        self.family_group_spaces: List[str] = []
+        self.last_login: datetime = datetime.now()
+        self.created_at: datetime = datetime.now()
 
-    def __str__(self):
+    def check_password(self, password_to_check: str) -> bool:
         """
-        Returns a string representation of the User object.
-
-        Returns:
-            str: A string with the format 'User: {self.user_id}, Email: {self.email}'
-        """
-        return f"User: {self.user_id}, Email: {self.email}"
-
-    def increase_trust_level(self):
-        """
-        Increases the trust level of the user by 1.
-        Raises:
-            ValueError: If the trust level is already at the maximum (5).
-        """
-        if self.trust_level >= 5:
-            raise ValueError("Trust level is already at maximum (5)")
-        self.trust_level += 1
-
-    def decrease_trust_level(self):
-        """
-        Decreases the trust level of the user by 1.
-        Raises:
-            ValueError: If the trust level is already at the minimum (1).
-        """
-        if self.trust_level <= 1:
-            raise ValueError("Trust level is already at minimum (1)")
-        self.trust_level -= 1
-
-    def get_privacy_setting(self, field):
-        """
-        Returns the privacy setting for a given field.
-        """
-        return {}
-
-    def set_role(self, role):
-        """
-        Sets the role of the user.
+        Checks if the provided password matches the stored hash.
+        NOTE: Requires a password hashing library (e.g., passlib, werkzeug.security).
+              This is a placeholder implementation.
 
         Args:
-            role (str): The role to set (basic, trusted, administrator, family_historian).
+            password_to_check (str): The plain text password to check.
+
+        Returns:
+            bool: True if the password matches, False otherwise.
+        """
+        # Placeholder - Replace with actual hash comparison
+        # from werkzeug.security import check_password_hash # Example
+        # return check_password_hash(self.password_hash, password_to_check)
+        print("Warning: Password check is a placeholder and not secure.")
+        return self.password_hash == password_to_check # Insecure placeholder comparison
+
+    def update_last_login(self):
+        """Updates the last login timestamp to the current time."""
+        self.last_login = datetime.now()
+
+    def set_role(self, new_role: str):
+        """
+        Sets the user's role.
+
+        Args:
+            new_role (str): The new role to assign.
 
         Raises:
-            ValueError: If the role is not valid.
+            ValueError: If the new role is not valid.
         """
-        valid_roles = ['basic', 'trusted', 'administrator', 'family_historian']
-        if role not in valid_roles:
-            raise ValueError(f"Invalid role: {role}. Valid roles are: {valid_roles}")
-        self.role = role
-    
-    def add_trust_points(self, points):
+        if new_role not in VALID_ROLES:
+            raise ValueError(f"Invalid role: {new_role}. Valid roles are: {VALID_ROLES}")
+        self.role = new_role
+
+    def add_trust_points(self, points: int):
         """
         Adds trust points to the user.
 
         Args:
-            points (int): The number of trust points to add.
+            points (int): The number of trust points to add (must be non-negative).
 
         Raises:
-            ValueError: If the points are negative.
+            ValueError: If points are negative.
         """
         if points < 0:
-            raise ValueError("Points must be a positive number.")
+            raise ValueError("Points must be a non-negative number.")
         self.trust_points += points
-        self.last_login = datetime.now()
+        # Optional: Update role automatically based on new points?
+        # self.role = self._calculate_role_based_on_trust()
 
-    def remove_trust_points(self, points):
+    def remove_trust_points(self, points: int):
         """
         Removes trust points from the user.
 
         Args:
-            points (int): The number of trust points to remove.
+            points (int): The number of trust points to remove (must be non-negative).
 
         Raises:
-            ValueError: If the points are negative or if the user does not have enough points.
+            ValueError: If points are negative.
         """
         if points < 0:
-            raise ValueError("Points must be a positive number.")
-        if self.trust_points < points:
-            raise ValueError("User does not have enough trust points.")
-        self.trust_points -= points
-        self.last_login = datetime.now()
+            raise ValueError("Points must be a non-negative number.")
+        self.trust_points = max(0, self.trust_points - points) # Ensure points don't go below zero
+        # Optional: Update role automatically based on new points?
+        # self.role = self._calculate_role_based_on_trust()
 
-    def get_trust_level(self):
+
+    def get_trust_level(self) -> int:
         """
-        Gets the trust level of the user based on the trust points.
+        Calculates the trust level based on current trust points.
 
         Returns:
-            int: The trust level of the user.
+            int: The calculated trust level (1-5).
         """
-        if self.trust_points >= 400:
-            return 5
-        if self.trust_points >= 300:
-            return 4
-        if self.trust_points >= 200:
-            return 3
-        if self.trust_points >= 100:
-            return 2
-        return 1
+        level = 1
+        for lvl, threshold in sorted(TRUST_LEVEL_THRESHOLDS.items(), reverse=True):
+            if self.trust_points >= threshold:
+                level = lvl
+                break
+        return level
 
-    def add_family_group(self, family_group_id):
-        """
-        Adds a family group to the user's family group spaces.
-
-        Args:
-            family_group_id (int): The ID of the family group to add.
-
-        Raises:
-            ValueError: If the family group is already in the list.
-        """
-        if family_group_id in self.family_group_spaces:
-            raise ValueError(f"Family group {family_group_id} is already in the user's family group spaces.")
-        self.family_group_spaces.append(family_group_id)
-
-    def remove_family_group(self, family_group_id):
-        """
-        Removes a family group from the user's family group spaces.
-
-        Args:
-            family_group_id (int): The ID of the family group to remove.
-
-        Raises:
-            ValueError: If the family group is not in the list.
-        """
+    def add_family_group(self, family_group_id: str):
+        """Adds a family group ID to the user's list if not already present."""
         if family_group_id not in self.family_group_spaces:
-            raise ValueError(f"Family group {family_group_id} is not in the user's family group spaces.")
-        self.family_group_spaces.remove(family_group_id)
+            self.family_group_spaces.append(family_group_id)
+        # else: raise ValueError(f"User {self.user_id} already in family group {family_group_id}.")
 
-    def is_inactive(self):
+    def remove_family_group(self, family_group_id: str):
+        """Removes a family group ID from the user's list."""
+        if family_group_id in self.family_group_spaces:
+            self.family_group_spaces.remove(family_group_id)
+        else:
+            raise ValueError(f"User {self.user_id} is not in family group {family_group_id}.")
+
+    def is_inactive(self, days_threshold: int = 30) -> bool:
         """
-        Checks if the user is inactive.
+        Checks if the user has been inactive for a specified number of days.
+
+        Args:
+            days_threshold (int): The number of days of inactivity to check against.
 
         Returns:
-            bool: True if the user is inactive (last login more than 30 days ago), False otherwise.
+            bool: True if the user's last login was longer ago than the threshold, False otherwise.
         """
-        thirty_days_ago = datetime.now() - timedelta(days=30)
-        return self.last_login < thirty_days_ago
+        inactive_threshold = datetime.now() - timedelta(days=days_threshold)
+        return self.last_login < inactive_threshold
+
+    def __str__(self) -> str:
+        """String representation of the User object."""
+        return f"User(id={self.user_id}, email={self.email}, role={self.role}, trust_pts={self.trust_points})"
+
+    def __repr__(self) -> str:
+        """Detailed representation for debugging."""
+        return f"<User {self.user_id} - {self.email}>"
+
+    def __eq__(self, other: object) -> bool:
+        """Equality check based on user_id."""
+        if not isinstance(other, User):
+            return NotImplemented
+        return self.user_id == other.user_id
+
+    def __hash__(self) -> int:
+        """Hash based on user_id."""
+        return hash(self.user_id)
 
