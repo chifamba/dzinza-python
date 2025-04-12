@@ -1,449 +1,242 @@
-# src/family_tree.py
-
-import logging
-from typing import List, Dict, Optional, Tuple, Any
-from tinydb import TinyDB, Query, table # Import TinyDB components
-
-# Assuming db_utils.py exists for getting DB instances
-from .db_utils import get_tree_db # Import the function to get the DB instance
-
+import json
+import uuid
+import os # Import os for path joining
 from .person import Person
-from .relationship import Relationship, get_reciprocal_relationship
-from .audit_log import AuditLog, PlaceholderAuditLog
-from .encryption import DataEncryptor, PlaceholderDataEncryptor
-
-# Configure logging - Ensure this is configured in your main app setup
-# logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+from .relationship import Relationship
+from .db_utils import load_data, save_data # Use db_utils
+from .audit_log import log_audit # Import audit log function
 
 class FamilyTree:
     """
-    Manages persons and relationships in a family tree using TinyDB.
+    Manages the collection of people and relationships in a family tree.
+    Handles loading, saving, and modification of the tree data.
     """
-
-    def __init__(self, audit_log: Optional[AuditLog] = None, encryptor: Optional[DataEncryptor] = None):
+    def __init__(self, tree_file_path='data/family_tree.json', audit_log_path='data/audit.log'):
         """
-        Initializes the FamilyTree with TinyDB backend.
+        Initializes the FamilyTree.
 
         Args:
-            audit_log: An instance of AuditLog. Defaults to PlaceholderAuditLog.
-            encryptor: An instance of DataEncryptor. Defaults to PlaceholderDataEncryptor.
-                       (Note: Encryption logic needs integration within CRUD methods if required).
+            tree_file_path (str): The path to the JSON file storing family tree data.
+            audit_log_path (str): The path to the audit log file.
         """
-        self.audit_log = audit_log or PlaceholderAuditLog()
-        self.encryptor = encryptor or PlaceholderDataEncryptor()
-
-        # REMOVED: Direct DB access in init
-        # self.tree_db = get_tree_db()
-        # self.persons_table = self.tree_db.table('persons')
-        # self.relationships_table = self.tree_db.table('relationships')
-        logging.info("FamilyTree initialized (DB access deferred to methods).")
-
-    # --- Helper Methods to Get Tables ---
-    def _get_persons_table(self) -> table.Table:
-        """Helper method to get the TinyDB persons table within context."""
-        return get_tree_db().table('persons')
-
-    def _get_relationships_table(self) -> table.Table:
-        """Helper method to get the TinyDB relationships table within context."""
-        return get_tree_db().table('relationships')
+        self.people = {}  # Dictionary to store Person objects {person_id: Person}
+        self.relationships = {}  # Dictionary to store Relationship objects {relationship_id: Relationship}
+        self.tree_file_path = tree_file_path
+        self.audit_log_path = audit_log_path
+        # Ensure the directory for the tree file exists
+        os.makedirs(os.path.dirname(tree_file_path), exist_ok=True)
 
 
-    # --- Person Management (using TinyDB) ---
-
-    def add_person(self, person: Person, user: str = "system") -> None:
+    def add_person(self, name, dob=None, dod=None, gender=None, added_by="system", **kwargs):
         """
-        Adds a new person to the TinyDB 'persons' table.
+        Adds a new person to the family tree.
 
         Args:
-            person: The Person object to add.
-            user: The user performing the action.
+            name (str): The full name of the person.
+            dob (str, optional): Date of birth (YYYY-MM-DD). Defaults to None.
+            dod (str, optional): Date of death (YYYY-MM-DD). Defaults to None.
+            gender (str, optional): Gender of the person. Defaults to None.
+            added_by (str): Username of the user adding the person. Defaults to "system".
+            **kwargs: Additional attributes for the person.
 
-        Raises:
-            ValueError: If a person with the same ID already exists or validation fails.
+        Returns:
+            Person: The newly created Person object, or None if creation failed (e.g., invalid data).
         """
-        if not isinstance(person, Person):
-             raise TypeError("person must be an instance of Person")
+        if not name: # Basic validation
+            print("Error: Person's name cannot be empty.")
+            log_audit(self.audit_log_path, added_by, 'add_person', f'failure - empty name')
+            return None
 
-        persons_table = self._get_persons_table() # Get table now
-        PersonQuery = Query()
-        if persons_table.contains(PersonQuery.person_id == person.person_id):
-            raise ValueError(f"Person with ID {person.person_id} already exists in DB.")
+        person_id = str(uuid.uuid4()) # Generate a unique ID
+        person = Person(person_id, name, dob, dod, gender=gender, **kwargs)
+        self.people[person_id] = person
+        print(f"Person added: {person.name} (ID: {person.person_id})")
+        log_audit(self.audit_log_path, added_by, 'add_person', f'success - id: {person.person_id}, name: {person.name}')
+        self.save_tree(added_by) # Save after adding
+        return person
 
-        try:
-            person_data = person.to_dict()
-            # Add encryption here if needed
-            persons_table.insert(person_data)
-            self.audit_log.log_event(user, "person_added", f"Added person: {person.person_id} ({person.get_full_name()})")
-            logging.info(f"Added person {person.person_id} to DB by user {user}")
-        except Exception as e:
-             logging.exception(f"Error adding person {person.person_id} to DB: {e}")
-             raise ValueError(f"Could not add person {person.person_id} to database.") from e
+    def add_relationship(self, person1_id, person2_id, relationship_type, added_by="system"):
+        """
+        Adds a relationship between two people in the tree.
 
-    def get_person(self, person_id: str) -> Optional[Person]:
-        """Retrieves a person by their ID from TinyDB."""
-        persons_table = self._get_persons_table() # Get table now
-        PersonQuery = Query()
-        person_data_list = persons_table.search(PersonQuery.person_id == person_id)
-        if person_data_list:
-            person_data = person_data_list[0]
-            # Add decryption here if needed
-            try:
-                return Person.from_dict(person_data)
-            except (KeyError, ValueError) as e:
-                 logging.error(f"Error creating Person object from DB data for ID '{person_id}': {e}. Data: {person_data}")
-                 return None
+        Args:
+            person1_id (str): The ID of the first person.
+            person2_id (str): The ID of the second person.
+            relationship_type (str): The type of relationship (e.g., 'parent-child', 'spouse').
+            added_by (str): Username of the user adding the relationship. Defaults to "system".
+
+
+        Returns:
+            Relationship: The newly created Relationship object, or None if creation failed.
+        """
+        # Validate that both persons exist
+        if person1_id not in self.people or person2_id not in self.people:
+            print(f"Error: One or both persons (ID: {person1_id}, {person2_id}) not found.")
+            log_audit(self.audit_log_path, added_by, 'add_relationship', f'failure - person not found ({person1_id} or {person2_id})')
+            return None
+
+        # Optional: Add validation for relationship_type if needed
+        # Example: allowed_types = ['parent-child', 'spouse', 'sibling']
+        # if relationship_type not in allowed_types:
+        #     print(f"Error: Invalid relationship type '{relationship_type}'.")
+        #     log_audit(self.audit_log_path, added_by, 'add_relationship', f'failure - invalid type: {relationship_type}')
+        #     return None
+
+        relationship_id = str(uuid.uuid4())
+        relationship = Relationship(relationship_id, person1_id, person2_id, relationship_type)
+        self.relationships[relationship_id] = relationship
+        print(f"Relationship added: {self.people[person1_id].name} - {relationship_type} - {self.people[person2_id].name}")
+        log_audit(self.audit_log_path, added_by, 'add_relationship', f'success - id: {relationship_id}, type: {relationship_type}, persons: ({person1_id}, {person2_id})')
+        self.save_tree(added_by) # Save after adding
+        return relationship
+
+    def find_person(self, name=None, person_id=None):
+        """
+        Finds a person by name or ID.
+
+        Args:
+            name (str, optional): The name of the person to find.
+            person_id (str, optional): The ID of the person to find.
+
+        Returns:
+            Person: The found Person object, or None if not found.
+                 If name is provided and multiple matches exist, returns the first match.
+        """
+        if person_id:
+            return self.people.get(person_id)
+        if name:
+            for person in self.people.values():
+                if person.name.lower() == name.lower():
+                    return person
         return None
 
-    def update_person(self, person_id: str, update_data: Dict[str, Any], user: str = "system") -> bool:
+    def get_people_summary(self):
         """
-        Updates details of an existing person in TinyDB.
-
-        Args:
-            person_id: The ID of the person to update.
-            update_data: A dictionary containing the attributes to update.
-            user: The user performing the action.
+        Returns a list of basic information for all people in the tree.
+        Useful for populating dropdowns or simple lists in the UI.
 
         Returns:
-            True if the update was successful, False otherwise.
+            list[dict]: A list of dictionaries, each containing 'person_id' and 'name'.
+                        Returns dictionaries instead of Person objects for easier JSON serialization
+                        if needed elsewhere, and to avoid sending full objects to templates unnecessarily.
+                        Also includes dob and dod for display.
         """
-        persons_table = self._get_persons_table() # Get table now
-        PersonQuery = Query()
-        if not persons_table.contains(PersonQuery.person_id == person_id):
-            logging.warning(f"Update failed: Person with ID {person_id} not found in DB.")
-            return False
-
-        db_update_data = update_data.copy()
-        # Add encryption here if needed
-
-        try:
-            persons_table.update(db_update_data, PersonQuery.person_id == person_id)
-            updated_person = self.get_person(person_id)
-            person_name = updated_person.get_full_name() if updated_person else person_id
-
-            self.audit_log.log_event(user, "person_updated", f"Updated person: {person_id} ({person_name}). Changes: {list(update_data.keys())}")
-            logging.info(f"Updated person {person_id} in DB by user {user}")
-            return True
-        except Exception as e:
-             logging.exception(f"Error updating person {person_id} in DB: {e}")
-             return False
-
-    def delete_person(self, person_id: str, user: str = "system") -> bool:
-        """
-        Deletes a person from the 'persons' table and all their relationships
-        from the 'relationships' table in TinyDB.
-
-        Args:
-            person_id: The ID of the person to delete.
-            user: The user performing the action.
-
-        Returns:
-            True if deletion was successful, False if the person was not found.
-        """
-        persons_table = self._get_persons_table() # Get table now
-        relationships_table = self._get_relationships_table() # Get table now
-        PersonQuery = Query()
-        RelationshipQuery = Query()
-
-        person_data_list = persons_table.search(PersonQuery.person_id == person_id)
-        if not person_data_list:
-            logging.warning(f"Deletion failed: Person with ID {person_id} not found in DB.")
-            return False
-        person_name = f"{person_data_list[0].get('first_name', '')} {person_data_list[0].get('last_name', '')}".strip() or person_id
-
-        try:
-            rels_deleted_count = relationships_table.remove(
-                (RelationshipQuery.person1_id == person_id) | (RelationshipQuery.person2_id == person_id)
-            )
-            if rels_deleted_count > 0:
-                 log_desc = f"Removed {rels_deleted_count} relationships involving deleted person {person_id} ({person_name})"
-                 self.audit_log.log_event(user, "relationship_removed", log_desc)
-                 logging.info(f"{log_desc} by user {user}")
-
-            persons_table.remove(PersonQuery.person_id == person_id)
-
-            self.audit_log.log_event(user, "person_deleted", f"Deleted person: {person_id} ({person_name})")
-            logging.info(f"Deleted person {person_id} from DB by user {user}")
-            return True
-        except Exception as e:
-             logging.exception(f"Error deleting person {person_id} from DB: {e}")
-             return False
-
-    def find_person_by_name(self, name_query: str) -> List[Person]:
-        """Finds persons by name in TinyDB (case-insensitive substring match)."""
-        persons_table = self._get_persons_table() # Get table now
-        results = []
-        name_query_lower = name_query.lower()
-        all_persons_data = persons_table.all()
-        for p_data in all_persons_data:
-             full_name = f"{p_data.get('first_name', '')} {p_data.get('last_name', '')}".lower()
-             if name_query_lower in full_name:
-                 try:
-                    # Add decryption here if needed
-                    results.append(Person.from_dict(p_data))
-                 except (KeyError, ValueError) as e:
-                    logging.error(f"Error creating Person object during search: {e}. Data: {p_data}")
-        return results
-
-    def get_all_persons(self) -> List[Person]:
-        """ Retrieves all persons from the database. """
-        persons_table = self._get_persons_table() # Get table now
-        all_persons_data = persons_table.all()
-        persons = []
-        for p_data in all_persons_data:
-            try:
-                # Add decryption here if needed
-                persons.append(Person.from_dict(p_data))
-            except (KeyError, ValueError) as e:
-                logging.error(f"Error creating Person object from DB data: {e}. Data: {p_data}")
-        return persons
-
-
-    # --- Relationship Management (using TinyDB) ---
-
-    def add_relationship(self, person1_id: str, person2_id: str, rel_type: str, attributes: Optional[Dict] = None, user: str = "system") -> bool:
-        """
-        Adds a relationship document to the 'relationships' table in TinyDB.
-        Handles reciprocal relationships implicitly by querying.
-
-        Args:
-            person1_id: ID of the first person.
-            person2_id: ID of the second person.
-            rel_type: The type of relationship from person1 to person2.
-            attributes: Optional dictionary of relationship attributes.
-            user: The user performing the action.
-
-        Returns:
-            True if the relationship was added successfully, False otherwise.
-
-        Raises:
-            ValueError: If either person ID does not exist or relationship is to self.
-        """
-        persons_table = self._get_persons_table() # Get table now
-        relationships_table = self._get_relationships_table() # Get table now
-        PersonQuery = Query()
-        if not persons_table.contains(PersonQuery.person_id == person1_id):
-            raise ValueError(f"Person with ID {person1_id} not found.")
-        if not persons_table.contains(PersonQuery.person_id == person2_id):
-            raise ValueError(f"Person with ID {person2_id} not found.")
-        if person1_id == person2_id:
-             raise ValueError("Cannot add relationship to self.")
-
-        relationship = Relationship(person1_id, person2_id, rel_type, attributes)
-        rel_data = relationship.to_dict()
-
-        RelationshipQuery = Query()
-        exists = relationships_table.contains(
-            (RelationshipQuery.person1_id == person1_id) &
-            (RelationshipQuery.person2_id == person2_id) &
-            (RelationshipQuery.rel_type == rel_type)
+        return sorted(
+            [
+                {
+                    "person_id": p.person_id,
+                    "name": p.name,
+                    "dob": p.dob,
+                    "dod": p.dod,
+                    "gender": p.gender
+                 } for p in self.people.values()
+             ],
+            key=lambda x: x['name'] # Sort alphabetically by name
         )
 
-        if exists:
-            logging.info(f"Relationship {person1_id} -> {person2_id} ({rel_type}) already exists in DB.")
-            return False
 
+    def _to_dict(self):
+        """Converts the family tree data to a dictionary suitable for JSON serialization."""
+        return {
+            "people": {pid: person.to_dict() for pid, person in self.people.items()},
+            "relationships": {rid: rel.to_dict() for rid, rel in self.relationships.items()}
+        }
+
+    @classmethod
+    def _from_dict(cls, data, tree_file_path, audit_log_path):
+        """Creates a FamilyTree instance from a dictionary (e.g., loaded from JSON)."""
+        tree = cls(tree_file_path, audit_log_path) # Pass paths during reconstruction
+        tree.people = {pid: Person.from_dict(pdata) for pid, pdata in data.get("people", {}).items()}
+        tree.relationships = {rid: Relationship.from_dict(rdata) for rid, rdata in data.get("relationships", {}).items()}
+        return tree
+
+    def save_tree(self, saved_by="system"):
+        """Saves the current state of the family tree to the JSON file."""
         try:
-            relationships_table.insert(rel_data)
-            log_desc = f"Added relationship: {relationship}"
-            self.audit_log.log_event(user, "relationship_added", log_desc)
-            logging.info(f"Added relationship {person1_id} -> {person2_id} ({rel_type}) to DB by user {user}")
-
-            reciprocal_type = get_reciprocal_relationship(rel_type)
-            reciprocal_exists = relationships_table.contains(
-                (RelationshipQuery.person1_id == person2_id) &
-                (RelationshipQuery.person2_id == person1_id) &
-                (RelationshipQuery.rel_type == reciprocal_type)
-            )
-            if not reciprocal_exists:
-                 reciprocal_rel = Relationship(person2_id, person1_id, reciprocal_type, attributes)
-                 reciprocal_data = reciprocal_rel.to_dict()
-                 relationships_table.insert(reciprocal_data)
-                 log_desc_recip = f"Added reciprocal relationship: {reciprocal_rel}"
-                 self.audit_log.log_event(user, "relationship_added", log_desc_recip)
-                 logging.info(f"Added reciprocal relationship {person2_id} -> {person1_id} ({reciprocal_type}) to DB by user {user}")
-
-            return True
+            data_to_save = self._to_dict()
+            save_data(self.tree_file_path, data_to_save)
+            print(f"Family tree saved successfully to {self.tree_file_path}")
+            # Avoid logging save on every minor change if it's too noisy
+            # log_audit(self.audit_log_path, saved_by, 'save_tree', 'success')
         except Exception as e:
-             logging.exception(f"Error adding relationship {person1_id} -> {person2_id} ({rel_type}) to DB: {e}")
-             return False
+            print(f"Error saving family tree to {self.tree_file_path}: {e}")
+            log_audit(self.audit_log_path, saved_by, 'save_tree', f'failure: {e}')
 
 
-    def get_relationships(self, person_id: str, direction: str = 'outgoing') -> List[Relationship]:
-        """
-        Retrieves relationships for a given person ID from TinyDB.
-
-        Args:
-            person_id: The ID of the person whose relationships to find.
-            direction: 'outgoing' (person is person1), 'incoming' (person is person2), or 'both'.
-
-        Returns:
-            A list of Relationship objects.
-        """
-        relationships_table = self._get_relationships_table() # Get table now
-        RelationshipQuery = Query()
-        relationships_data = []
-
-        if direction == 'outgoing' or direction == 'both':
-            relationships_data.extend(relationships_table.search(RelationshipQuery.person1_id == person_id))
-        if direction == 'incoming' or direction == 'both':
-            incoming_data = relationships_table.search(RelationshipQuery.person2_id == person_id)
-            if direction == 'both':
-                 existing_ids = { (d['person1_id'], d['person2_id'], d['rel_type']) for d in relationships_data }
-                 for inc_data in incoming_data:
-                     rev_tuple = (inc_data['person2_id'], inc_data['person1_id'], get_reciprocal_relationship(inc_data['rel_type']))
-                     if rev_tuple not in existing_ids:
-                         relationships_data.append(inc_data)
+    def load_tree(self, loaded_by="system"):
+        """Loads the family tree data from the JSON file."""
+        try:
+            data = load_data(self.tree_file_path)
+            if data:
+                loaded_tree = self._from_dict(data, self.tree_file_path, self.audit_log_path)
+                self.people = loaded_tree.people
+                self.relationships = loaded_tree.relationships
+                print(f"Family tree loaded successfully from {self.tree_file_path}")
+                # log_audit(self.audit_log_path, loaded_by, 'load_tree', 'success') # Can be noisy on startup
             else:
-                 relationships_data.extend(incoming_data)
+                 print(f"No existing data found or error loading from {self.tree_file_path}. Starting with an empty tree.")
+                 # Initialize empty structure if file didn't exist or was empty/invalid
+                 self.people = {}
+                 self.relationships = {}
+                 # Optionally save an empty structure immediately
+                 # self.save_tree()
 
-        relationships = []
-        for r_data in relationships_data:
-            try:
-                relationships.append(Relationship.from_dict(r_data))
-            except (KeyError, ValueError) as e:
-                 logging.error(f"Error creating Relationship object from DB data: {e}. Data: {r_data}")
+        except FileNotFoundError:
+            print(f"Tree file {self.tree_file_path} not found. Starting with an empty tree.")
+            self.people = {}
+            self.relationships = {}
+            # Optionally save an empty structure immediately
+            # self.save_tree()
+        except json.JSONDecodeError as e:
+            print(f"Error decoding JSON from {self.tree_file_path}: {e}. Starting with an empty tree.")
+            self.people = {}
+            self.relationships = {}
+        except Exception as e:
+            print(f"An unexpected error occurred loading the tree from {self.tree_file_path}: {e}")
+            log_audit(self.audit_log_path, loaded_by, 'load_tree', f'failure: {e}')
+            # Decide if you want to start fresh or halt
+            self.people = {}
+            self.relationships = {}
 
-        return relationships
+    # --- Methods for modification (placeholders for future implementation) ---
 
+    def edit_person(self, person_id, updated_data, edited_by="system"):
+        """Edits an existing person's details."""
+        person = self.find_person(person_id=person_id)
+        if person:
+            original_name = person.name # For logging
+            updated = person.update_details(updated_data)
+            if updated:
+                log_audit(self.audit_log_path, edited_by, 'edit_person', f'success - id: {person_id}, name: {original_name} -> {person.name}')
+                self.save_tree(edited_by)
+                return True
+            else:
+                 log_audit(self.audit_log_path, edited_by, 'edit_person', f'failure - no changes for id: {person_id}')
+                 return False # No changes were made
+        else:
+            print(f"Error: Person with ID {person_id} not found for editing.")
+            log_audit(self.audit_log_path, edited_by, 'edit_person', f'failure - person not found: {person_id}')
+            return False
 
-    def update_relationship(self, person1_id: str, person2_id: str, old_rel_type: str, update_data: Dict[str, Any], user: str = "system") -> bool:
-        """
-        Updates attributes or type of an existing relationship document in TinyDB.
-        Handles reciprocal update if type changes.
+    def delete_person(self, person_id, deleted_by="system"):
+        """Deletes a person and their related relationships."""
+        person = self.find_person(person_id=person_id)
+        if person:
+            person_name = person.name # For logging
+            # Remove the person
+            del self.people[person_id]
 
-        Args:
-            person1_id: ID of the first person.
-            person2_id: ID of the second person.
-            old_rel_type: The current relationship type from person1 to person2.
-            update_data: Dictionary of updates (e.g., {'rel_type': 'divorced', 'attributes': {...}})
-            user: The user performing the action.
+            # Find and remove relationships involving this person
+            rels_to_delete = [rid for rid, rel in self.relationships.items() if rel.person1_id == person_id or rel.person2_id == person_id]
+            for rid in rels_to_delete:
+                del self.relationships[rid]
 
-        Returns:
-            True if the update was successful, False otherwise.
-        """
-        relationships_table = self._get_relationships_table() # Get table now
-        RelationshipQuery = Query()
-        new_rel_type = update_data.get('rel_type', old_rel_type)
-        updated = False
-
-        primary_update_result = relationships_table.update(
-            update_data,
-            (RelationshipQuery.person1_id == person1_id) &
-            (RelationshipQuery.person2_id == person2_id) &
-            (RelationshipQuery.rel_type == old_rel_type)
-        )
-        if primary_update_result:
-             updated = True
-
-        if old_rel_type != new_rel_type:
-            old_reciprocal_type = get_reciprocal_relationship(old_rel_type)
-            new_reciprocal_type = get_reciprocal_relationship(new_rel_type)
-            reciprocal_update_payload = {'rel_type': new_reciprocal_type}
-            if 'attributes' in update_data:
-                 reciprocal_update_payload['attributes'] = update_data['attributes']
-
-            reciprocal_update_result = relationships_table.update(
-                 reciprocal_update_payload,
-                 (RelationshipQuery.person1_id == person2_id) &
-                 (RelationshipQuery.person2_id == person1_id) &
-                 (RelationshipQuery.rel_type == old_reciprocal_type)
-            )
-            if reciprocal_update_result:
-                 updated = True
-        elif 'attributes' in update_data:
-             reciprocal_type = get_reciprocal_relationship(old_rel_type)
-             reciprocal_update_result = relationships_table.update(
-                 {'attributes': update_data['attributes']},
-                 (RelationshipQuery.person1_id == person2_id) &
-                 (RelationshipQuery.person2_id == person1_id) &
-                 (RelationshipQuery.rel_type == reciprocal_type)
-             )
-             if reciprocal_update_result:
-                  updated = True
-
-        if updated:
-            log_desc = f"Updated relationship: {person1_id} <-> {person2_id} (from {old_rel_type} to {new_rel_type})"
-            self.audit_log.log_event(user, "relationship_updated", log_desc)
-            logging.info(f"Updated relationship {person1_id}<->{person2_id} from {old_rel_type} to {new_rel_type} in DB by {user}")
+            print(f"Person '{person_name}' (ID: {person_id}) and related relationships deleted.")
+            log_audit(self.audit_log_path, deleted_by, 'delete_person', f'success - id: {person_id}, name: {person_name}, removed {len(rels_to_delete)} relationships')
+            self.save_tree(deleted_by)
             return True
-
-        logging.warning(f"Update failed: Relationship {person1_id} -> {person2_id} ({old_rel_type}) not found or no changes applied.")
-        return False
-
-
-    def delete_relationship(self, person1_id: str, person2_id: str, rel_type: str, user: str = "system") -> bool:
-        """
-        Deletes a specific relationship document from TinyDB. Handles reciprocal deletion.
-
-        Args:
-            person1_id: ID of the first person.
-            person2_id: ID of the second person.
-            rel_type: The type of relationship from person1 to person2 to delete.
-            user: The user performing the action.
-
-        Returns:
-            True if the relationship was deleted successfully, False otherwise.
-        """
-        relationships_table = self._get_relationships_table() # Get table now
-        RelationshipQuery = Query()
-        deleted_count = 0
-
-        deleted_count += len(relationships_table.remove(
-            (RelationshipQuery.person1_id == person1_id) &
-            (RelationshipQuery.person2_id == person2_id) &
-            (RelationshipQuery.rel_type == rel_type)
-        ))
-
-        reciprocal_type = get_reciprocal_relationship(rel_type)
-        deleted_count += len(relationships_table.remove(
-            (RelationshipQuery.person1_id == person2_id) &
-            (RelationshipQuery.person2_id == person1_id) &
-            (RelationshipQuery.rel_type == reciprocal_type)
-        ))
-
-        if deleted_count > 0:
-            log_desc = f"Removed relationship: {person1_id} <-> {person2_id} ({rel_type})"
-            self.audit_log.log_event(user, "relationship_removed", log_desc)
-            logging.info(f"Removed relationship {person1_id} <-> {person2_id} ({rel_type}) from DB by user {user}")
-            return True
-
-        logging.warning(f"Deletion failed: Relationship {person1_id} -> {person2_id} ({rel_type}) not found in DB.")
-        return False
-
-
-    def find_relationships_by_type(self, rel_type_query: str) -> List[Relationship]:
-        """Finds all relationships matching the given type in TinyDB."""
-        relationships_table = self._get_relationships_table() # Get table now
-        RelationshipQuery = Query()
-        matching_data = relationships_table.search(RelationshipQuery.rel_type.test(lambda t: rel_type_query.lower() in t.lower()))
-
-        results = []
-        for r_data in matching_data:
-            try:
-                results.append(Relationship.from_dict(r_data))
-            except (KeyError, ValueError) as e:
-                 logging.error(f"Error creating Relationship object during search: {e}. Data: {r_data}")
-        return results
-
-    # --- Helper methods requiring FamilyTree access ---
-
-    def find_parents(self, person_id: str) -> List[str]:
-        """Finds parent IDs for a given person ID by querying relationships."""
-        relationships_table = self._get_relationships_table() # Get table now
-        RelationshipQuery = Query()
-        child_rels = relationships_table.search(
-            (RelationshipQuery.person1_id == person_id) & (RelationshipQuery.rel_type == 'child')
-        )
-        parent_ids = [rel['person2_id'] for rel in child_rels]
-        return parent_ids
-
-    def find_children(self, person_id: str) -> List[str]:
-        """Finds children IDs for a given person ID by querying relationships."""
-        relationships_table = self._get_relationships_table() # Get table now
-        RelationshipQuery = Query()
-        parent_rels = relationships_table.search(
-            (RelationshipQuery.person1_id == person_id) & (RelationshipQuery.rel_type == 'parent')
-        )
-        child_ids = [rel['person2_id'] for rel in parent_rels]
-        return child_ids
+        else:
+            print(f"Error: Person with ID {person_id} not found for deletion.")
+            log_audit(self.audit_log_path, deleted_by, 'delete_person', f'failure - person not found: {person_id}')
+            return False
 

@@ -1,60 +1,52 @@
-# src/db_utils.py
-
+import json
 import os
-import logging
-from tinydb import TinyDB
-from flask import g # Use Flask's application context global
 
-# Define database paths relative to the project root or instance folder
-DATA_DIR = os.path.join(os.path.dirname(__file__), '..', 'data') # Assumes db_utils.py is in src/
-USERS_DB_PATH = os.path.join(DATA_DIR, 'users.tinydb')
-TREE_DB_PATH = os.path.join(DATA_DIR, 'family_tree.tinydb')
+def load_data(file_path):
+    """
+    Loads JSON data from a file.
 
-def ensure_data_dir_exists():
-    """Creates the data directory if it doesn't exist."""
+    Args:
+        file_path (str): The path to the JSON file.
+
+    Returns:
+        dict or list: The loaded data, or None if the file doesn't exist or is empty/invalid.
+    """
+    if not os.path.exists(file_path):
+        print(f"Data file not found: {file_path}")
+        return None  # Return None if file doesn't exist
+
+    # Check if file is empty before trying to load
+    if os.path.getsize(file_path) == 0:
+        print(f"Data file is empty: {file_path}")
+        return None # Return None for empty file
+
     try:
-        os.makedirs(DATA_DIR, exist_ok=True)
-        logging.debug(f"Data directory ensured: {DATA_DIR}")
-    except OSError as e:
-        logging.error(f"Could not create data directory '{DATA_DIR}': {e}")
-        raise # Re-raise the error to halt app startup if critical
+        with open(file_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            return data
+    except json.JSONDecodeError as e:
+        print(f"Error decoding JSON from {file_path}: {e}")
+        # Decide how to handle invalid JSON: return None, raise error, or return default
+        return None # Return None for invalid JSON
+    except Exception as e:
+        print(f"An error occurred loading data from {file_path}: {e}")
+        # Log this error appropriately in a real application
+        return None # Return None on other errors
 
-def get_user_db():
+def save_data(file_path, data):
     """
-    Returns a TinyDB instance for the users database.
-    Uses Flask's application context (g) to store the connection per request.
+    Saves data to a JSON file.
+
+    Args:
+        file_path (str): The path to the JSON file.
+        data (dict or list): The data to save.
     """
-    ensure_data_dir_exists() # Ensure directory exists before opening DB
-    if 'user_db' not in g:
-        logging.debug(f"Connecting to User DB: {USERS_DB_PATH}")
-        g.user_db = TinyDB(USERS_DB_PATH)
-    return g.user_db
-
-def get_tree_db():
-    """
-    Returns a TinyDB instance for the family tree database.
-    Uses Flask's application context (g) to store the connection per request.
-    """
-    ensure_data_dir_exists() # Ensure directory exists before opening DB
-    if 'tree_db' not in g:
-        logging.debug(f"Connecting to Tree DB: {TREE_DB_PATH}")
-        g.tree_db = TinyDB(TREE_DB_PATH)
-    return g.tree_db
-
-def close_db(e=None):
-    """Closes the database connections stored in Flask's application context."""
-    user_db = g.pop('user_db', None)
-    tree_db = g.pop('tree_db', None)
-
-    if user_db is not None:
-        logging.debug("Closing User DB connection.")
-        user_db.close()
-    if tree_db is not None:
-        logging.debug("Closing Tree DB connection.")
-        tree_db.close()
-
-def init_app(app):
-    """Register database functions with the Flask app."""
-    app.teardown_appcontext(close_db)
-    # You could add a CLI command here to initialize the DB if needed
-    # app.cli.add_command(init_db_command)
+    try:
+        # Ensure the directory exists before writing
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=4) # Use indent for readability
+    except Exception as e:
+        print(f"An error occurred saving data to {file_path}: {e}")
+        # Log this error appropriately
+        # Consider raising the exception depending on desired behavior
