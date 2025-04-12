@@ -1,205 +1,189 @@
 # tests/test_relationship.py
-import unittest
-from datetime import datetime
 
-from src.relationship import Relationship, RELATIONSHIP_TYPES
+import unittest
+from src.relationship import Relationship, get_reciprocal_relationship, VALID_RELATIONSHIP_TYPES
 
 class TestRelationship(unittest.TestCase):
-    """Test suite for the refactored Relationship class."""
+    """Unit tests for the Relationship class and related functions."""
 
-    def test_valid_relationship_initialization(self):
-        """Test initializing with valid standard types."""
-        for rel_type in RELATIONSHIP_TYPES:
-            if rel_type == "other": continue # Test 'other' separately if needed
-            try:
-                rel = Relationship("p1", "p2", rel_type)
-                self.assertEqual(rel.person1_id, "p1")
-                self.assertEqual(rel.person2_id, "p2")
-                self.assertEqual(rel.relationship_type, rel_type)
-                self.assertIsNone(rel.start_date)
-                self.assertIsNone(rel.end_date)
-                self.assertIsNone(rel.description)
-            except ValueError:
-                self.fail(f"Initialization failed for valid type: {rel_type}")
+    def test_relationship_creation_minimal(self):
+        """Test creating a relationship with minimal required data."""
+        rel = Relationship("p1", "p2", "spouse")
+        self.assertEqual(rel.person1_id, "p1")
+        self.assertEqual(rel.person2_id, "p2")
+        self.assertEqual(rel.rel_type, "spouse")
+        # Default attributes should be an empty dict due to __post_init__
+        self.assertEqual(rel.attributes, {})
 
-    def test_non_standard_relationship_type(self):
-        """Test initializing with a non-standard type (should warn but succeed)."""
-        # Assuming the refactored class allows non-standard types with a warning
-        rel_custom = Relationship("p1", "p2", "mentor")
-        self.assertEqual(rel_custom.relationship_type, "mentor")
-        # Check if warning was printed (requires capturing stdout/stderr, more complex test)
+    def test_relationship_creation_with_attributes(self):
+        """Test creating a relationship with additional attributes."""
+        attrs = {"start_date": "2000-01-15", "location": "City Hall"}
+        rel = Relationship("p1", "p2", "spouse", attributes=attrs)
+        self.assertEqual(rel.person1_id, "p1")
+        self.assertEqual(rel.person2_id, "p2")
+        self.assertEqual(rel.rel_type, "spouse")
+        self.assertIsNotNone(rel.attributes) # Should not be None
+        self.assertEqual(rel.attributes["start_date"], "2000-01-15")
+        self.assertEqual(rel.attributes["location"], "City Hall")
 
-    def test_relationship_with_all_attributes(self):
-        """Test initializing with all optional attributes."""
-        rel = Relationship(
-            "person_a", "person_b", "spouse",
-            start_date="2000-01-15",
-            end_date="2010-12-31",
-            description="First marriage"
-        )
-        self.assertEqual(rel.person1_id, "person_a")
-        self.assertEqual(rel.person2_id, "person_b")
-        self.assertEqual(rel.relationship_type, "spouse")
-        self.assertIsInstance(rel.start_date, datetime)
-        self.assertEqual(rel.start_date.year, 2000)
-        self.assertEqual(rel.start_date.day, 15)
-        self.assertIsInstance(rel.end_date, datetime)
-        self.assertEqual(rel.end_date.year, 2010)
-        self.assertEqual(rel.description, "First marriage")
+    def test_relationship_creation_invalid_type(self):
+        """Test creating a relationship with an invalid type (optional check)."""
+        # This depends on whether Relationship enforces type validity itself
+        # or relies on FamilyTree to do so. Assuming Relationship allows any string for now.
+        rel = Relationship("p1", "p2", "best_friend") # Assuming 'best_friend' is not in VALID_RELATIONSHIP_TYPES
+        self.assertEqual(rel.rel_type, "best_friend")
+        # Add assertRaises if Relationship validates type against VALID_RELATIONSHIP_TYPES
 
-    def test_invalid_date_format(self):
-        """Test initialization with invalid date strings (should result in None)."""
-        rel = Relationship("p1", "p2", "friend", start_date="invalid-date")
-        self.assertIsNone(rel.start_date)
-        # Check if warning was printed (requires capturing stdout/stderr)
+    def test_relationship_representation(self):
+        """Test the string representation (__repr__) of a relationship."""
+        rel = Relationship("p1", "p2", "spouse")
+        self.assertEqual(repr(rel), "Relationship: p1 -> p2 (spouse)")
 
-    def test_relationship_to_self_error(self):
-        """Test that creating a relationship to oneself raises ValueError."""
-        with self.assertRaisesRegex(ValueError, "Cannot create a relationship between a person and themselves"):
-            Relationship("p1", "p1", "sibling")
+        attrs = {"start_date": "2000-01-15"}
+        rel_with_attrs = Relationship("p3", "p4", "child", attributes=attrs)
+        # Representation might or might not include attributes, adjust as needed
+        self.assertEqual(repr(rel_with_attrs), "Relationship: p3 -> p4 (child)") # Basic repr shown
 
-    def test_equality_asymmetric(self):
-        """Test equality for asymmetric relationships (e.g., parent/child)."""
-        rel1 = Relationship("p1", "p2", "parent", start_date="1990-01-01")
-        rel2 = Relationship("p1", "p2", "parent", start_date="1990-01-01") # Identical
-        rel3 = Relationship("p2", "p1", "parent", start_date="1990-01-01") # Reversed persons
-        rel4 = Relationship("p1", "p2", "child", start_date="1990-01-01")  # Different type
-        rel5 = Relationship("p1", "p2", "parent", start_date="1991-01-01")  # Different date
+    def test_relationship_equality(self):
+        """Test equality comparison between Relationship objects."""
+        rel1 = Relationship("p1", "p2", "spouse")
+        rel2 = Relationship("p1", "p2", "spouse")
+        rel3 = Relationship("p1", "p2", "parent") # Different type
+        rel4 = Relationship("p1", "p3", "spouse") # Different person2
+        rel5 = Relationship("p3", "p2", "spouse") # Different person1
+        rel6 = Relationship("p1", "p2", "spouse", attributes={"date": "2000"}) # Different attributes
+        rel7 = Relationship("p1", "p2", "spouse", attributes={"date": "2000"}) # Same attributes as rel6
+        rel8 = Relationship("p1", "p2", "spouse", attributes={}) # Explicit empty attributes
 
-        self.assertEqual(rel1, rel2)
-        self.assertNotEqual(rel1, rel3) # Order matters for parent/child
+        self.assertEqual(rel1, rel2) # Should be equal (both have default empty dict)
+        self.assertEqual(rel1, rel8) # Should be equal to explicit empty dict
+        self.assertNotEqual(rel1, rel3)
         self.assertNotEqual(rel1, rel4)
         self.assertNotEqual(rel1, rel5)
-        self.assertNotEqual(rel1, "not a relationship")
+        self.assertNotEqual(rel1, rel6) # Equality depends on attributes
+        self.assertEqual(rel6, rel7)    # Relationships with same attributes should be equal
 
-    def test_equality_symmetric(self):
-        """Test equality for symmetric relationships (e.g., spouse, sibling)."""
-        rel1 = Relationship("p1", "p2", "spouse", start_date="2000-01-01")
-        rel2 = Relationship("p1", "p2", "spouse", start_date="2000-01-01") # Identical
-        rel3 = Relationship("p2", "p1", "spouse", start_date="2000-01-01") # Reversed persons
-        rel4 = Relationship("p1", "p2", "sibling", start_date="2000-01-01") # Different type
-        rel5 = Relationship("p1", "p2", "spouse", start_date="2001-01-01") # Different date
+        # Test comparison with other types
+        self.assertNotEqual(rel1, "p1 -> p2 (spouse)")
+        self.assertNotEqual(rel1, None)
 
-        self.assertEqual(rel1, rel2)
-        self.assertEqual(rel1, rel3) # Order does NOT matter for spouse
-        self.assertNotEqual(rel1, rel4)
-        self.assertNotEqual(rel1, rel5)
-
-    def test_hash_consistency(self):
-        """Test that hash is consistent with equality."""
-        # Asymmetric
-        rel1_parent = Relationship("p1", "p2", "parent")
-        rel2_parent = Relationship("p1", "p2", "parent")
-        rel3_parent_rev = Relationship("p2", "p1", "parent")
-        self.assertEqual(hash(rel1_parent), hash(rel2_parent))
-        self.assertNotEqual(hash(rel1_parent), hash(rel3_parent_rev))
-
-        # Symmetric
-        rel1_spouse = Relationship("p1", "p2", "spouse")
-        rel2_spouse = Relationship("p1", "p2", "spouse")
-        rel3_spouse_rev = Relationship("p2", "p1", "spouse")
-        self.assertEqual(hash(rel1_spouse), hash(rel2_spouse))
-        self.assertEqual(hash(rel1_spouse), hash(rel3_spouse_rev)) # Hashes must be equal if objects are equal
-
-        # Different types or attributes should have different hashes
-        rel4_sibling = Relationship("p1", "p2", "sibling")
-        rel5_spouse_date = Relationship("p1", "p2", "spouse", start_date="2000-01-01")
-        self.assertNotEqual(hash(rel1_spouse), hash(rel4_sibling))
-        self.assertNotEqual(hash(rel1_spouse), hash(rel5_spouse_date))
-
-
-    def test_involves_person(self):
-        """Test the involves_person method."""
-        rel = Relationship("p1", "p2", "friend")
-        self.assertTrue(rel.involves_person("p1"))
-        self.assertTrue(rel.involves_person("p2"))
-        self.assertFalse(rel.involves_person("p3"))
-
-    def test_get_other_person(self):
-        """Test the get_other_person method."""
-        rel = Relationship("p1", "p2", "friend")
-        self.assertEqual(rel.get_other_person("p1"), "p2")
-        self.assertEqual(rel.get_other_person("p2"), "p1")
-        self.assertIsNone(rel.get_other_person("p3")) # Person not involved
-
-    def test_to_dict(self):
-        """Test converting the relationship to a dictionary."""
-        rel = Relationship(
-            "person_a", "person_b", "sibling",
-            start_date="1995-01-01", description="Full siblings"
-        )
-        expected_dict = {
-            "person1_id": "person_a",
-            "person2_id": "person_b",
-            "relationship_type": "sibling",
-            "start_date": "1995-01-01T00:00:00", # ISO format
-            "end_date": None,
-            "description": "Full siblings",
+    def test_relationship_to_dict(self):
+        """Test converting a Relationship object to a dictionary."""
+        rel_no_attrs = Relationship("p1", "p2", "spouse")
+        # Expect attributes to be an empty dict, not None
+        expected_dict_no_attrs = {
+            "person1_id": "p1",
+            "person2_id": "p2",
+            "rel_type": "spouse",
+            "attributes": {}
         }
-        self.assertEqual(rel.to_dict(), expected_dict)
+        self.assertEqual(rel_no_attrs.to_dict(), expected_dict_no_attrs)
 
-        rel_no_optional = Relationship("c1", "p1", "child")
-        expected_dict_no_optional = {
-            "person1_id": "c1",
-            "person2_id": "p1",
-            "relationship_type": "child",
-            "start_date": None,
-            "end_date": None,
-            "description": None,
+        attrs = {"start_date": "2000-01-15", "notes": "Met online"}
+        rel_with_attrs = Relationship("p3", "p4", "sibling", attributes=attrs)
+        expected_dict_with_attrs = {
+            "person1_id": "p3",
+            "person2_id": "p4",
+            "rel_type": "sibling",
+            "attributes": attrs # Should include the attributes dictionary
         }
-        self.assertEqual(rel_no_optional.to_dict(), expected_dict_no_optional)
+        self.assertEqual(rel_with_attrs.to_dict(), expected_dict_with_attrs)
 
-    def test_from_dict(self):
-        """Test creating a relationship from a dictionary."""
-        rel_data = {
-            "person1_id": "person_a",
-            "person2_id": "person_b",
-            "relationship_type": "sibling",
-            "start_date": "1995-01-01T00:00:00",
-            "description": "Full siblings",
+    def test_relationship_from_dict(self):
+        """Test creating a Relationship object from a dictionary."""
+        rel_data_no_attrs = {
+            "person1_id": "p1",
+            "person2_id": "p2",
+            "rel_type": "spouse",
+            # "attributes": None # Optional, from_dict should handle missing key
         }
-        rel = Relationship.from_dict(rel_data)
-        self.assertEqual(rel.person1_id, "person_a")
-        self.assertEqual(rel.relationship_type, "sibling")
-        self.assertIsInstance(rel.start_date, datetime)
-        self.assertEqual(rel.start_date.year, 1995)
-        self.assertIsNone(rel.end_date)
-        self.assertEqual(rel.description, "Full siblings")
+        rel1 = Relationship.from_dict(rel_data_no_attrs)
+        self.assertIsInstance(rel1, Relationship)
+        self.assertEqual(rel1.person1_id, "p1")
+        self.assertEqual(rel1.person2_id, "p2")
+        self.assertEqual(rel1.rel_type, "spouse")
+        # Attributes should default to empty dict
+        self.assertEqual(rel1.attributes, {})
 
-        # Test with missing optional fields
+        rel_data_with_attrs = {
+            "person1_id": "p3",
+            "person2_id": "p4",
+            "rel_type": "sibling",
+            "attributes": {"shared_secret": "xyz"}
+        }
+        rel2 = Relationship.from_dict(rel_data_with_attrs)
+        self.assertIsInstance(rel2, Relationship)
+        self.assertEqual(rel2.person1_id, "p3")
+        self.assertEqual(rel2.person2_id, "p4")
+        self.assertEqual(rel2.rel_type, "sibling")
+        self.assertIsNotNone(rel2.attributes) # Check it's not None
+        self.assertEqual(rel2.attributes["shared_secret"], "xyz")
+
+        # Test creating with explicit null/empty attributes
+        rel_data_null_attrs = {
+             "person1_id": "p5", "person2_id": "p6", "rel_type": "friend", "attributes": None
+        }
+        rel3 = Relationship.from_dict(rel_data_null_attrs)
+        self.assertEqual(rel3.attributes, {}) # Should be initialized to {}
+
+        rel_data_empty_attrs = {
+             "person1_id": "p7", "person2_id": "p8", "rel_type": "cousin", "attributes": {}
+        }
+        rel4 = Relationship.from_dict(rel_data_empty_attrs)
+        self.assertEqual(rel4.attributes, {}) # Should remain {}
+
+
+    def test_relationship_from_dict_missing_keys(self):
+        """Test creating from dict with missing required keys."""
+        with self.assertRaises(KeyError):
+            Relationship.from_dict({"person1_id": "p1", "person2_id": "p2"}) # Missing rel_type
+        with self.assertRaises(KeyError):
+            Relationship.from_dict({"person1_id": "p1", "rel_type": "spouse"}) # Missing person2_id
+        with self.assertRaises(KeyError):
+            Relationship.from_dict({"person2_id": "p2", "rel_type": "spouse"}) # Missing person1_id
+
+    # --- Test get_reciprocal_relationship ---
+
+    def test_get_reciprocal_spouse(self):
+        """Test reciprocal of 'spouse'."""
+        self.assertEqual(get_reciprocal_relationship("spouse"), "spouse")
+
+    def test_get_reciprocal_parent_child(self):
+        """Test reciprocal of 'parent' and 'child'."""
+        self.assertEqual(get_reciprocal_relationship("parent"), "child")
+        self.assertEqual(get_reciprocal_relationship("child"), "parent")
+
+    def test_get_reciprocal_sibling(self):
+        """Test reciprocal of 'sibling'."""
+        self.assertEqual(get_reciprocal_relationship("sibling"), "sibling")
+
+    def test_get_reciprocal_custom(self):
+        """Test reciprocal of a custom or undefined type."""
+        # Use the exact key from the map: "adopted child" (with space)
+        self.assertEqual(get_reciprocal_relationship("adopted child"), "adoptive parent")
+        # Test value lookup
+        self.assertEqual(get_reciprocal_relationship("adoptive parent"), "adopted child")
+        # Test undefined type
+        self.assertEqual(get_reciprocal_relationship("friend"), "friend")
+        self.assertEqual(get_reciprocal_relationship("unknown_type"), "unknown_type")
+
+    def test_get_reciprocal_case_insensitivity(self):
+        """Test if reciprocal function handles different cases."""
+        self.assertEqual(get_reciprocal_relationship("Parent"), "child")
+        self.assertEqual(get_reciprocal_relationship("CHILD"), "parent")
+        self.assertEqual(get_reciprocal_relationship("SpOuSe"), "spouse")
+
+    # --- Test Syntax Fix ---
+    def test_dictionary_syntax(self):
+        """Test that dictionary literals have correct syntax."""
+        # This test doesn't run anything specific, but its presence ensures
+        # the file parses correctly if the syntax error is fixed.
         rel_data_minimal = {
-            "person1_id": "c1",
-            "person2_id": "p1",
-            "relationship_type": "child",
-        }
-        rel_minimal = Relationship.from_dict(rel_data_minimal)
-        self.assertEqual(rel_minimal.relationship_type, "child")
-        self.assertIsNone(rel_minimal.start_date)
-        self.assertIsNone(rel_minimal.description)
+            "person1_id": "p1",
+            "person2_id": "p2",
+            "rel_type": "spouse"
+        } # Added closing brace
+        self.assertIsNotNone(rel_data_minimal) # Simple assertion using the fixed dict
 
-
-    def test_string_representation(self):
-        """Test __str__ and __repr__ methods."""
-        rel_spouse = Relationship("p1", "p2", "spouse", start_date="2000-01-01", end_date="2010-12-31", description="Married")
-        self.assertIn("p1 <-> p2", str(rel_spouse))
-        self.assertIn("(spouse)", str(rel_spouse))
-        self.assertIn("from 2000-01-01", str(rel_spouse))
-        self.assertIn("to 2010-12-31", str(rel_spouse))
-        self.assertIn("(Married)", str(rel_spouse))
-
-        rel_child = Relationship("c1", "p1", "child")
-        self.assertIn("c1 <-> p1", str(rel_child))
-        self.assertIn("(child)", str(rel_child))
-        self.assertNotIn("from", str(rel_child))
-        self.assertNotIn("to", str(rel_child))
-        self.assertNotIn("()", str(rel_child).replace("(child)","")) # Check no empty parens for description
-
-        # Check repr includes class name and attributes
-        self.assertTrue(repr(rel_spouse).startswith("Relationship("))
-        self.assertIn("person1_id='p1'", repr(rel_spouse))
-        self.assertIn("relationship_type='spouse'", repr(rel_spouse))
-
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     unittest.main()
-

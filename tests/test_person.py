@@ -102,22 +102,25 @@ class TestPerson(unittest.TestCase):
     def test_get_related_person_ids_by_type(self):
         """Test getting related person IDs based on relationship type."""
         p_spouse_id = str(uuid.uuid4())
-        p_child_id = str(uuid.uuid4())
-        p_parent_id = str(uuid.uuid4())
+        p_child_id = str(uuid.uuid4()) # This person is parent of p_child_id
+        p_parent_id = str(uuid.uuid4()) # This person is child of p_parent_id
 
         rel_spouse = Relationship(self.person.person_id, p_spouse_id, "spouse")
-        rel_child = Relationship(p_child_id, self.person.person_id, "child") # Child is P1, Person is P2
-        rel_parent = Relationship(self.person.person_id, p_parent_id, "parent") # Person is P1, Parent is P2
+        rel_parent = Relationship(self.person.person_id, p_child_id, "parent") # Person is P1 (parent)
+        rel_child = Relationship(self.person.person_id, p_parent_id, "child") # Person is P1 (child)
 
         self.person.add_relationship(rel_spouse)
+        self.person.add_relationship(rel_parent)
         self.person.add_relationship(rel_child)
-        # self.person.add_relationship(rel_parent) # Parent relationship not typically added this way
 
-        self.assertEqual(self.person.get_related_person_ids("spouse"), [p_spouse_id])
-        # Child relationship means the *other* person is the parent
-        self.assertEqual(self.person.get_related_person_ids("child"), [p_parent_id])
-        # Parent relationship means the *other* person is the child
-        # self.assertEqual(self.person.get_related_person_ids("parent"), [p_child_id]) # Depends on how parent rels are stored
+        # Test spouse (symmetric)
+        self.assertCountEqual(self.person.get_related_person_ids("spouse"), [p_spouse_id])
+
+        # Test parent (asymmetric, Person is P1) - should return P2 (child)
+        self.assertCountEqual(self.person.get_related_person_ids("parent"), [p_child_id])
+
+        # Test child (asymmetric, Person is P1) - should return P2 (parent)
+        self.assertCountEqual(self.person.get_related_person_ids("child"), [p_parent_id])
 
 
     def test_get_parents_children_spouses(self):
@@ -128,9 +131,9 @@ class TestPerson(unittest.TestCase):
 
         # Person is spouse of p_spouse_id
         rel_spouse = Relationship(self.person.person_id, p_spouse_id, "spouse")
-        # Person is child of p_parent_id
+        # Person is child of p_parent_id (Person is P1)
         rel_child = Relationship(self.person.person_id, p_parent_id, "child")
-        # Person is parent of p_child_id
+        # Person is parent of p_child_id (Person is P1)
         rel_parent = Relationship(self.person.person_id, p_child_id, "parent")
 
         self.person.add_relationship(rel_spouse)
@@ -138,17 +141,18 @@ class TestPerson(unittest.TestCase):
         self.person.add_relationship(rel_parent)
 
         self.assertEqual(self.person.get_spouses(), [p_spouse_id])
-        self.assertEqual(self.person.get_parents(), [p_parent_id])
-        self.assertEqual(self.person.get_children(), [p_child_id])
+        self.assertEqual(self.person.get_parents(), [p_parent_id]) # Found via 'child' relationship
+        self.assertEqual(self.person.get_children(), [p_child_id]) # Found via 'parent' relationship
 
     def test_get_siblings(self):
         """Test getting siblings (requires mocking family tree)."""
         p_parent1_id = "parent1"
         p_parent2_id = "parent2"
-        p_sibling1_id = "sibling1"
-        p_sibling2_id = "sibling2" # Half sibling
+        p_sibling1_id = "sibling1" # Full sibling
+        p_sibling2_id = "sibling2" # Half sibling (shares parent1)
+        p_unrelated_child_id = "unrelated_child" # Child of parent1 only
 
-        # Setup relationships for self
+        # Setup relationships for self (child of parent1 and parent2)
         rel_self_parent1 = Relationship(self.person.person_id, p_parent1_id, "child")
         rel_self_parent2 = Relationship(self.person.person_id, p_parent2_id, "child")
         self.person.add_relationship(rel_self_parent1)
@@ -158,37 +162,49 @@ class TestPerson(unittest.TestCase):
         mock_parent1 = Person("user", "Parent", "One", person_id=p_parent1_id)
         mock_parent2 = Person("user", "Parent", "Two", person_id=p_parent2_id)
         mock_sibling1 = Person("user", "Sibling", "One", person_id=p_sibling1_id)
-        mock_sibling2 = Person("user", "Sibling", "Two", person_id=p_sibling2_id) # Half sibling
+        mock_sibling2 = Person("user", "Sibling", "Two", person_id=p_sibling2_id)
+        mock_unrelated_child = Person("user", "Unrelated", "Child", person_id=p_unrelated_child_id)
 
-        # Sibling 1 relationships
+        # Sibling 1 relationships (child of parent1 and parent2)
         mock_sibling1.add_relationship(Relationship(p_sibling1_id, p_parent1_id, "child"))
         mock_sibling1.add_relationship(Relationship(p_sibling1_id, p_parent2_id, "child"))
-        # Sibling 2 relationships (only parent 1)
+        # Sibling 2 relationships (child of parent1 only)
         mock_sibling2.add_relationship(Relationship(p_sibling2_id, p_parent1_id, "child"))
+        # Unrelated child relationships (child of parent1 only) - Should be identified as sibling
+        mock_unrelated_child.add_relationship(Relationship(p_unrelated_child_id, p_parent1_id, "child"))
 
-        # Parent relationships (needed for sibling's get_children call)
+        # Parent relationships (needed for parent's get_children call)
+        # Parent 1 is parent of self, sibling1, sibling2, unrelated_child
         mock_parent1.add_relationship(Relationship(p_parent1_id, self.person.person_id, "parent"))
         mock_parent1.add_relationship(Relationship(p_parent1_id, p_sibling1_id, "parent"))
         mock_parent1.add_relationship(Relationship(p_parent1_id, p_sibling2_id, "parent"))
+        mock_parent1.add_relationship(Relationship(p_parent1_id, p_unrelated_child_id, "parent"))
+        # Parent 2 is parent of self, sibling1
         mock_parent2.add_relationship(Relationship(p_parent2_id, self.person.person_id, "parent"))
         mock_parent2.add_relationship(Relationship(p_parent2_id, p_sibling1_id, "parent"))
-
 
         # Configure mock family tree lookup
         def mock_get_person(person_id):
             if person_id == p_parent1_id: return mock_parent1
             if person_id == p_parent2_id: return mock_parent2
-            # No need to return siblings, only parents are looked up
+            # No need to return siblings/children, only parents are looked up by get_siblings
             return None
         self.mock_family_tree.get_person_by_id.side_effect = mock_get_person
 
-        # Assign family tree to mock parents too for get_children call
+        # Assign family tree to mock parents too for get_children call within get_siblings
         mock_parent1.family_tree = self.mock_family_tree
         mock_parent2.family_tree = self.mock_family_tree
 
-
+        # Get siblings for the test person
         siblings = self.person.get_siblings()
-        self.assertCountEqual(siblings, [p_sibling1_id, p_sibling2_id]) # Use assertCountEqual for lists where order doesn't matter
+
+        # Expected siblings are those who share at least one parent (p1 or p2)
+        # self -> p1, p2
+        # sibling1 -> p1, p2 (shares p1 and p2 -> full sibling)
+        # sibling2 -> p1 (shares p1 -> half sibling)
+        # unrelated_child -> p1 (shares p1 -> half sibling)
+        expected_siblings = [p_sibling1_id, p_sibling2_id, p_unrelated_child_id]
+        self.assertCountEqual(siblings, expected_siblings) # Use assertCountEqual for lists where order doesn't matter
 
 
     def test_privacy_settings(self):
@@ -283,9 +299,10 @@ class TestPerson(unittest.TestCase):
 
     def test_string_representation(self):
         """Test __str__ and __repr__ methods."""
+        dob_str = self.person.date_of_birth.strftime('%Y-%m-%d')
         self.assertTrue(self.person.person_id in str(self.person))
         self.assertTrue("Test Person" in str(self.person))
-        self.assertTrue("1990-01-01" in str(self.person))
+        self.assertTrue(dob_str in str(self.person))
 
         self.assertTrue(self.person.person_id in repr(self.person))
         self.assertTrue("Test Person" in repr(self.person))

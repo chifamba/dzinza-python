@@ -1,164 +1,195 @@
 # tests/test_user.py
-import unittest
-from datetime import datetime, timedelta
 
-from src.user import User, VALID_ROLES, TRUST_LEVEL_THRESHOLDS
+import unittest
+from src.user import User, VALID_ROLES
+# Import password functions from the correct module
+from src.encryption import hash_password, check_password
 
 class TestUser(unittest.TestCase):
-    """Test suite for the refactored User class."""
+    """Unit tests for the User class."""
 
     def setUp(self):
-        """Create a default user for tests."""
-        self.user = User("user1", "test@example.com", "hashed_password") # Default role 'basic'
+        """Set up common user data for tests."""
+        # Use the imported hash_password function
+        self.hashed_password = hash_password("password123")
+        self.user_data = {
+            "user_id": "testuser1",
+            "email": "test@example.com",
+            "password_hash": self.hashed_password,
+            "role": "basic",
+            "trust_level": 75,
+            "last_login": "2024-01-01T10:00:00Z" # Example ISO format timestamp
+        }
+        self.user = User(**self.user_data)
 
-    def test_user_initialization(self):
-        """Test attributes after basic initialization."""
-        self.assertEqual(self.user.user_id, "user1")
+    def test_user_creation_minimal(self):
+        """Test creating a user with minimal required fields."""
+        # Assuming user_id, email, password_hash are minimal requirements
+        minimal_user = User("min_user", "min@example.com", hash_password("pass"))
+        self.assertEqual(minimal_user.user_id, "min_user")
+        self.assertEqual(minimal_user.email, "min@example.com")
+        self.assertIsNotNone(minimal_user.password_hash)
+        self.assertEqual(minimal_user.role, "guest") # Check default role
+        self.assertEqual(minimal_user.trust_level, 0) # Check default trust level
+        self.assertIsNone(minimal_user.last_login) # Check default last login
+
+    def test_user_creation_full(self):
+        """Test creating a user with all fields."""
+        self.assertEqual(self.user.user_id, "testuser1")
         self.assertEqual(self.user.email, "test@example.com")
-        self.assertEqual(self.user.password_hash, "hashed_password")
+        self.assertEqual(self.user.password_hash, self.user_data["password_hash"])
         self.assertEqual(self.user.role, "basic")
-        self.assertEqual(self.user.trust_points, 0)
-        self.assertEqual(self.user.family_group_spaces, [])
-        self.assertIsInstance(self.user.last_login, datetime)
-        self.assertIsInstance(self.user.created_at, datetime)
+        self.assertEqual(self.user.trust_level, 75)
+        self.assertEqual(self.user.last_login, "2024-01-01T10:00:00Z")
 
-    def test_initialization_with_role(self):
-        """Test initializing with a specific valid role."""
-        admin_user = User("admin1", "admin@example.com", "hash2", role="administrator")
-        self.assertEqual(admin_user.role, "administrator")
+    def test_user_creation_invalid_role(self):
+        """Test creating a user with an invalid role."""
+        invalid_data = self.user_data.copy()
+        invalid_data["role"] = "invalid_role"
+        with self.assertRaises(ValueError) as cm:
+            User(**invalid_data)
+        self.assertIn("Invalid role", str(cm.exception))
+        self.assertIn("invalid_role", str(cm.exception))
+        self.assertTrue(all(role in str(cm.exception) for role in VALID_ROLES))
 
-    def test_initialization_invalid_role(self):
-        """Test initializing with an invalid role raises ValueError."""
-        with self.assertRaisesRegex(ValueError, "Invalid role"):
-            User("user2", "fail@example.com", "hash3", role="invalid_role")
+    def test_user_creation_invalid_email(self):
+        """Test creating a user with an invalid email format (warning check)."""
+        # User.__post_init__ logs a warning but doesn't raise error by default
+        invalid_data = self.user_data.copy()
+        invalid_data["email"] = "not-an-email"
+        # Expect a warning to be logged (can't easily assert log output here without more setup)
+        user_invalid_email = User(**invalid_data)
+        self.assertEqual(user_invalid_email.email, "not-an-email")
 
-    def test_check_password_placeholder(self):
-        """Test the placeholder password check."""
-        # Assumes placeholder check is simple equality
-        self.assertTrue(self.user.check_password("hashed_password"))
-        self.assertFalse(self.user.check_password("wrong_password"))
-        # NOTE: This test MUST be updated when real hashing is implemented.
+
+    def test_user_representation(self):
+        """Test the string representation (__repr__) of a user."""
+        expected_repr = f"User(user_id='{self.user.user_id}', email='{self.user.email}', role='{self.user.role}')"
+        self.assertEqual(repr(self.user), expected_repr)
+
+    def test_user_to_dict(self):
+        """Test converting a User object to a dictionary."""
+        # Test without hash
+        user_dict_no_hash = self.user.to_dict()
+        self.assertEqual(user_dict_no_hash["user_id"], self.user_data["user_id"])
+        self.assertEqual(user_dict_no_hash["email"], self.user_data["email"])
+        self.assertNotIn("password_hash", user_dict_no_hash) # Verify hash excluded
+
+        # Test with hash
+        user_dict_with_hash = self.user.to_dict(include_hash=True)
+        self.assertEqual(user_dict_with_hash["password_hash"], self.user_data["password_hash"])
+
+
+    def test_user_from_dict(self):
+        """Test creating a User object from a dictionary."""
+        created_user = User.from_dict(self.user_data)
+        self.assertIsInstance(created_user, User)
+        self.assertEqual(created_user.user_id, self.user_data["user_id"])
+        self.assertEqual(created_user.email, self.user_data["email"])
+        self.assertEqual(created_user.password_hash, self.user_data["password_hash"])
+        self.assertEqual(created_user.role, self.user_data["role"])
+        self.assertEqual(created_user.trust_level, self.user_data["trust_level"])
+        self.assertEqual(created_user.last_login, self.user_data["last_login"])
+
+    def test_user_from_dict_missing_keys(self):
+        """Test creating from dict with missing required keys."""
+        minimal_data = {"user_id": "u1", "email": "e@e.com", "password_hash": "h"}
+        try:
+            user = User.from_dict(minimal_data)
+            # Check defaults for optional fields
+            self.assertEqual(user.role, "guest")
+            self.assertEqual(user.trust_level, 0)
+            self.assertIsNone(user.last_login)
+        except KeyError as e:
+            self.fail(f"User.from_dict raised KeyError unexpectedly for optional fields: {e}")
+
+        # Test missing required field (e.g., email)
+        missing_req_data = {"user_id": "u1", "password_hash": "h"}
+        with self.assertRaises(KeyError):
+            User.from_dict(missing_req_data)
 
     def test_update_last_login(self):
-        """Test updating the last login time."""
-        initial_login_time = self.user.last_login
-        # Need to ensure time progresses enough to see a difference
-        import time; time.sleep(0.01)
+        """Test the update_last_login method."""
         self.user.update_last_login()
-        self.assertGreater(self.user.last_login, initial_login_time)
+        self.assertIsNotNone(self.user.last_login)
+        # Check if it's a recent timestamp (this is tricky, check format or approximate time)
+        # For simplicity, just check it's not the old value or None
+        self.assertNotEqual(self.user.last_login, "2024-01-01T10:00:00Z")
+        # Could also parse the date and check if it's close to datetime.now()
 
-    def test_set_role(self):
-        """Test setting a valid role."""
-        self.user.set_role("trusted")
-        self.assertEqual(self.user.role, "trusted")
-        self.user.set_role("administrator")
+    def test_change_role(self):
+        """Test changing the user's role."""
+        self.assertTrue(self.user.change_role("administrator"))
         self.assertEqual(self.user.role, "administrator")
 
-    def test_set_invalid_role(self):
-        """Test setting an invalid role raises ValueError."""
-        with self.assertRaisesRegex(ValueError, "Invalid role"):
-            self.user.set_role("super_admin")
+        # Test changing to an invalid role
+        self.assertFalse(self.user.change_role("super_admin"))
+        self.assertEqual(self.user.role, "administrator") # Role should not have changed
 
-    def test_add_trust_points(self):
-        """Test adding trust points."""
-        self.user.add_trust_points(50)
-        self.assertEqual(self.user.trust_points, 50)
-        self.user.add_trust_points(75)
-        self.assertEqual(self.user.trust_points, 125)
+        # Test changing to the same role
+        self.assertTrue(self.user.change_role("administrator")) # Should succeed
+        self.assertEqual(self.user.role, "administrator")
 
-    def test_add_negative_trust_points(self):
-        """Test adding negative trust points raises ValueError."""
-        with self.assertRaisesRegex(ValueError, "non-negative number"):
-            self.user.add_trust_points(-10)
+    def test_adjust_trust(self):
+        """Test adjusting the user's trust level."""
+        initial_trust = self.user.trust_level # 75
 
-    def test_remove_trust_points(self):
-        """Test removing trust points."""
-        self.user.add_trust_points(100)
-        self.user.remove_trust_points(30)
-        self.assertEqual(self.user.trust_points, 70)
+        # Increase trust
+        self.user.adjust_trust(10)
+        self.assertEqual(self.user.trust_level, 85)
 
-    def test_remove_more_trust_points_than_available(self):
-        """Test removing more points than available results in zero points."""
-        self.user.add_trust_points(50)
-        self.user.remove_trust_points(100)
-        self.assertEqual(self.user.trust_points, 0) # Should not go below zero
+        # Decrease trust
+        self.user.adjust_trust(-20)
+        self.assertEqual(self.user.trust_level, 65)
 
-    def test_remove_negative_trust_points(self):
-        """Test removing negative trust points raises ValueError."""
-        with self.assertRaisesRegex(ValueError, "non-negative number"):
-            self.user.remove_trust_points(-10)
+        # Test clamping at max (assuming 100)
+        self.user.adjust_trust(50)
+        self.assertEqual(self.user.trust_level, 100)
 
-    def test_get_trust_level(self):
-        """Test calculating trust level based on points."""
-        self.assertEqual(self.user.get_trust_level(), 1) # 0 points
-        self.user.add_trust_points(TRUST_LEVEL_THRESHOLDS[2] - 1) # 99 points
-        self.assertEqual(self.user.get_trust_level(), 1)
-        self.user.add_trust_points(1) # 100 points
-        self.assertEqual(self.user.get_trust_level(), 2)
-        self.user.add_trust_points(TRUST_LEVEL_THRESHOLDS[4] - TRUST_LEVEL_THRESHOLDS[2]) # 300 points total
-        self.assertEqual(self.user.get_trust_level(), 4)
-        self.user.add_trust_points(TRUST_LEVEL_THRESHOLDS[5] - TRUST_LEVEL_THRESHOLDS[4]) # 400 points total
-        self.assertEqual(self.user.get_trust_level(), 5)
-        self.user.add_trust_points(1000) # Way above max threshold
-        self.assertEqual(self.user.get_trust_level(), 5)
+        # Test clamping at min (assuming 0)
+        self.user.trust_level = 10 # Reset for min test
+        self.user.adjust_trust(-30)
+        self.assertEqual(self.user.trust_level, 0)
 
-    def test_add_remove_family_group(self):
-        """Test adding and removing family group IDs."""
-        group1 = "fg_123"
-        group2 = "fg_456"
-        self.user.add_family_group(group1)
-        self.assertIn(group1, self.user.family_group_spaces)
-        self.assertEqual(len(self.user.family_group_spaces), 1)
+    def test_password_hashing_and_checking(self):
+        """Test the password hashing and checking functions (imported)."""
+        password = "complex_password!@#"
+        # Use imported hash_password
+        hashed = hash_password(password)
 
-        # Add same group again (should have no effect)
-        self.user.add_family_group(group1)
-        self.assertEqual(len(self.user.family_group_spaces), 1)
+        self.assertIsNotNone(hashed)
+        self.assertNotEqual(password, hashed) # Hash should not be the same as password
 
-        self.user.add_family_group(group2)
-        self.assertCountEqual(self.user.family_group_spaces, [group1, group2])
+        # Use imported check_password
+        # Check correct password
+        self.assertTrue(check_password(hashed, password))
 
-        self.user.remove_family_group(group1)
-        self.assertEqual(self.user.family_group_spaces, [group2])
+        # Check incorrect password
+        self.assertFalse(check_password(hashed, "wrong_password"))
 
-        # Remove non-existent group
-        with self.assertRaisesRegex(ValueError, "not in family group"):
-            self.user.remove_family_group("non_existent_group")
+        # Check against different hash
+        different_hash = hash_password("another_password")
+        self.assertFalse(check_password(different_hash, password))
 
-    def test_is_inactive(self):
-        """Test the inactivity check."""
-        self.assertFalse(self.user.is_inactive(30)) # Just created, should be active
-
-        # Manually set last_login to the past
-        self.user.last_login = datetime.now() - timedelta(days=31)
-        self.assertTrue(self.user.is_inactive(30))
-        self.assertFalse(self.user.is_inactive(35)) # Still active within 35 days
-
-        self.user.last_login = datetime.now() - timedelta(days=10)
-        self.assertFalse(self.user.is_inactive(30))
-
-    def test_string_representation(self):
-        """Test __str__ and __repr__ methods."""
-        self.assertIn("user1", str(self.user))
-        self.assertIn("test@example.com", str(self.user))
-        self.assertIn("role=basic", str(self.user))
-        self.assertIn("trust_pts=0", str(self.user))
-
-        self.assertTrue(repr(self.user).startswith("<User user1"))
-        self.assertIn("test@example.com", repr(self.user))
 
     def test_equality_and_hash(self):
         """Test equality and hashing based on user_id."""
-        user_copy = User("user1", "diff@example.com", "hash_copy", role="admin") # Same ID
-        user_diff = User("user2", "test@example.com", "hashed_password") # Diff ID
+        user1 = User("user1", "test1@example.com", "hash1", role="basic")
+        # Use the correct role 'administrator' instead of 'admin'
+        user_copy = User("user1", "diff@example.com", "hash_copy", role="administrator") # Same ID
+        user_different_id = User("user2", "test1@example.com", "hash1", role="basic") # Different ID
 
-        self.assertEqual(self.user, user_copy)
-        self.assertEqual(hash(self.user), hash(user_copy))
+        # Test equality (should be based on user_id)
+        self.assertEqual(user1, user_copy)
+        self.assertNotEqual(user1, user_different_id)
 
-        self.assertNotEqual(self.user, user_diff)
-        self.assertNotEqual(hash(self.user), hash(user_diff))
+        # Test hash (should be based on user_id)
+        self.assertEqual(hash(user1), hash(user_copy))
+        self.assertNotEqual(hash(user1), hash(user_different_id))
 
-        self.assertNotEqual(self.user, "not a user")
-
+        # Test comparison with other types
+        self.assertNotEqual(user1, "user1")
+        self.assertNotEqual(user1, None)
 
 if __name__ == '__main__':
     unittest.main()

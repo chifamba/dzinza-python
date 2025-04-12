@@ -1,166 +1,125 @@
 # src/relationship.py
-from datetime import datetime
+
 from typing import Optional, Dict, Any
+from dataclasses import dataclass, field
+import logging
 
-# Define allowed relationship types (can be expanded)
-RELATIONSHIP_TYPES = [
-    "parent",      # Person 1 is the parent of Person 2
-    "child",       # Person 1 is the child of Person 2
-    "spouse",      # Persons 1 and 2 are spouses/partners
-    "sibling",     # Persons 1 and 2 are siblings (consider adding half/step later)
-    "adopted_child", # Person 1 is adopted child of Person 2
-    "adoptive_parent", # Person 1 is adoptive parent of Person 2
-    "guardian",    # Person 1 is guardian of Person 2
-    "ward",        # Person 1 is ward of Person 2
-    "godparent",   # Person 1 is godparent of Person 2
-    "godchild",    # Person 1 is godchild of Person 2
-    "friend",      # Generic friendship
-    "other"        # For custom or undefined relationships
-]
+# Define known relationship types and their reciprocals
+# Use lowercase for consistency
+RELATIONSHIP_MAP = {
+    "spouse": "spouse",
+    "parent": "child",
+    "child": "parent",
+    "sibling": "sibling",
+    "grandparent": "grandchild",
+    "grandchild": "grandparent",
+    "aunt": "nephew/niece", # Consider gendered reciprocals or use neutral?
+    "uncle": "nephew/niece",
+    "nephew": "aunt/uncle",
+    "niece": "aunt/uncle",
+    "cousin": "cousin",
+    "step-parent": "step-child",
+    "step-child": "step-parent",
+    "step-sibling": "step-sibling",
+    "adopted child": "adoptive parent", # Use specific terms
+    "adoptive parent": "adopted child",
+    "godparent": "godchild",
+    "godchild": "godparent",
+    "friend": "friend", # Example non-familial
+    "partner": "partner", # Gender-neutral alternative to spouse
+    "divorced": "divorced", # State rather than relationship type? Or use attributes.
+    # Add more as needed
+}
 
+# Generate a list of valid types from the map keys
+VALID_RELATIONSHIP_TYPES = list(RELATIONSHIP_MAP.keys())
+
+def get_reciprocal_relationship(rel_type: str) -> str:
+    """
+    Determines the reciprocal relationship type.
+
+    Args:
+        rel_type: The relationship type (e.g., 'parent', 'spouse'). Case-insensitive.
+
+    Returns:
+        The reciprocal relationship type (e.g., 'child', 'spouse'), or the original
+        type if no specific reciprocal is defined.
+    """
+    rel_type_lower = rel_type.lower()
+    # Direct lookup
+    if rel_type_lower in RELATIONSHIP_MAP:
+        return RELATIONSHIP_MAP[rel_type_lower]
+
+    # Check if it's a value (reciprocal) in the map
+    for key, value in RELATIONSHIP_MAP.items():
+        if rel_type_lower == value:
+            # Find the corresponding key(s)
+            reciprocal_keys = [k for k, v in RELATIONSHIP_MAP.items() if v == rel_type_lower]
+            if reciprocal_keys:
+                # If multiple keys map to this value (like aunt/uncle -> nephew/niece),
+                # returning the first one found or a combined string might be options.
+                # Returning the first found key for simplicity here.
+                # Consider refining this logic based on desired behavior for ambiguous cases.
+                return reciprocal_keys[0]
+
+    # Default: return the original type if no reciprocal mapping found
+    logging.debug(f"No specific reciprocal found for relationship type '{rel_type}'. Returning original.")
+    return rel_type # Return original type if not found
+
+
+@dataclass
 class Relationship:
     """
-    Represents a relationship between two individuals.
-
-    Attributes:
-        person1_id (str): The ID of the first person in the relationship.
-        person2_id (str): The ID of the second person in the relationship.
-        relationship_type (str): The type of relationship (e.g., 'parent', 'spouse').
-        start_date (Optional[datetime]): The start date of the relationship.
-        end_date (Optional[datetime]): The end date of the relationship.
-        description (Optional[str]): Additional details about the relationship.
+    Represents a relationship between two individuals in the family tree.
+    Stores the relationship from the perspective of person1.
     """
-    def __init__(self,
-                 person1_id: str,
-                 person2_id: str,
-                 relationship_type: str,
-                 start_date: Optional[str] = None, # Accept string
-                 end_date: Optional[str] = None,   # Accept string
-                 description: Optional[str] = None):
+    person1_id: str
+    person2_id: str
+    rel_type: str # Type of relationship from person1 to person2 (e.g., 'parent', 'spouse')
+    attributes: Optional[Dict[str, Any]] = field(default_factory=dict) # e.g., start_date, end_date, location, notes
 
-        if person1_id == person2_id:
-             raise ValueError("Cannot create a relationship between a person and themselves.")
+    def __post_init__(self):
+        # Optional: Validate rel_type against known types?
+        # if self.rel_type.lower() not in VALID_RELATIONSHIP_TYPES:
+        #     logging.warning(f"Relationship created with potentially invalid type: '{self.rel_type}'")
+        # Ensure attributes is a dict
+        if self.attributes is None:
+            self.attributes = {}
 
-        self.person1_id = person1_id
-        self.person2_id = person2_id
+    def __repr__(self) -> str:
+        """Provides a developer-friendly string representation."""
+        return f"Relationship: {self.person1_id} -> {self.person2_id} ({self.rel_type})"
 
-        if relationship_type not in RELATIONSHIP_TYPES:
-            # Option: Allow any string, or raise error for strictness
-            print(f"Warning: Relationship type '{relationship_type}' is not standard. Allowed types: {RELATIONSHIP_TYPES}")
-            # raise ValueError(f"Invalid relationship type: {relationship_type}. Allowed: {RELATIONSHIP_TYPES}")
-        self.relationship_type = relationship_type
-
-        self.start_date = self._parse_date(start_date)
-        self.end_date = self._parse_date(end_date)
-        self.description = description
-
-    def _parse_date(self, date_str: Optional[str]) -> Optional[datetime]:
-        """Helper to parse date strings into datetime objects."""
-        if not date_str:
-            return None
-        try:
-            return datetime.fromisoformat(date_str.replace(' ', 'T'))
-        except ValueError:
-            try:
-                return datetime.strptime(date_str, "%Y-%m-%d")
-            except ValueError:
-                 print(f"Warning: Could not parse date string: {date_str}")
-                 return None
-
-    def involves_person(self, person_id: str) -> bool:
-        """Checks if the given person ID is part of this relationship."""
-        return self.person1_id == person_id or self.person2_id == person_id
-
-    def get_other_person(self, person_id: str) -> Optional[str]:
-        """Given one person ID in the relationship, returns the other."""
-        if self.person1_id == person_id:
-            return self.person2_id
-        elif self.person2_id == person_id:
-            return self.person1_id
-        else:
-            return None # Person not involved in this relationship
+    def __eq__(self, other: object) -> bool:
+        """Checks equality based on persons involved, type, and attributes."""
+        if not isinstance(other, Relationship):
+            return NotImplemented
+        return (self.person1_id == other.person1_id and
+                self.person2_id == other.person2_id and
+                self.rel_type == other.rel_type and
+                self.attributes == other.attributes) # Compare attributes too
 
     def to_dict(self) -> Dict[str, Any]:
-         """Returns a dictionary representation of the relationship."""
-         return {
-             "person1_id": self.person1_id,
-             "person2_id": self.person2_id,
-             "relationship_type": self.relationship_type,
-             "start_date": self.start_date.isoformat() if self.start_date else None,
-             "end_date": self.end_date.isoformat() if self.end_date else None,
-             "description": self.description,
-         }
+        """Converts the Relationship object to a dictionary."""
+        return {
+            "person1_id": self.person1_id,
+            "person2_id": self.person2_id,
+            "rel_type": self.rel_type, # Changed 'type' to 'rel_type' for consistency
+            "attributes": self.attributes
+        }
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'Relationship':
-         """Creates a Relationship object from a dictionary."""
-         return cls(
-             person1_id=data["person1_id"],
-             person2_id=data["person2_id"],
-             relationship_type=data["relationship_type"],
-             start_date=data.get("start_date"), # Pass string directly
-             end_date=data.get("end_date"),     # Pass string directly
-             description=data.get("description"),
-         )
+        """Creates a Relationship object from a dictionary."""
+        # Handle potential variations in key names ('type' vs 'rel_type')
+        rel_type = data.get('rel_type', data.get('type'))
+        if rel_type is None:
+             raise KeyError("Relationship data must include 'rel_type' or 'type'.")
 
-    def __eq__(self, other: object) -> bool:
-        """
-        Equality check based on the persons involved and relationship type.
-        Order of person1_id and person2_id doesn't matter for equality check
-        if the relationship type is symmetrical (like spouse, sibling).
-        """
-        if not isinstance(other, Relationship):
-            return NotImplemented
-
-        # Check basic type and description first
-        if self.relationship_type != other.relationship_type or \
-           self.start_date != other.start_date or \
-           self.end_date != other.end_date or \
-           self.description != other.description:
-            return False
-
-        # Check person IDs, considering symmetrical relationships
-        symmetric_types = ["spouse", "sibling", "friend"] # Add others if needed
-        if self.relationship_type in symmetric_types:
-            return {self.person1_id, self.person2_id} == {other.person1_id, other.person2_id}
-        else: # Asymmetrical (parent/child, guardian/ward) - order matters
-            return (self.person1_id == other.person1_id and
-                    self.person2_id == other.person2_id)
-
-    def __hash__(self) -> int:
-        """
-        Hash calculation consistent with __eq__.
-        Uses frozenset for person IDs in symmetrical relationships.
-        """
-        symmetric_types = ["spouse", "sibling", "friend"]
-        if self.relationship_type in symmetric_types:
-            person_ids_tuple = tuple(sorted({self.person1_id, self.person2_id}))
-        else:
-            person_ids_tuple = (self.person1_id, self.person2_id)
-
-        return hash((
-            person_ids_tuple,
-            self.relationship_type,
-            self.start_date,
-            self.end_date,
-            self.description
-        ))
-
-    def __str__(self) -> str:
-        """User-friendly string representation."""
-        date_info = ""
-        if self.start_date:
-            date_info += f" from {self.start_date.strftime('%Y-%m-%d')}"
-        if self.end_date:
-            date_info += f" to {self.end_date.strftime('%Y-%m-%d')}"
-        desc = f" ({self.description})" if self.description else ""
-
-        return (f"Relationship: {self.person1_id} <-> {self.person2_id} "
-                f"({self.relationship_type}){date_info}{desc}")
-
-    def __repr__(self) -> str:
-        """Detailed representation for debugging."""
-        return (f"Relationship(person1_id='{self.person1_id}', person2_id='{self.person2_id}', "
-                f"relationship_type='{self.relationship_type}', start_date={self.start_date}, "
-                f"end_date={self.end_date}, description='{self.description}')")
+        return cls(
+            person1_id=data['person1_id'], # Let KeyError raise if missing
+            person2_id=data['person2_id'], # Let KeyError raise if missing
+            rel_type=rel_type,
+            attributes=data.get('attributes') # Defaults to None if missing, handled by __post_init__
+        )
 

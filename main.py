@@ -1,245 +1,152 @@
 # main.py
-import os # Import os for file operations
+
+import logging
+import os # Import the os module
 from src.family_tree import FamilyTree
 from src.person import Person
 from src.relationship import Relationship
-from src.user_management import UserManager, User # Import User class
-from src.user_interface import (
-    FamilyGroupView,
-    PersonDetailView,
-    RelationshipView,
-    UserProfileView, # Import UserProfileView
-)
-# Import placeholder classes
-from src.audit_log import AuditLog
-from src.encryption import DataEncryptor
+# Import the concrete implementation, not the abstract class for instantiation
+from src.audit_log import SimpleAuditLog, PlaceholderAuditLog
+from src.encryption import PlaceholderDataEncryptor # Or your actual encryptor
+from src.user_management import UserManager
+from src.user import User
+# Import UI components if you intend to use them directly here
+# from src.user_interface import ...
 
-# --- Setup ---
-# Initialize placeholder components
-audit_log = AuditLog()
-# encryption_key = "a-very-secret-key-keep-safe!" # !! IMPORTANT: Manage keys securely !! Not used by placeholder.
-# data_encryptor = DataEncryptor() # Placeholder
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Initialize core managers
-user_manager = UserManager(audit_log=audit_log)
-family_tree = FamilyTree(
-    audit_log=audit_log,
-    # data_encryptor=data_encryptor, # Pass real encryptor when implemented
-    # encryption_key=encryption_key   # Pass real key when implemented
-)
+def main():
+    """Main function to run the family tree application."""
+    logging.info("Starting Dzinza Family Tree application.")
 
-print("--- Dzinza Family Tree Application ---")
+    # --- Initialize Core Components ---
+    # Instantiate a concrete AuditLog implementation
+    # audit_log = PlaceholderAuditLog() # Use this if no logging needed
+    audit_log = SimpleAuditLog()      # Use this for simple in-memory logging
+    encryptor = PlaceholderDataEncryptor() # Use a real encryptor in production
+    user_manager = UserManager(audit_log=audit_log, encryptor=encryptor)
+    family_tree = FamilyTree(audit_log=audit_log, encryptor=encryptor)
 
-# --- User Management Examples ---
-print("\n--- Testing User Management ---")
-try:
-    guest_user = user_manager.create_user("guest01", "guest@example.com", "password", role="guest")
-    normal_user = user_manager.create_user("user01", "user@example.com", "password123") # Default role 'basic'
-    admin_user = user_manager.create_user("admin01", "admin@example.com", "adminpass", role="administrator")
-    print(f"Users created: {guest_user}, {normal_user}, {admin_user}")
+    # --- Define Data Paths ---
+    # It's good practice to define paths early
+    data_dir = "data"
+    user_file = os.path.join(data_dir, "users.json")
+    tree_file = os.path.join(data_dir, "family_tree.json")
 
-    # Test login
-    validated_user = user_manager.validate_user_credentials("user@example.com", "password123")
-    if validated_user:
-        print(f"Login successful for: {validated_user.user_id}")
-    else:
-        print("Login failed for user@example.com")
-
-    validated_user_fail = user_manager.validate_user_credentials("user@example.com", "wrongpassword")
-    if not validated_user_fail:
-        print("Login correctly failed for wrong password.")
-
-    # Test update
-    user_manager.update_user("user01", new_email="user_new@example.com", new_password="newpass", new_role="trusted", acting_user_id=admin_user.user_id)
-    updated_user = user_manager.get_user("user01")
-    print(f"User updated: {updated_user}")
-    if updated_user and updated_user.email == "user_new@example.com" and updated_user.role == "trusted":
-         # Check password (using placeholder check)
-         if user_manager.validate_user_credentials("user_new@example.com", "newpass"):
-              print("User update verified (including password).")
-         else:
-              print("User update verification failed (password check).")
-
-
-    # Test trust points
-    user_manager.add_trust_points("user01", 150, "Verified 5 records", admin_user.user_id)
-    print(f"User {updated_user.user_id} trust level: {updated_user.get_trust_level()}") # Should be level 2 or 3
-
-    # Test UserProfileView
-    profile_view = UserProfileView(target_user=updated_user, requesting_user=admin_user)
-    profile_view.display_profile()
-
-
-except ValueError as e:
-    print(f"Error during user management setup: {e}")
-except Exception as e:
-     print(f"Unexpected error during user management setup: {e}")
-
-
-# --- Family Tree Examples ---
-print("\n--- Testing Family Tree ---")
-
-# Define sample file paths (ensure these files exist or comment out related tests)
-json_file_path_import = "test_data/sample_family.json"
-json_file_path_export = "test_data/exported_family.json"
-gedcom_file_path = "test_data/sample.ged" # Example path
-
-# Create output directory if it doesn't exist
-os.makedirs("test_data", exist_ok=True)
-
-# Create a dummy JSON file for import testing if it doesn't exist
-if not os.path.exists(json_file_path_import):
-     print(f"Creating dummy import file: {json_file_path_import}")
-     dummy_data = {
-         "persons": [
-             {"person_id": "p1", "creator_user_id": "system", "first_name": "John", "last_name": "Doe", "date_of_birth": "1970-01-01", "place_of_birth": "City A"},
-             {"person_id": "p2", "creator_user_id": "system", "first_name": "Jane", "last_name": "Smith", "date_of_birth": "1975-05-10", "place_of_birth": "City B", "gender": "F"}
-         ],
-         "relationships": [
-             {"person1_id": "p1", "person2_id": "p2", "relationship_type": "spouse", "start_date": "1998-06-15"}
-         ]
-     }
-     try:
-         with open(json_file_path_import, 'w') as f:
-             json.dump(dummy_data, f, indent=4)
-     except IOError as e:
-         print(f"Error creating dummy JSON file: {e}")
-
-
-# Test Import (JSON)
-print(f"\nTesting import from {json_file_path_import}...")
-try:
-    # Create a new tree instance for import test
-    imported_tree = FamilyTree(audit_log=audit_log) # Pass components
-    imported_tree.import_file(json_file_path_import, user_id=admin_user.user_id)
-    print("JSON file imported successfully.")
-    # Display imported tree
-    imported_tree.display_tree(start_person_id="p1") # Display starting from p1 if it exists
-    # Assign to main tree variable if import is the primary way to load
-    # family_tree = imported_tree
-except (FileNotFoundError, ValueError, Exception) as e:
-    print(f"Error importing JSON: {e}")
-
-# --- Manual Person/Relationship Creation (if not importing) ---
-print("\nTesting manual creation...")
-try:
-    # Use the main family_tree instance
-    # Create persons (ensure IDs are unique if not importing)
-    person1 = Person(creator_user_id=normal_user.user_id, person_id="person001", first_name="Alice", last_name="Johnson", date_of_birth="1980-03-15")
-    person2 = Person(creator_user_id=normal_user.user_id, person_id="person002", first_name="Bob", last_name="Williams", date_of_birth="1978-11-20")
-    person3 = Person(creator_user_id=normal_user.user_id, person_id="person003", first_name="Charlie", last_name="Johnson", date_of_birth="2005-07-01")
-    person4 = Person(creator_user_id=normal_user.user_id, person_id="person004", first_name="Diana", last_name="Williams", date_of_birth="2008-09-22")
-
-    # Add persons to the tree
-    family_tree.add_person(person1, user_id=normal_user.user_id)
-    family_tree.add_person(person2, user_id=normal_user.user_id)
-    family_tree.add_person(person3, user_id=normal_user.user_id)
-    family_tree.add_person(person4, user_id=normal_user.user_id)
-    print(f"Manually added {len(family_tree.person_nodes)} persons.")
-
-    # Create and link relationships
-    rel_spouse = Relationship(person1.person_id, person2.person_id, "spouse", start_date="2003-05-10")
-    rel_parent1_c1 = Relationship(person1.person_id, person3.person_id, "parent") # Alice is parent of Charlie
-    rel_child1_p1 = Relationship(person3.person_id, person1.person_id, "child")   # Charlie is child of Alice
-    rel_parent2_c1 = Relationship(person2.person_id, person3.person_id, "parent") # Bob is parent of Charlie
-    rel_child1_p2 = Relationship(person3.person_id, person2.person_id, "child")   # Charlie is child of Bob
-
-    rel_parent1_c2 = Relationship(person1.person_id, person4.person_id, "parent") # Alice is parent of Diana
-    rel_child2_p1 = Relationship(person4.person_id, person1.person_id, "child")   # Diana is child of Alice
-    rel_parent2_c2 = Relationship(person2.person_id, person4.person_id, "parent") # Bob is parent of Diana
-    rel_child2_p2 = Relationship(person4.person_id, person2.person_id, "child")   # Diana is child of Bob
-
-
-    family_tree.link_persons(rel_spouse, user_id=normal_user.user_id)
-    family_tree.link_persons(rel_parent1_c1, user_id=normal_user.user_id)
-    family_tree.link_persons(rel_child1_p1, user_id=normal_user.user_id)
-    family_tree.link_persons(rel_parent2_c1, user_id=normal_user.user_id)
-    family_tree.link_persons(rel_child1_p2, user_id=normal_user.user_id)
-    family_tree.link_persons(rel_parent1_c2, user_id=normal_user.user_id)
-    family_tree.link_persons(rel_child2_p1, user_id=normal_user.user_id)
-    family_tree.link_persons(rel_parent2_c2, user_id=normal_user.user_id)
-    family_tree.link_persons(rel_child2_p2, user_id=normal_user.user_id)
-
-
-    print("Relationships linked.")
-
-    # Display the manually created tree
-    family_tree.display_tree(start_person_id=person1.person_id)
-
-    # Test relationship consistency check
-    print("\nChecking relationship consistency...")
-    consistency_errors = family_tree.check_all_relationship_consistency(admin_user.user_id)
-    if not consistency_errors:
-        print("Consistency check passed.")
-    else:
-        print("Consistency issues found:")
-        for pid, errors in consistency_errors.items():
-            print(f"  Person {pid}: {errors}")
-
-    # Test Views
-    print("\nTesting Views...")
-    p1_detail_view = PersonDetailView(person1)
-    p1_detail_view.display_person_details()
-
-    rel_view = RelationshipView(rel_spouse, family_tree) # Pass tree to show names
-    rel_view.display_relationship()
-
-    group_view = FamilyGroupView(family_tree)
-    group_view.display_family_group([person1.person_id, person2.person_id, person3.person_id])
-
-    # Test Search
-    print("\nTesting Search...")
-    search_results = family_tree.search_person("Johnson", fields=["names"])
-    print(f"Search results for 'Johnson': {[p.person_id for p in search_results]}")
-    search_results_date = family_tree.search_person("1978", fields=["date_of_birth"])
-    print(f"Search results for '1978' in DOB: {[p.person_id for p in search_results_date]}")
-
-
-    # Test Export (JSON)
-    print(f"\nTesting export to {json_file_path_export}...")
+    # --- Ensure Data Directory Exists ---
+    # Create the data directory early if it doesn't exist
     try:
-        family_tree.export_file(json_file_path_export, user_id=admin_user.user_id)
-        print("Export to JSON successful.")
-        # Add check: try importing the exported file
-        print(f"Attempting to re-import exported file: {json_file_path_export}")
-        reimported_tree = FamilyTree(audit_log=audit_log)
-        reimported_tree.import_file(json_file_path_export, user_id="system-reimport")
-        print("Re-import successful.")
-        if len(reimported_tree.person_nodes) == len(family_tree.person_nodes):
-             print("Re-imported tree has the correct number of persons.")
-        else:
-             print("Warning: Re-imported tree person count mismatch.")
+        os.makedirs(data_dir, exist_ok=True)
+        logging.info(f"Ensured data directory exists: {data_dir}")
+    except OSError as e:
+        logging.error(f"Could not create data directory '{data_dir}': {e}")
+        # Decide how to handle this - maybe exit or run without persistence?
+        print(f"Error: Could not create data directory '{data_dir}'. Exiting.")
+        return # Exit if data directory cannot be created
+
+    # --- Load Data (Optional) ---
+    # Example: Load users if file exists
+    try:
+        if not user_manager.load_users(user_file, actor_user_id="system"):
+             logging.info(f"User file '{user_file}' not found or empty. Starting with no users.")
+             # Add a default admin user if none loaded?
+             # from src.encryption import hash_password # Import only if needed here
+             # default_admin_hash = hash_password("admin123")
+             # user_manager.add_user(User(user_id="admin", email="admin@example.com", password_hash=default_admin_hash, role="administrator"))
+    except Exception as e:
+         # Catch specific exceptions if possible (IOError, JSONDecodeError, etc.)
+         logging.error(f"Failed to load users from {user_file}: {e}")
 
 
-    except (ValueError, IOError, Exception) as e:
-        print(f"Error exporting JSON: {e}")
+    # Example: Load family tree data if file exists
+    try:
+        # import_file handles FileNotFoundError internally and logs it
+        family_tree.import_file(tree_file, user="system")
+    except ValueError as e: # Catch specific errors from import_file if needed
+         logging.error(f"Error importing family tree data from {tree_file}: {e}")
+    except Exception as e:
+        # Catch any other unexpected errors during import
+        logging.error(f"Unexpected error loading family tree data from {tree_file}: {e}")
 
-    # Test Export (GEDCOM - if library available)
-    if family_tree.GEDCOM_AVAILABLE:
-         gedcom_export_path = "test_data/exported_family.ged"
-         print(f"\nTesting export to {gedcom_export_path}...")
-         try:
-             family_tree.export_file(gedcom_export_path, user_id=admin_user.user_id)
-             print("Export to GEDCOM successful.")
-         except (ValueError, IOError, ImportError, Exception) as e:
-              print(f"Error exporting GEDCOM: {e}")
+
+    # --- Application Logic / User Interaction ---
+    # This is where you would integrate your command-line interface,
+    # web server (like Flask/Django), or GUI (like Tkinter/PyQt).
+
+    print("\n--- Welcome to Dzinza Family Tree ---")
+
+    # Example: Add some data if the tree is empty and no file was loaded
+    if not family_tree.persons and not os.path.exists(tree_file):
+        logging.info("Family tree is empty and no data file found. Adding sample data.")
+        p1 = Person(person_id="p1", first_name="Alice", last_name="Alpha", birth_date="1980-05-15")
+        p2 = Person(person_id="p2", first_name="Bob", last_name="Beta", birth_date="1978-11-20")
+        p3 = Person(person_id="p3", first_name="Charlie", last_name="Alpha", birth_date="2005-01-30") # Child of A & B
+
+        family_tree.add_person(p1, user="system_setup")
+        family_tree.add_person(p2, user="system_setup")
+        family_tree.add_person(p3, user="system_setup")
+
+        family_tree.add_relationship("p1", "p2", "spouse", user="system_setup")
+        family_tree.add_relationship("p3", "p1", "child", user="system_setup") # p3 is child of p1
+        # Reciprocal (parent) is added automatically by add_relationship
+
+        print("Added sample persons: Alice, Bob, Charlie.")
+        print("Added relationships: Alice-Bob (spouse), Charlie-Alice (child).")
+
+
+    # Example: Display some information
+    print("\n--- Current Persons ---")
+    if family_tree.persons:
+        for person_id, person in family_tree.persons.items():
+            print(f"- {person.get_full_name()} (ID: {person_id}, Age: {person.get_age()})")
     else:
-         print("\nSkipping GEDCOM export test (library not available).")
+        print("- No persons in the tree.")
+
+    print("\n--- Relationships for Alice (p1) ---")
+    alice = family_tree.get_person("p1")
+    if alice:
+        alice_rels = family_tree.get_relationships("p1")
+        if alice_rels:
+            for rel in alice_rels:
+                related_person = family_tree.get_person(rel.person2_id)
+                related_name = related_person.get_full_name() if related_person else "Unknown"
+                print(f"- {rel.rel_type.capitalize()} of {related_name} (ID: {rel.person2_id})")
+        else:
+            print(f"- {alice.get_full_name()} has no relationships recorded.")
+    else:
+         print("- Person p1 (Alice) not found.")
 
 
-except ValueError as e:
-    print(f"Error during family tree setup: {e}")
-except Exception as e:
-     print(f"Unexpected error during family tree setup: {e}")
+    # --- Placeholder for interactive loop or server start ---
+    # while True:
+    #     command = input("Enter command (e.g., add_person, show_tree, exit): ")
+    #     if command == "exit":
+    #         break
+    #     # Process command using UserInterface or directly call manager/tree methods
+    #     pass
 
 
-# --- Final Audit Log ---
-print("\n--- Final Audit Log Entries ---")
-all_logs = audit_log.get_log_entries()
-if all_logs:
-    for log in all_logs[-10:]: # Print last 10 entries
-        print(f"- {log['timestamp'].strftime('%H:%M:%S')} | User: {log['user_id']} | Event: {log['event_type']} | Desc: {log['description']}")
-else:
-    print("(No audit log entries)")
+    # --- Save Data Before Exiting (Optional) ---
+    # Directory creation is now handled earlier
 
-print("\n--- Application Finished ---")
+    logging.info("Attempting to save data...")
+    if user_manager.save_users(user_file, actor_user_id="system_shutdown"):
+        logging.info(f"User data saved to {user_file}")
+    else:
+        # save_users logs errors internally
+        logging.error(f"Saving user data to {user_file} failed (see previous logs).")
+
+    try:
+        family_tree.export_file(tree_file, user="system_shutdown")
+        logging.info(f"Family tree data saved to {tree_file}")
+    except Exception as e:
+         # export_file logs errors internally, but we can log failure here too
+         logging.error(f"Saving family tree data to {tree_file} failed: {e}")
+
+
+    logging.info("Dzinza Family Tree application finished.")
+    print("\nApplication finished.")
+
+if __name__ == "__main__":
+    main()

@@ -1,74 +1,84 @@
 # src/audit_log.py
+
+import logging
 from datetime import datetime
-from typing import List, Dict, Optional
+import abc # Abstract Base Classes
 
-class AuditLog:
-    """
-    Placeholder class for tracking events in the system.
-    Logs events to the console. A real implementation would likely write to a file or database.
-    """
-    def __init__(self):
-        """Initializes the audit log (in-memory for placeholder)."""
-        self.log_entries: List[Dict] = []
-        print("Initialized Placeholder AuditLog.")
+# Configure basic logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - AUDIT - %(message)s')
 
-    def log_event(self, user_id: str, event_type: str, description: str):
-        """
-        Logs an event with timestamp, user, type, and description.
+class AuditLog(abc.ABC):
+    """Abstract base class for audit logging."""
 
-        Args:
-            user_id (str): The ID of the user performing the action (or 'system').
-            event_type (str): The type of event (e.g., 'user_created', 'person_added').
-            description (str): A description of the event.
-        """
-        timestamp = datetime.now()
+    @abc.abstractmethod
+    def log_event(self, user: str, event: str, description: str) -> None:
+        """Logs an audit event."""
+        pass
+
+    @abc.abstractmethod
+    def get_logs(self, count: int = 100) -> list:
+        """Retrieves recent log entries."""
+        pass
+
+class SimpleAuditLog(AuditLog):
+    """A simple in-memory audit log implementation."""
+
+    def __init__(self, max_entries: int = 1000):
+        self.logs = []
+        self.max_entries = max_entries
+        logging.info(f"Initialized SimpleAuditLog with max_entries={max_entries}")
+
+    def log_event(self, user: str, event: str, description: str) -> None:
+        """Logs an event with timestamp, user, event type, and description."""
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         log_entry = {
             "timestamp": timestamp,
-            "user_id": user_id,
-            "event_type": event_type,
+            "user": user,
+            "event": event,
             "description": description
         }
-        self.log_entries.append(log_entry)
-        # Print to console for immediate feedback in placeholder version
-        print(f"AUDIT LOG [{timestamp.strftime('%Y-%m-%d %H:%M:%S')}] User: {user_id}, Event: {event_type}, Desc: {description}")
+        # Basic logging to console/file
+        logging.info(f"User: {user}, Event: {event}, Desc: {description}")
+        # Store in memory, maintaining max size
+        self.logs.append(log_entry)
+        if len(self.logs) > self.max_entries:
+            self.logs.pop(0) # Remove the oldest entry
 
-    def get_log_entries(self,
-                        user_id: Optional[str] = None,
-                        event_type: Optional[str] = None,
-                        start_date: Optional[datetime] = None,
-                        end_date: Optional[datetime] = None) -> List[Dict]:
-        """
-        Retrieves log entries, optionally filtered by user, event type, and date range.
-        (Placeholder uses basic in-memory filtering).
+    def get_logs(self, count: int = 100) -> list:
+        """Returns the most recent 'count' log entries."""
+        return self.logs[-count:]
 
-        Args:
-            user_id (Optional[str]): Filter by user ID.
-            event_type (Optional[str]): Filter by event type.
-            start_date (Optional[datetime]): Filter entries on or after this date.
-            end_date (Optional[datetime]): Filter entries on or before this date.
+class PlaceholderAuditLog(AuditLog):
+    """
+    A placeholder implementation that does nothing but print a message
+    on initialization. Useful when audit logging is not required or
+    configured.
+    """
+    def __init__(self):
+        # Log only once during initialization that this is a placeholder
+        print("Initialized Placeholder AuditLog.") # Use print as basic logging might not be set up yet
+        logging.info("Initialized Placeholder AuditLog (Events will not be stored).")
 
-        Returns:
-            List[Dict]: A list of matching log entry dictionaries.
-        """
-        print(f"Placeholder: Retrieving audit logs (filtering not fully implemented).")
-        # Basic filtering for placeholder
-        filtered_entries = self.log_entries
-        if user_id:
-            filtered_entries = [e for e in filtered_entries if e['user_id'] == user_id]
-        if event_type:
-            filtered_entries = [e for e in filtered_entries if e['event_type'] == event_type]
-        if start_date:
-            filtered_entries = [e for e in filtered_entries if e['timestamp'] >= start_date]
-        if end_date:
-             # Add time component to end_date for inclusive check up to end of day if needed
-             # end_date = end_date.replace(hour=23, minute=59, second=59)
-            filtered_entries = [e for e in filtered_entries if e['timestamp'] <= end_date]
+    def log_event(self, user: str, event: str, description: str) -> None:
+        """Placeholder: Does not store or log events."""
+        # Optionally print here for debugging during development
+        # print(f"AUDIT LOG PLACEHOLDER [User: {user}, Event: {event}, Desc: {description}]")
+        pass # Intentionally does nothing
 
-        return filtered_entries
+    def get_logs(self, count: int = 100) -> list:
+        """Placeholder: Returns an empty list."""
+        return []
 
-    def clear_log(self):
-        """Clears all log entries (in-memory placeholder)."""
-        print("Placeholder: Clearing audit log.")
-        self.log_entries = []
+# Example usage (optional)
+if __name__ == "__main__":
+    audit_logger = SimpleAuditLog()
+    audit_logger.log_event("system", "startup", "Application started.")
+    audit_logger.log_event("user1", "login", "User logged in successfully.")
+    print("\nRecent Logs:")
+    for entry in audit_logger.get_logs(5):
+        print(entry)
 
-s
+    placeholder_logger = PlaceholderAuditLog()
+    placeholder_logger.log_event("user2", "action", "This action won't be logged.")
+    print("\nPlaceholder Logs:")
+    print(placeholder_logger.get_logs())
