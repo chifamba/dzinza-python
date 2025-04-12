@@ -1,1 +1,12 @@
-#No dependencies for now
+# requirements.txt
+
+# For GEDCOM import/export (Optional)
+gedcom-py
+
+# For real encryption (Optional - requires implementing DataEncryptor)
+# pycryptodome
+
+# For real password hashing (Optional - requires implementing in UserManager/User)
+# passlib[bcrypt]
+# or
+# Werkzeug
