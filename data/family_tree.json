@@ -1,0 +1,80 @@
+{
+    "people": {
+        "82f28529-6b5d-4c30-a2d7-a18349c12564": {
+            "person_id": "82f28529-6b5d-4c30-a2d7-a18349c12564",
+            "first_name": "Robert",
+            "last_name": "Chifamba",
+            "nickname": "bobchif",
+            "birth_date": "1995-03-01",
+            "death_date": null,
+            "gender": "Male",
+            "notes": null,
+            "attributes": {}
+        },
+        "2a7b5741-4e34-468d-85da-ec3343718d37": {
+            "person_id": "2a7b5741-4e34-468d-85da-ec3343718d37",
+            "first_name": "Rudo",
+            "last_name": "Chifamba",
+            "nickname": null,
+            "birth_date": "1995-08-01",
+            "death_date": null,
+            "gender": "Female",
+            "notes": null,
+            "attributes": {}
+        },
+        "72c82985-97dc-4a8e-9d9e-1c1be5d2d8ac": {
+            "person_id": "72c82985-97dc-4a8e-9d9e-1c1be5d2d8ac",
+            "first_name": "Anesu",
+            "last_name": "Chifamba",
+            "nickname": null,
+            "birth_date": "2001-04-01",
+            "death_date": null,
+            "gender": "Male",
+            "notes": null,
+            "attributes": {}
+        },
+        "321d817c-a202-4a4e-805f-ac6340707795": {
+            "person_id": "321d817c-a202-4a4e-805f-ac6340707795",
+            "first_name": "Anotidaishe",
+            "last_name": "Chifamba",
+            "nickname": null,
+            "birth_date": "2008-11-01",
+            "death_date": null,
+            "gender": "Male",
+            "notes": null,
+            "attributes": {}
+        }
+    },
+    "relationships": {
+        "3bb74448-7cd2-4de5-9034-4c32be66a476": {
+            "person1_id": "82f28529-6b5d-4c30-a2d7-a18349c12564",
+            "person2_id": "2a7b5741-4e34-468d-85da-ec3343718d37",
+            "rel_type": "Spouse",
+            "attributes": {}
+        },
+        "036c9e5b-9bf4-43e7-8088-3fe842642e1a": {
+            "person1_id": "82f28529-6b5d-4c30-a2d7-a18349c12564",
+            "person2_id": "72c82985-97dc-4a8e-9d9e-1c1be5d2d8ac",
+            "rel_type": "Parent",
+            "attributes": {}
+        },
+        "14bb2f28-e090-4b40-80eb-55e49d8c4977": {
+            "person1_id": "2a7b5741-4e34-468d-85da-ec3343718d37",
+            "person2_id": "72c82985-97dc-4a8e-9d9e-1c1be5d2d8ac",
+            "rel_type": "Parent",
+            "attributes": {}
+        },
+        "7886ebd7-d36d-461b-96ed-50b043a80ea7": {
+            "person1_id": "82f28529-6b5d-4c30-a2d7-a18349c12564",
+            "person2_id": "321d817c-a202-4a4e-805f-ac6340707795",
+            "rel_type": "Parent",
+            "attributes": {}
+        },
+        "0e9d9482-6f74-4e45-abad-d19c02836f7a": {
+            "person1_id": "2a7b5741-4e34-468d-85da-ec3343718d37",
+            "person2_id": "321d817c-a202-4a4e-805f-ac6340707795",
+            "rel_type": "Parent",
+            "attributes": {}
+        }
+    }
+}

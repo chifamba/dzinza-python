@@ -1,12 +1,18 @@
 # requirements.txt
 
-# For GEDCOM import/export (Optional)
-gedcom-py
+# Web Framework
+Flask
+
+# Database
+tinydb
+
+# For GEDCOM import/export (Optional - Keep if needed for future API endpoints)
+# gedcom-py
 
 # For real encryption (Optional - requires implementing DataEncryptor)
 # pycryptodome
 
-# For real password hashing (Optional - requires implementing in UserManager/User)
+# For real password hashing (Optional - already using hashlib's pbkdf2_hmac)
 # passlib[bcrypt]
 # or
 # Werkzeug
