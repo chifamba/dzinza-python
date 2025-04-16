@@ -1,12 +1,17 @@
 # requirements.txt
 
-# For GEDCOM import/export (Optional)
-gedcom-py
+# Web Framework
+Flask
+
+# Database (If you were using TinyDB, keep it, otherwise remove if not used)
+# tinydb
+
+# Password Hashing
+bcrypt
+
+# For GEDCOM import/export (Optional - Keep if needed for future API endpoints)
+# gedcom-py
 
 # For real encryption (Optional - requires implementing DataEncryptor)
 # pycryptodome
 
-# For real password hashing (Optional - requires implementing in UserManager/User)
-# passlib[bcrypt]
-# or
-# Werkzeug
