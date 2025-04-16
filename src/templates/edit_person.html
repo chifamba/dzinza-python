@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edit Person - Dzinza</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .form-grid { display: grid; grid-template-columns: repeat(1, minmax(0, 1fr)); gap: 1rem; }
+        @media (min-width: 768px) { .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .grid-col-span-2 { grid-column: span 2 / span 2; } }
+        .flash-message { padding: 1rem; margin-bottom: 1rem; border-radius: 0.375rem; border-width: 1px; }
+        .flash-danger { background-color: #fee2e2; border-color: #fca5a5; color: #991b1b; }
+    </style>
+     <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-gray-100 text-gray-800">
+    <div class="container mx-auto p-4 md:p-8 max-w-2xl">
+
+        <header class="mb-6 text-center"> <h1 class="text-3xl font-bold text-blue-700">Edit Person</h1> <p class="text-gray-600">Update details for {{ person.get_display_name() }}</p> </header>
+
+        {% with messages = get_flashed_messages(with_categories=true) %} {% if messages %} <div class="mb-4"> {% for category, message in messages %} {% if category == 'danger' or category == 'warning' %} <div class="flash-message flash-{{ category }}">{{ message }}</div> {% endif %} {% endfor %} </div> {% endif %} {% endwith %}
+
+        <div class="bg-white p-6 rounded-lg shadow-md">
+            <form action="{{ url_for('edit_person', person_id=person.person_id) }}" method="POST" class="space-y-4">
+                <div class="form-grid">
+                    <div> <label for="first_name" class="block text-sm font-medium text-gray-700">First Name:</label> <input type="text" id="first_name" name="first_name" required value="{{ person.first_name | default('', true) }}" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"> </div>
+                    <div> <label for="last_name" class="block text-sm font-medium text-gray-700">Last Name:</label> <input type="text" id="last_name" name="last_name" value="{{ person.last_name | default('', true) }}" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"> </div>
+                    <div class="md:grid-col-span-2"> <label for="nickname" class="block text-sm font-medium text-gray-700">Nickname (opt):</label> <input type="text" id="nickname" name="nickname" value="{{ person.nickname | default('', true) }}" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"> </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div> <label for="dob" class="block text-sm font-medium text-gray-700">Date of Birth:</label> <input type="date" id="dob" name="dob" value="{{ person.birth_date | default('', true) }}" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"> </div>
+                    <div> <label for="dod" class="block text-sm font-medium text-gray-700">Date of Death (opt):</label> <input type="date" id="dod" name="dod" value="{{ person.death_date | default('', true) }}" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"> </div>
+                </div>
+                <div> <label for="gender" class="block text-sm font-medium text-gray-700">Gender (opt):</label> <select id="gender" name="gender" class="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"> <option value="" {% if not person.gender %}selected{% endif %}>Select...</option> <option value="Male" {% if person.gender == 'Male' %}selected{% endif %}>Male</option> <option value="Female" {% if person.gender == 'Female' %}selected{% endif %}>Female</option> <option value="Other" {% if person.gender == 'Other' %}selected{% endif %}>Other</option> </select> </div>
+                <div class="flex justify-end space-x-3 pt-4"> <a href="{{ url_for('index') }}" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-2 px-4 rounded-md transition duration-150 ease-in-out">Cancel</a> <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-md transition duration-150 ease-in-out">Save Changes</button> </div>
+            </form>
+        </div>
+        <footer class="mt-8 text-center text-gray-500 text-sm"> <p>&copy; 2025 Dzinza Project. All rights reserved.</p> </footer>
+    </div>
+</body>
+</html>
