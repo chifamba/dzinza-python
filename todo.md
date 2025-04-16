@@ -40,6 +40,7 @@
 - [x] Basic Search UI and Results Page (with DOB & Location filter)
 - [x] Added Admin user management interface (view, set role, delete user)
 - [x] Added Password Reset request/confirm pages (basic flow)
+- [x] Improved form validation feedback (re-render form with errors)
 - [ ] Improve UI/UX (styling, layout, feedback messages)
 
 ## Data Management & Storage
@@ -65,7 +66,7 @@
 - [x] Expand audit logging for family tree modifications (Done for current CRUD)
 - [x] Added audit logs for user management actions (load/save users, set role)
 - [x] Basic Flask logging setup in app.py
-- [ ] Implement robust error handling and user feedback (Basic Flask flashing added, more needed)
+- [x] Implemented robust error handling and user feedback (File logging, custom error pages, improved form feedback)
 
 ## Testing
 - [x] Unit tests for `Person` class (File exists)
@@ -76,7 +77,8 @@
 - [ ] Add tests for new Role features in User/UserManagement
 - [ ] Add tests for Admin UI actions (role set, user delete)
 - [ ] Add tests for Password Reset flow (token generation, verification, reset)
-- [ ] Integration tests for web endpoints (including auth/admin checks)
+- [ ] Add tests for improved form error handling in routes
+- [ ] Integration tests for web endpoints (including auth/admin checks, error pages)
 - [ ] Test edge cases and error conditions (Partially covered)
 - [ ] Add tests for new features (Search, Relationship CRUD, Validation)
 
