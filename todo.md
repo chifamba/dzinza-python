@@ -28,13 +28,13 @@
 - [x] Templates directory and basic HTML structure (`templates/index.html`)
 - [x] Web interface for user registration
 - [x] Web interface for user login
-- [x] User session management (login/logout) - *Basic logout exists, needs secure session key*
-- [ ] Web form for adding a new person to the tree
+- [x] User session management (login/logout)
+- [x] Web form for adding a new person to the tree
 - [ ] Web form for adding a new relationship between people
-- [ ] Display family tree data on the web page (list view initially)
+- [x] Display family tree data on the web page (list view initially)
 - [ ] Interface for editing people/relationships
 - [ ] Interface for deleting people/relationships
-- [ ] Protect family tree modification routes (require login)
+- [x] Protect family tree modification routes (require login)
 - [ ] Improve UI/UX (styling, layout, feedback messages)
 
 ## Data Management & Storage
@@ -46,12 +46,12 @@
 ## Security
 - [x] Password hashing
 - [ ] Input validation and sanitization to prevent injection attacks
-- [ ] Secure session management (e.g., Flask's secret key) - *Needs implementation*
+- [x] Secure session management (e.g., Flask's secret key)
 - [ ] CSRF protection for forms
 
 ## Logging & Error Handling
 - [x] Basic audit logging for user actions (registration, login)
-- [ ] Expand audit logging for family tree modifications
+- [x] Expand audit logging for family tree modifications - *Partially done via add_person*
 - [ ] Implement robust error handling and user feedback
 
 ## Testing

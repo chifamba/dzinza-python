@@ -17,6 +17,7 @@ class Person:
     person_id: str # Unique identifier
     first_name: str = ""
     last_name: str = ""
+    nickname: Optional[str] = None # Added nickname field
     birth_date: Optional[str] = None # Store as ISO string (YYYY-MM-DD)
     death_date: Optional[str] = None # Store as ISO string (YYYY-MM-DD)
     gender: Optional[str] = None # e.g., 'Male', 'Female', 'Other', or leave None
@@ -37,8 +38,15 @@ class Person:
             self.attributes = {}
 
     def get_full_name(self) -> str:
-        """Returns the full name of the person."""
+        """Returns the full name of the person (first and last)."""
         return f"{self.first_name} {self.last_name}".strip()
+
+    def get_display_name(self) -> str:
+        """Returns the name to display, including nickname if available."""
+        base_name = self.get_full_name()
+        if self.nickname:
+            return f"{base_name} ({self.nickname})"
+        return base_name
 
     def __repr__(self) -> str:
         """Provides a developer-friendly string representation."""
@@ -62,6 +70,7 @@ class Person:
             "person_id": self.person_id,
             "first_name": self.first_name,
             "last_name": self.last_name,
+            "nickname": self.nickname, # Added nickname
             "birth_date": self.birth_date,
             "death_date": self.death_date,
             "gender": self.gender,
@@ -78,10 +87,16 @@ class Person:
             missing = [key for key in required_keys if key not in data]
             raise KeyError(f"Person data dictionary missing required keys: {missing}")
 
+        # Ensure first_name and last_name default to empty string if missing
+        first_name = data.get('first_name', '')
+        last_name = data.get('last_name', '')
+
+        # Handle potential missing keys gracefully for optional fields
         return cls(
             person_id=data['person_id'],
-            first_name=data.get('first_name', ''),
-            last_name=data.get('last_name', ''),
+            first_name=first_name,
+            last_name=last_name,
+            nickname=data.get('nickname'), # Added nickname
             birth_date=data.get('birth_date'),
             death_date=data.get('death_date'),
             gender=data.get('gender'),
