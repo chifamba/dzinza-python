@@ -1,7 +1,7 @@
 import os
 from functools import wraps
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
-# Removed CSRFProtect import
+# Removed CSRF imports
 # Import project classes
 from src.user_management import UserManagement
 from src.family_tree import FamilyTree
@@ -27,7 +27,6 @@ TEMPLATE_FOLDER = os.path.join(APP_ROOT, 'src', 'templates')
 app = Flask(__name__, template_folder=TEMPLATE_FOLDER)
 app.secret_key = SECRET_KEY
 # --- Removed CSRF Protection initialization ---
-# csrf = CSRFProtect(app)
 
 # --- Initialize Core Components ---
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -54,35 +53,33 @@ def index():
     if 'user_id' in session:
         people = family_tree.get_people_summary()
         relationships = family_tree.get_relationships_summary()
-    # Removed passing csrf_token
     return render_template('index.html',
                            people=people,
                            relationships=relationships)
 
 
 # --- Auth Routes ---
+# (Keep existing /register, /login, /logout routes)
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
         username = request.form.get('username'); password = request.form.get('password')
-        if not username or not password: flash('Username and password are required.', 'danger'); return render_template('index.html') # Removed csrf_token
+        if not username or not password: flash('Username and password are required.', 'danger'); return render_template('index.html')
         user = user_manager.register_user(username, password)
         if user: flash('Registration successful! Please log in.', 'success'); log_audit(AUDIT_LOG_FILE, username, 'register', 'success'); return redirect(url_for('index'))
-        else: flash('Registration failed. Username might already exist or an error occurred.', 'danger'); log_audit(AUDIT_LOG_FILE, username, 'register', 'failure - see console/logs'); return render_template('index.html') # Removed csrf_token
+        else: flash('Registration failed. Username might already exist or an error occurred.', 'danger'); log_audit(AUDIT_LOG_FILE, username, 'register', 'failure - see console/logs'); return render_template('index.html')
     if 'user_id' in session: return redirect(url_for('index'))
-    # Removed passing csrf_token
     return render_template('index.html')
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         username = request.form.get('username'); password = request.form.get('password')
-        if not username or not password: flash('Username and password are required.', 'danger'); return render_template('index.html') # Removed csrf_token
+        if not username or not password: flash('Username and password are required.', 'danger'); return render_template('index.html')
         user = user_manager.login_user(username, password)
         if user: session['user_id'] = user.user_id; session['username'] = user.username; flash(f'Welcome back, {user.username}!', 'success'); log_audit(AUDIT_LOG_FILE, username, 'login', 'success'); return redirect(url_for('index'))
-        else: flash('Invalid username or password.', 'danger'); log_audit(AUDIT_LOG_FILE, username, 'login', 'failure - invalid credentials'); return render_template('index.html') # Removed csrf_token
+        else: flash('Invalid username or password.', 'danger'); log_audit(AUDIT_LOG_FILE, username, 'login', 'failure - invalid credentials'); return render_template('index.html')
     if 'user_id' in session: return redirect(url_for('index'))
-     # Removed passing csrf_token
     return render_template('index.html')
 
 @app.route('/logout')
@@ -93,7 +90,7 @@ def logout():
     return redirect(url_for('index'))
 
 # --- Family Tree Modification Routes ---
-# (Keep existing routes, CSRF validation is no longer applied)
+# (Keep existing /add_person, /add_relationship, /edit_person, /delete_person, /edit_relationship, /delete_relationship routes)
 @app.route('/add_person', methods=['POST'])
 @login_required
 def add_person():
@@ -137,7 +134,6 @@ def edit_person(person_id):
             else: flash(f'Could not update person "{person.get_display_name()}". Check validation messages or logs.', 'warning')
             return redirect(url_for('index'))
         except Exception as e: app.logger.error(f"Error editing person {person_id}: {e}", exc_info=True); log_audit(AUDIT_LOG_FILE, session.get('username', 'unknown'), 'edit_person', f'error for id {person_id}: {e}'); flash('An unexpected error occurred while editing the person.', 'danger'); return redirect(url_for('index'))
-    # Removed passing csrf_token
     return render_template('edit_person.html', person=person)
 
 @app.route('/delete_person/<person_id>', methods=['POST'])
@@ -171,7 +167,6 @@ def edit_relationship(relationship_id):
             else: flash(f'Could not update relationship. Check validation messages or logs.', 'warning')
             return redirect(url_for('index'))
         except Exception as e: app.logger.error(f"Error editing relationship {relationship_id}: {e}", exc_info=True); log_audit(AUDIT_LOG_FILE, session.get('username', 'unknown'), 'edit_relationship', f'error for id {relationship_id}: {e}'); flash('An unexpected error occurred while editing the relationship.', 'danger'); return redirect(url_for('index'))
-    # Removed passing csrf_token
     return render_template('edit_relationship.html',
                            relationship=rel, person1=person1, person2=person2,
                            valid_types=VALID_RELATIONSHIP_TYPES)
@@ -192,24 +187,42 @@ def delete_relationship(relationship_id):
     except Exception as e: app.logger.error(f"Error deleting relationship {relationship_id}: {e}", exc_info=True); log_audit(AUDIT_LOG_FILE, session.get('username', 'unknown'), 'delete_relationship', f'error for id {relationship_id}: {e}'); flash('An unexpected error occurred while deleting the relationship.', 'danger')
     return redirect(url_for('index'))
 
-# --- Search Route ---
+# --- UPDATED Search Route ---
 @app.route('/search')
 @login_required
 def search():
+    """ Handles searching for people by name and optional DOB range. """
     query = request.args.get('q', '').strip()
+    dob_start = request.args.get('dob_start', '').strip()
+    dob_end = request.args.get('dob_end', '').strip()
+
     results = []
-    if query:
-        results = family_tree.search_people(query)
-        log_audit(AUDIT_LOG_FILE, session.get('username', 'unknown'), 'search_people', f'query: "{query}", results: {len(results)}')
-    # Removed passing csrf_token
-    return render_template('search_results.html', query=query, results=results)
+    # Only search if at least one criterion is provided
+    if query or dob_start or dob_end:
+        results = family_tree.search_people(query, dob_start, dob_end)
+        log_audit(AUDIT_LOG_FILE, session.get('username', 'unknown'), 'search_people', f'query: "{query}", dob_start: "{dob_start}", dob_end: "{dob_end}", results: {len(results)}')
+    else:
+        # Optionally flash message if search button clicked with no criteria
+        # flash("Please enter a name or date range to search.", "info")
+        pass
+
+    # Render results template, passing back search parameters to pre-fill form
+    return render_template('search_results.html',
+                           query=query,
+                           dob_start=dob_start,
+                           dob_end=dob_end,
+                           results=results)
+# --- End Search Route ---
+
 
 # --- API Endpoint for Tree Data ---
+# (Keep existing /api/tree_data route)
 @app.route('/api/tree_data')
 @login_required
 def tree_data():
     try: data = family_tree.get_nodes_links_data(); return jsonify(data)
     except Exception as e: app.logger.error(f"Error generating tree data: {e}", exc_info=True); return jsonify({"error": "Failed to generate tree data"}), 500
+
 
 # --- Main Execution ---
 if __name__ == '__main__':
