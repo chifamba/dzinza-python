@@ -7,6 +7,8 @@
             "nickname": "bobchif",
             "birth_date": "1995-03-01",
             "death_date": null,
+            "place_of_birth": null,
+            "place_of_death": null,
             "gender": "Male",
             "notes": null,
             "attributes": {}
@@ -18,6 +20,8 @@
             "nickname": null,
             "birth_date": "1995-08-01",
             "death_date": null,
+            "place_of_birth": null,
+            "place_of_death": null,
             "gender": "Female",
             "notes": null,
             "attributes": {}
@@ -29,6 +33,8 @@
             "nickname": null,
             "birth_date": "2001-04-01",
             "death_date": null,
+            "place_of_birth": null,
+            "place_of_death": null,
             "gender": "Male",
             "notes": null,
             "attributes": {}
@@ -40,6 +46,21 @@
             "nickname": null,
             "birth_date": "2008-11-01",
             "death_date": null,
+            "place_of_birth": null,
+            "place_of_death": null,
+            "gender": "Male",
+            "notes": null,
+            "attributes": {}
+        },
+        "9839f0a7-cd06-49cf-80f8-37b04fb19334": {
+            "person_id": "9839f0a7-cd06-49cf-80f8-37b04fb19334",
+            "first_name": "King",
+            "last_name": "TChalla",
+            "nickname": "Black Panther",
+            "birth_date": "2025-04-01",
+            "death_date": "2025-04-15",
+            "place_of_birth": null,
+            "place_of_death": null,
             "gender": "Male",
             "notes": null,
             "attributes": {}
