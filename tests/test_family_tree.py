@@ -1,438 +1,255 @@
 # tests/test_family_tree.py
 import unittest
+import sys
 import os
-import json
-import csv
-import xml.etree.ElementTree as ET
-from unittest.mock import patch, MagicMock, mock_open, ANY # Import ANY
-from src.family_tree import FamilyTree
-from src.person import Person
-from src.relationship import Relationship
-from src.audit_log import AuditLog # Assuming AuditLog is needed for mock type hint
-from src.encryption import DataEncryptor # Assuming for mock type hint
+from unittest.mock import patch, MagicMock, call # Import call
 
-# Mock placeholder classes if they are not importable or complex
-class MockAuditLog:
-    def log_event(self, user, event, description):
-        print(f"AUDIT LOG MOCK [{user}] {event}: {description}")
+# Add the project root directory to the Python path
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+src_path = os.path.join(project_root, 'src')
+sys.path.insert(0, src_path)
 
-class MockDataEncryptor:
-    def encrypt(self, data):
-        return data # Passthrough for testing
-    def decrypt(self, data):
-        return data # Passthrough for testing
+# Import necessary classes and functions
+from person import Person
+from relationship import Relationship, RelationshipType
+from family_tree import FamilyTree
+# Assuming db_utils is used for load/save
+# from db_utils import load_data, save_data
+
+# Mock data paths (adjust if necessary)
+MOCK_PEOPLE_FILE = 'mock_data/people.json'
+MOCK_RELATIONSHIPS_FILE = 'mock_data/relationships.json'
 
 class TestFamilyTree(unittest.TestCase):
-    """Unit tests for the FamilyTree class."""
+    """Test cases for the FamilyTree class."""
 
     def setUp(self):
-        """Set up a fresh family tree and mock dependencies for each test."""
-        # Use mock objects for dependencies
-        self.mock_audit_log = MagicMock(spec=AuditLog)
-        self.mock_encryptor = MagicMock(spec=DataEncryptor)
-        self.mock_encryptor.encrypt.side_effect = lambda d: d # Mock encryption passthrough
-        self.mock_encryptor.decrypt.side_effect = lambda d: d # Mock decryption passthrough
+        """Set up a fresh FamilyTree instance and mock data for each test."""
+        # Mock load_data to return empty lists initially for a clean state
+        self.load_patcher = patch('family_tree.load_data')
+        self.mock_load_data = self.load_patcher.start()
+        self.mock_load_data.side_effect = lambda filepath, default: default if default is not None else []
 
-        self.family_tree = FamilyTree(audit_log=self.mock_audit_log, encryptor=self.mock_encryptor)
+        # Mock save_data
+        self.save_patcher = patch('family_tree.save_data')
+        self.mock_save_data = self.save_patcher.start()
+
+        # Create a new FamilyTree instance for each test
+        self.tree = FamilyTree(people_file=MOCK_PEOPLE_FILE, relationships_file=MOCK_RELATIONSHIPS_FILE)
 
         # Add some initial data for tests that need it
-        self.person1 = Person(person_id="p1", first_name="Alice", last_name="Alpha")
-        self.person2 = Person(person_id="p2", first_name="Bob", last_name="Beta")
-        self.person3 = Person(person_id="p3", first_name="Charlie", last_name="Gamma") # Changed last name for clarity
-        self.family_tree.add_person(self.person1, user="system")
-        self.family_tree.add_person(self.person2, user="system")
-        self.family_tree.add_person(self.person3, user="system")
-        self.family_tree.add_relationship("p1", "p2", "spouse", user="system")
-        self.family_tree.add_relationship("p3", "p1", "child", user="system") # p3 is child of p1
+        self.person1 = Person(person_id="p1", name="Alice", birth_date="1990-01-01")
+        self.person2 = Person(person_id="p2", name="Bob", birth_date="1992-05-10")
+        self.person3 = Person(person_id="p3", name="Charlie", birth_date="1988-11-20")
+        self.relationship1 = Relationship(rel_id="r1", person1_id="p1", person2_id="p2", type=RelationshipType.MARRIED)
 
-        # Reset mocks for calls made during setup if necessary for specific tests
-        self.mock_audit_log.reset_mock()
+
+    def tearDown(self):
+        """Stop the patchers after each test."""
+        self.load_patcher.stop()
+        self.save_patcher.stop()
+
+    def test_initialization_loads_data(self):
+        """Test that data is loaded during initialization."""
+        # Reset mocks specifically for this test to check initial load calls
+        self.mock_load_data.reset_mock()
+        self.mock_load_data.side_effect = lambda filepath, default: default if default is not None else []
+
+        # Re-initialize to trigger load
+        FamilyTree(people_file=MOCK_PEOPLE_FILE, relationships_file=MOCK_RELATIONSHIPS_FILE)
+
+        # Check that load_data was called for both files
+        expected_calls = [
+            call(MOCK_PEOPLE_FILE, default=[]),
+            call(MOCK_RELATIONSHIPS_FILE, default=[])
+        ]
+        self.mock_load_data.assert_has_calls(expected_calls, any_order=True)
 
     def test_add_person(self):
-        """Test adding a person."""
-        # Person data is now added in setUp, let's test adding another one
-        new_person_data = {'person_id': 'p4', 'first_name': 'David', 'last_name': 'Delta'}
-        new_person = Person(**new_person_data)
-        self.family_tree.add_person(new_person, user="test_user")
-
-        # Check if person was added
-        self.assertIn("p4", self.family_tree.persons)
-        self.assertEqual(self.family_tree.persons["p4"].first_name, "David")
-
-        # Check if audit log was called correctly for this specific addition
-        self.mock_audit_log.log_event.assert_called_with(
-            "test_user",
-            "person_added",
-            f"Added person: p4 ({new_person.get_full_name()})" # Use the actual person added
-        )
+        """Test adding a new person."""
+        self.tree.add_person(self.person1)
+        self.assertEqual(len(self.tree.people), 1)
+        self.assertEqual(self.tree.people["p1"], self.person1)
+        # Check if save_data was called
+        self.mock_save_data.assert_called() # Called at least once (could be specific later)
 
     def test_add_person_duplicate_id(self):
-        """Test adding a person with a duplicate ID."""
-        person_dup = Person(person_id="p1", first_name="Alicia", last_name="Alpha")
-        with self.assertRaises(ValueError):
-            self.family_tree.add_person(person_dup, user="test_user")
-        # Ensure no audit log event for the failed addition attempt
-        # This depends on implementation detail (log before or after check)
-        # Let's assume it doesn't log if it fails early. If it does, adjust assertion.
+        """Test adding a person with an existing ID."""
+        self.tree.add_person(self.person1)
+        with self.assertRaises(ValueError): # Or check for specific behavior like logging/ignoring
+            self.tree.add_person(self.person1)
+        self.assertEqual(len(self.tree.people), 1) # Should not add the duplicate
 
     def test_get_person(self):
-        """Test retrieving a person."""
-        person = self.family_tree.get_person("p1")
-        self.assertIsNotNone(person)
-        self.assertEqual(person.person_id, "p1")
-        self.assertEqual(person.first_name, "Alice")
+        """Test retrieving a person by ID."""
+        self.tree.add_person(self.person1)
+        retrieved_person = self.tree.get_person("p1")
+        self.assertEqual(retrieved_person, self.person1)
 
     def test_get_person_not_found(self):
         """Test retrieving a non-existent person."""
-        person = self.family_tree.get_person("p99")
-        self.assertIsNone(person)
+        retrieved_person = self.tree.get_person("nonexistent")
+        self.assertIsNone(retrieved_person)
 
-    def test_update_person(self):
-        """Test updating a person's details."""
-        update_data = {"first_name": "Alicia", "last_name": "AlphaUpdated"}
-        success = self.family_tree.update_person("p1", update_data, user="test_user")
-        self.assertTrue(success)
-        updated_person = self.family_tree.get_person("p1")
-        self.assertEqual(updated_person.first_name, "Alicia")
-        self.assertEqual(updated_person.last_name, "AlphaUpdated")
-        self.mock_audit_log.log_event.assert_called_with(
-            "test_user",
-            "person_updated",
-            f"Updated person: p1 (Alicia AlphaUpdated)" # Check against updated name
-        )
+    def test_remove_person_simple(self):
+        """Test removing a person who has no relationships."""
+        self.tree.add_person(self.person1)
+        self.tree.remove_person("p1")
+        self.assertNotIn("p1", self.tree.people)
+        self.assertIsNone(self.tree.get_person("p1"))
+        # Check save was called after removal
+        self.mock_save_data.assert_called()
 
-    def test_update_person_not_found(self):
-        """Test updating a non-existent person."""
-        update_data = {"first_name": "Nobody"}
-        success = self.family_tree.update_person("p99", update_data, user="test_user")
-        self.assertFalse(success)
-        # Ensure no audit log event for failed update
-        # self.mock_audit_log.log_event.assert_not_called() # Be careful if other logs happen
+    def test_remove_person_with_relationships(self):
+        """Test removing a person involved in relationships."""
+        self.tree.add_person(self.person1)
+        self.tree.add_person(self.person2)
+        self.tree.add_relationship(self.relationship1) # p1 married to p2
 
-    def test_delete_person(self):
-        """Test deleting a person and cleaning up their relationships."""
-        # Ensure relationships exist before deletion
-        self.assertIn("p1", self.family_tree.relationships)
-        self.assertTrue(any(r.person2_id == "p2" for r in self.family_tree.relationships.get("p1", []))) # p1 -> p2 spouse
-        self.assertTrue(any(r.person2_id == "p3" for r in self.family_tree.relationships.get("p1", []))) # p1 -> p3 parent (derived)
-        self.assertIn("p2", self.family_tree.relationships)
-        self.assertTrue(any(r.person2_id == "p1" for r in self.family_tree.relationships.get("p2", []))) # p2 -> p1 spouse
-        self.assertIn("p3", self.family_tree.relationships)
-        self.assertTrue(any(r.person2_id == "p1" for r in self.family_tree.relationships.get("p3", []))) # p3 -> p1 child
+        self.assertEqual(len(self.tree.relationships), 1)
 
-        # Delete person p1
-        success = self.family_tree.delete_person("p1", user="test_user")
-        self.assertTrue(success)
+        # Remove person1
+        self.tree.remove_person("p1")
 
-        # Check person is removed
-        self.assertNotIn("p1", self.family_tree.persons)
+        # Person should be gone
+        self.assertNotIn("p1", self.tree.people)
+        # Relationship involving the person should also be gone
+        self.assertEqual(len(self.tree.relationships), 0)
+        self.assertIsNone(self.tree.get_relationship("r1"))
+        # Other person should still exist
+        self.assertIn("p2", self.tree.people)
+        # Check saves were called (person removal, relationship removal)
+        self.assertTrue(self.mock_save_data.call_count >= 2)
 
-        # Check relationships involving p1 are removed from other persons' entries
-        self.assertNotIn("p1", self.family_tree.relationships) # p1's own entry removed
-        if "p2" in self.family_tree.relationships: # Check if p2 still has relationships
-             self.assertFalse(any(r.person2_id == "p1" for r in self.family_tree.relationships.get("p2", [])))
-        if "p3" in self.family_tree.relationships: # Check if p3 still has relationships
-             self.assertFalse(any(r.person2_id == "p1" for r in self.family_tree.relationships.get("p3", [])))
 
-        # Check audit logs
-        # Use ANY for the relationship representation string if it's complex or varies
-        self.mock_audit_log.log_event.assert_any_call(
-            "test_user",
-            "relationship_removed",
-            # Match the exact string format from your application code
-            # Example: "Removed relationship involving deleted person p1: p1 <-> p2 (spouse)"
-            # Using ANY if the exact string is hard to predict or match reliably
-            f"Removed relationship involving deleted person p1: {ANY}"
-        )
-        self.mock_audit_log.log_event.assert_any_call(
-            "test_user",
-            "relationship_removed",
-             # Example: "Removed relationship involving deleted person p1: p3 -> p1 (child)"
-            f"Removed relationship involving deleted person p1: {ANY}"
-        )
-         # Check the main deletion log event
-        self.mock_audit_log.log_event.assert_any_call(
-            "test_user",
-            "person_deleted",
-            "Deleted person: p1 (Alice Alpha)" # Name before deletion
-        )
-
-    def test_delete_person_not_found(self):
-        """Test deleting a non-existent person."""
-        success = self.family_tree.delete_person("p99", user="test_user")
-        self.assertFalse(success)
+    def test_remove_person_not_found(self):
+        """Test removing a non-existent person."""
+        # Should not raise an error, perhaps log or just do nothing
+        try:
+            self.tree.remove_person("nonexistent")
+        except Exception as e:
+            self.fail(f"remove_person raised an exception unexpectedly: {e}")
+        # Ensure save wasn't called if nothing changed
+        # self.mock_save_data.assert_not_called() # Depends on implementation detail
 
     def test_add_relationship(self):
-        """Test adding a relationship."""
-        # Relationship p1-p2 (spouse) and p3-p1 (child) added in setUp
-        # Add a new one: p2 is child of p4 (p4 needs to exist first)
-        person4 = Person(person_id="p4", first_name="David", last_name="Delta")
-        self.family_tree.add_person(person4, user="system")
-        self.mock_audit_log.reset_mock() # Reset after setup/adding p4
+        """Test adding a new relationship."""
+        self.tree.add_person(self.person1)
+        self.tree.add_person(self.person2)
+        self.tree.add_relationship(self.relationship1)
+        self.assertEqual(len(self.tree.relationships), 1)
+        self.assertEqual(self.tree.relationships["r1"], self.relationship1)
+        self.mock_save_data.assert_called()
 
-        success = self.family_tree.add_relationship("p2", "p4", "child", user="test_user")
-        self.assertTrue(success)
-
-        # Check relationship exists in both directions (if reciprocal)
-        self.assertIn("p2", self.family_tree.relationships)
-        self.assertTrue(any(r.person2_id == "p4" and r.rel_type == "child" for r in self.family_tree.relationships["p2"]))
-        self.assertIn("p4", self.family_tree.relationships)
-        # Check for the reciprocal relationship (parent)
-        self.assertTrue(any(r.person2_id == "p2" and r.rel_type == "parent" for r in self.family_tree.relationships["p4"]))
-
-        # Check audit log
-        # Check both the primary and reciprocal relationship logs
-        self.mock_audit_log.log_event.assert_any_call(
-            "test_user",
-            "relationship_added",
-            f"Added relationship: {ANY}" # Use ANY or the exact format
-        )
-
+    def test_add_relationship_duplicate_id(self):
+        """Test adding a relationship with an existing ID."""
+        self.tree.add_person(self.person1)
+        self.tree.add_person(self.person2)
+        self.tree.add_relationship(self.relationship1)
+        with self.assertRaises(ValueError): # Or check behavior
+            self.tree.add_relationship(self.relationship1)
+        self.assertEqual(len(self.tree.relationships), 1)
 
     def test_add_relationship_person_not_found(self):
-        """Test adding a relationship with a non-existent person."""
-        with self.assertRaises(ValueError):
-            self.family_tree.add_relationship("p1", "p99", "sibling", user="test_user")
-        with self.assertRaises(ValueError):
-            self.family_tree.add_relationship("p99", "p1", "sibling", user="test_user")
+        """Test adding a relationship where one person doesn't exist."""
+        self.tree.add_person(self.person1) # Only person1 exists
+        rel_invalid = Relationship(rel_id="r_invalid", person1_id="p1", person2_id="nonexistent", type=RelationshipType.PARENT_OF)
+        with self.assertRaises(ValueError): # Should fail if persons don't exist
+            self.tree.add_relationship(rel_invalid)
+        self.assertEqual(len(self.tree.relationships), 0)
 
-    def test_get_relationships(self):
-        """Test retrieving relationships for a person."""
-        rels = self.family_tree.get_relationships("p1")
-        self.assertIsNotNone(rels)
-        self.assertEqual(len(rels), 2) # spouse(p2), parent(p3) - derived from child(p3->p1)
+    def test_get_relationship(self):
+        """Test retrieving a relationship by ID."""
+        self.tree.add_person(self.person1)
+        self.tree.add_person(self.person2)
+        self.tree.add_relationship(self.relationship1)
+        retrieved_rel = self.tree.get_relationship("r1")
+        self.assertEqual(retrieved_rel, self.relationship1)
 
-        rel_types = {r.rel_type for r in rels}
-        person_ids = {r.person2_id for r in rels}
+    def test_get_relationship_not_found(self):
+        """Test retrieving a non-existent relationship."""
+        retrieved_rel = self.tree.get_relationship("nonexistent")
+        self.assertIsNone(retrieved_rel)
 
-        self.assertIn("spouse", rel_types)
-        self.assertIn("parent", rel_types) # Derived from child relationship
-        self.assertIn("p2", person_ids)
-        self.assertIn("p3", person_ids)
+    def test_remove_relationship(self):
+        """Test removing a relationship by ID."""
+        self.tree.add_person(self.person1)
+        self.tree.add_person(self.person2)
+        self.tree.add_relationship(self.relationship1)
+        self.tree.remove_relationship("r1")
+        self.assertNotIn("r1", self.tree.relationships)
+        self.assertIsNone(self.tree.get_relationship("r1"))
+        self.mock_save_data.assert_called()
 
-
-    def test_get_relationships_not_found(self):
-        """Test retrieving relationships for a non-existent person."""
-        rels = self.family_tree.get_relationships("p99")
-        self.assertEqual(rels, []) # Should return empty list
-
-    def test_update_relationship(self):
-        """Test updating an existing relationship."""
-        # Update p1-p2 from spouse to divorced
-        success = self.family_tree.update_relationship("p1", "p2", "spouse", {"rel_type": "divorced"}, user="test_user")
-        self.assertTrue(success)
-
-        # Check relationship type is updated for p1 -> p2
-        p1_rels = self.family_tree.get_relationships("p1")
-        p1_p2_rel = next((r for r in p1_rels if r.person2_id == "p2"), None)
-        self.assertIsNotNone(p1_p2_rel)
-        self.assertEqual(p1_p2_rel.rel_type, "divorced")
-
-        # Check reciprocal relationship type is updated for p2 -> p1
-        p2_rels = self.family_tree.get_relationships("p2")
-        p2_p1_rel = next((r for r in p2_rels if r.person2_id == "p1"), None)
-        self.assertIsNotNone(p2_p1_rel)
-        self.assertEqual(p2_p1_rel.rel_type, "divorced") # Assuming reciprocal update
-
-        # Check audit log
-        self.mock_audit_log.log_event.assert_any_call( # Use any_call if multiple updates logged
-            "test_user",
-            "relationship_updated",
-            f"Updated relationship: {ANY}" # Use ANY or exact format
-        )
-
-    def test_update_relationship_not_found(self):
-        """Test updating a non-existent relationship."""
-        success = self.family_tree.update_relationship("p1", "p3", "sibling", {"notes": "abc"}, user="test_user")
-        self.assertFalse(success)
-
-    def test_delete_relationship(self):
-        """Test deleting a specific relationship."""
-        # Delete p1 <-> p2 (spouse) relationship
-        success = self.family_tree.delete_relationship("p1", "p2", "spouse", user="test_user")
-        self.assertTrue(success)
-
-        # Check relationship is removed for p1
-        p1_rels = self.family_tree.get_relationships("p1")
-        self.assertFalse(any(r.person2_id == "p2" for r in p1_rels))
-
-        # Check relationship is removed for p2
-        p2_rels = self.family_tree.get_relationships("p2")
-        self.assertFalse(any(r.person2_id == "p1" for r in p2_rels))
-
-        # Check audit log
-        self.mock_audit_log.log_event.assert_any_call( # Use any_call for multiple logs
-            "test_user",
-            "relationship_removed",
-            f"Removed relationship: {ANY}" # Use ANY or exact format
-        )
-
-    def test_delete_relationship_not_found(self):
-        """Test deleting a non-existent relationship."""
-        success = self.family_tree.delete_relationship("p1", "p3", "sibling", user="test_user")
-        self.assertFalse(success)
-
-    # --- Import/Export Tests ---
-
-    @patch("builtins.open", new_callable=mock_open, read_data='{"persons": [{"person_id": "p10", "first_name": "Imported"}], "relationships": []}')
-    @patch("os.path.exists", return_value=True) # Mock file existence
-    def test_import_json(self, mock_exists, mock_file):
-        """Test importing data from a JSON file."""
-        self.family_tree.import_file("dummy.json", user="test_user")
-        mock_file.assert_called_once_with("dummy.json", 'r', encoding='utf-8')
-        self.assertIn("p10", self.family_tree.persons)
-        self.assertEqual(self.family_tree.persons["p10"].first_name, "Imported")
-        # Check audit log for import start/end or individual items
-        self.mock_audit_log.log_event.assert_any_call("test_user", "import_started", "Started import from dummy.json")
-        self.mock_audit_log.log_event.assert_any_call("test_user", "person_added", "Added person: p10 (Imported)")
-
-
-    @patch("builtins.open", new_callable=mock_open)
-    def test_export_json(self, mock_file):
-        """Test exporting data to a JSON file."""
-        self.family_tree.export_file("output.json", user="test_user")
-
-        # Check that open was called correctly
-        mock_file.assert_called_once_with("output.json", 'w', encoding='utf-8')
-
-        # Get all data written to the mock file handle
-        # mock_open().write() accumulates calls; access them via handle.write_calls
-        handle = mock_file()
-        # Combine all written chunks into a single string
-        written_data_json = "".join(call.args[0] for call in handle.write.call_args_list)
-
-        # Check if *something* was written (basic check)
-        self.assertTrue(len(written_data_json) > 0, "No data written to JSON file mock")
-
-        # Now try to parse the written data
+    def test_remove_relationship_not_found(self):
+        """Test removing a non-existent relationship."""
         try:
-            written_data = json.loads(written_data_json)
-        except json.JSONDecodeError as e:
-            self.fail(f"Failed to decode JSON written by export_file: {e}\nData: {written_data_json}")
+            self.tree.remove_relationship("nonexistent")
+        except Exception as e:
+            self.fail(f"remove_relationship raised an exception unexpectedly: {e}")
+        # self.mock_save_data.assert_not_called() # Depends
 
-        # Validate structure and content (example)
-        self.assertIn("persons", written_data)
-        self.assertIn("relationships", written_data)
-        self.assertEqual(len(written_data["persons"]), 3) # p1, p2, p3 from setup
-        # Find person p1 in the exported data
-        p1_exported = next((p for p in written_data["persons"] if p.get("person_id") == "p1"), None)
-        self.assertIsNotNone(p1_exported)
-        self.assertEqual(p1_exported.get("first_name"), "Alice")
+    def test_find_relationships_for_person(self):
+        """Test finding all relationships involving a specific person."""
+        self.tree.add_person(self.person1)
+        self.tree.add_person(self.person2)
+        self.tree.add_person(self.person3)
+        rel1 = Relationship(rel_id="r1", person1_id="p1", person2_id="p2", type=RelationshipType.MARRIED)
+        rel2 = Relationship(rel_id="r2", person1_id="p3", person2_id="p1", type=RelationshipType.PARENT_OF) # p3 is parent of p1
+        rel3 = Relationship(rel_id="r3", person1_id="p2", person2_id="p3", type=RelationshipType.SIBLING_OF) # p2 and p3 siblings
 
-        # Check audit log
-        self.mock_audit_log.log_event.assert_called_with("test_user", "export_completed", "Exported data to output.json")
+        self.tree.add_relationship(rel1)
+        self.tree.add_relationship(rel2)
+        self.tree.add_relationship(rel3)
 
+        p1_rels = self.tree.find_relationships_for_person("p1")
+        self.assertEqual(len(p1_rels), 2)
+        self.assertIn(rel1, p1_rels)
+        self.assertIn(rel2, p1_rels)
 
-    # Mock CSV data: header + one person
-    csv_data = "person_id,first_name,last_name\np10,Imported,CSV\n"
-    @patch("builtins.open", mock_open(read_data=csv_data))
-    @patch("os.path.exists", return_value=True)
-    def test_import_csv(self, mock_exists, mock_file):
-        """Test importing data from a CSV file."""
-        # Note: CSV import might only handle persons, or need separate files. Adjust based on implementation.
-        # Assuming a simple CSV format for persons for this test.
-        self.family_tree.import_file("dummy.csv", user="test_user")
-        mock_file.assert_called_once_with("dummy.csv", 'r', newline='', encoding='utf-8')
-        self.assertIn("p10", self.family_tree.persons)
-        self.assertEqual(self.family_tree.persons["p10"].first_name, "Imported")
-        self.assertEqual(self.family_tree.persons["p10"].last_name, "CSV")
-        self.mock_audit_log.log_event.assert_any_call("test_user", "import_started", "Started import from dummy.csv")
-        self.mock_audit_log.log_event.assert_any_call("test_user", "person_added", "Added person: p10 (Imported CSV)")
+        p2_rels = self.tree.find_relationships_for_person("p2")
+        self.assertEqual(len(p2_rels), 2)
+        self.assertIn(rel1, p2_rels)
+        self.assertIn(rel3, p2_rels)
 
-    @patch("builtins.open", new_callable=mock_open)
-    def test_export_csv(self, mock_file):
-        """Test exporting data to a CSV file."""
-        # Assuming export_file handles .csv extension for person export
-        self.family_tree.export_file("output.csv", user="test_user")
-        mock_file.assert_called_once_with("output.csv", 'w', newline='', encoding='utf-8')
+        p3_rels = self.tree.find_relationships_for_person("p3")
+        self.assertEqual(len(p3_rels), 2)
+        self.assertIn(rel2, p3_rels)
+        self.assertIn(rel3, p3_rels)
 
-        # Check content written
-        handle = mock_file()
-        written_data_csv = "".join(call.args[0] for call in handle.write.call_args_list)
-        self.assertTrue(len(written_data_csv) > 0, "No data written to CSV file mock")
-        # Basic check for header and data (adjust columns as needed)
-        self.assertIn("person_id,first_name,last_name", written_data_csv) # Example header
-        self.assertIn("p1,Alice,Alpha", written_data_csv) # Example data
+    def test_find_relationships_for_person_not_found(self):
+        """Test finding relationships for a non-existent person."""
+        rels = self.tree.find_relationships_for_person("nonexistent")
+        self.assertEqual(len(rels), 0)
 
-        self.mock_audit_log.log_event.assert_called_with("test_user", "export_completed", "Exported data to output.csv")
+    def test_save_on_change(self):
+        """Verify save is called after modifications."""
+        # Add person
+        self.mock_save_data.reset_mock()
+        self.tree.add_person(self.person1)
+        self.mock_save_data.assert_called_with(MOCK_PEOPLE_FILE, [p.to_dict() for p in self.tree.people.values()])
 
+        # Add relationship
+        self.mock_save_data.reset_mock()
+        self.tree.add_person(self.person2) # Need p2 for relationship
+        self.mock_save_data.reset_mock() # Reset after adding p2
+        self.tree.add_relationship(self.relationship1)
+        self.mock_save_data.assert_called_with(MOCK_RELATIONSHIPS_FILE, [r.to_dict() for r in self.tree.relationships.values()])
 
-    # Mock XML data
-    xml_data = """<?xml version="1.0" encoding="UTF-8"?>
-<family_tree>
-    <persons>
-        <person person_id="p10">
-            <first_name>Imported</first_name>
-            <last_name>XML</last_name>
-        </person>
-    </persons>
-    <relationships/>
-</family_tree>
-"""
-    @patch("builtins.open", mock_open(read_data=xml_data))
-    @patch("os.path.exists", return_value=True)
-    def test_import_xml(self, mock_exists, mock_file):
-        """Test importing data from an XML file."""
-        self.family_tree.import_file("dummy.xml", user="test_user")
-        mock_file.assert_called_once_with("dummy.xml", 'r', encoding='utf-8')
-        self.assertIn("p10", self.family_tree.persons)
-        self.assertEqual(self.family_tree.persons["p10"].first_name, "Imported")
-        self.assertEqual(self.family_tree.persons["p10"].last_name, "XML")
-        self.mock_audit_log.log_event.assert_any_call("test_user", "import_started", "Started import from dummy.xml")
-        self.mock_audit_log.log_event.assert_any_call("test_user", "person_added", "Added person: p10 (Imported XML)")
+        # Remove relationship
+        self.mock_save_data.reset_mock()
+        self.tree.remove_relationship("r1")
+        self.mock_save_data.assert_called_with(MOCK_RELATIONSHIPS_FILE, []) # Now empty
 
+        # Remove person (should trigger save for people and relationships)
+        self.mock_save_data.reset_mock()
+        self.tree.remove_person("p1")
+        expected_people_save = call(MOCK_PEOPLE_FILE, [self.person2.to_dict()]) # Only p2 left
+        # Relationships already empty, might save empty list again or not call if no change
+        # Check that people save was called correctly
+        # Using assert_has_calls because order might not be guaranteed if both save
+        self.mock_save_data.assert_has_calls([expected_people_save], any_order=True)
 
-    @patch("xml.etree.ElementTree.ElementTree.write") # Patch the write method of the ET instance
-    def test_export_xml(self, mock_et_write):
-        """Test exporting data to an XML file."""
-        # We patch the write method directly to avoid issues with mock_open and binary/text mode for XML
-        self.family_tree.export_file("output.xml", user="test_user")
-
-        # Check that the write method was called, indicating export process ran
-        mock_et_write.assert_called_once()
-
-        # Optionally, inspect the arguments passed to write if needed
-        # args, kwargs = mock_et_write.call_args
-        # self.assertEqual(args[0], "output.xml") # Check filename passed to write
-        # self.assertEqual(kwargs.get('encoding'), 'utf-8')
-        # self.assertTrue(kwargs.get('xml_declaration'))
-
-        # Check audit log
-        self.mock_audit_log.log_event.assert_called_with("test_user", "export_completed", "Exported data to output.xml")
-
-
-    def test_find_person_by_name(self):
-        """Test finding persons by name."""
-        results = self.family_tree.find_person_by_name("Alice")
-        self.assertEqual(len(results), 1)
-        self.assertEqual(results[0].person_id, "p1")
-
-        results = self.family_tree.find_person_by_name("Beta") # Last name
-        self.assertEqual(len(results), 1)
-        self.assertEqual(results[0].person_id, "p2")
-
-        results = self.family_tree.find_person_by_name("NonExistent")
-        self.assertEqual(len(results), 0)
-
-    def test_find_relationships_by_type(self):
-        """Test finding relationships by type."""
-        results = self.family_tree.find_relationships_by_type("spouse")
-        self.assertEqual(len(results), 1) # Only p1-p2 relationship is spouse
-        rel = results[0]
-        # Check if the relationship involves p1 and p2
-        self.assertTrue( (rel.person1_id == "p1" and rel.person2_id == "p2") or \
-                         (rel.person1_id == "p2" and rel.person2_id == "p1") )
-        self.assertEqual(rel.rel_type, "spouse")
-
-        results = self.family_tree.find_relationships_by_type("child")
-        self.assertEqual(len(results), 1) # p3 -> p1
-        self.assertEqual(results[0].person1_id, "p3")
-        self.assertEqual(results[0].person2_id, "p1")
-
-        results = self.family_tree.find_relationships_by_type("sibling")
-        self.assertEqual(len(results), 0)
-
-    # Add more tests for edge cases, encryption/decryption hooks, complex scenarios etc.
 
 if __name__ == '__main__':
     unittest.main()

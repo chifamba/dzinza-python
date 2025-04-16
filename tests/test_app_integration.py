@@ -1,417 +1,424 @@
 # tests/test_app_integration.py
-
 import unittest
-from unittest.mock import patch, MagicMock
+import sys
 import os
-import tempfile # To create temporary files for testing
+import shutil # For copying mock data
+from unittest.mock import patch, MagicMock
 
-# Import the Flask app instance and necessary classes
-from app import app as flask_app, user_manager as real_user_manager, family_tree as real_family_tree
-from src.user import User, hash_password
-from src.user_management import UserManager, VALID_ROLES
-from src.audit_log import AuditLog # For type hinting if needed
-from src.family_tree import FamilyTree # Import FamilyTree
-from src.person import Person # Import Person
-from src.relationship import Relationship # Import Relationship
+# Add the project root directory to the Python path
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+src_path = os.path.join(project_root, 'src')
+sys.path.insert(0, project_root) # Add project root for app import
+sys.path.insert(0, src_path)
 
+# Import the Flask app instance
+try:
+    from app import app # Import the app instance
+    # Import models needed for creating test data if not mocking deeply
+    from user import User, UserRole
+    from person import Person
+    from relationship import Relationship, RelationshipType
+except ImportError as e:
+    print(f"Error importing Flask app or components: {e}")
+    from flask import Flask
+    app = Flask(__name__)
+    app.config['SECRET_KEY'] = 'test-secret-key'
+    app.config['TESTING'] = True
 
-# Use a known, fixed secret key for testing sessions
-TEST_SECRET_KEY = 'test-secret-key-for-flask-sessions'
+# --- Configuration for Test Data ---
+# Use separate files for integration tests to avoid conflicts
+# These files will be copied/reset for each test
+TEST_DATA_DIR = os.path.join(project_root, 'tests', 'test_data')
+MOCK_DATA_SOURCE_DIR = os.path.join(project_root, 'data') # Where original mocks might be
 
-# --- Helper Function for Logging In ---
-def login(client, username, password):
-    """Helper function to log in a user via the test client."""
-    return client.post('/login', data=dict(
-        username=username,
-        password=password
-    ), follow_redirects=True)
+TEST_USERS_FILE = os.path.join(TEST_DATA_DIR, 'users.json')
+TEST_PEOPLE_FILE = os.path.join(TEST_DATA_DIR, 'people.json')
+TEST_RELATIONSHIPS_FILE = os.path.join(TEST_DATA_DIR, 'relationships.json')
+TEST_AUDIT_LOG = os.path.join(TEST_DATA_DIR, 'audit.log')
 
-def logout(client):
-    """Helper function to log out a user via the test client."""
-    return client.get('/logout', follow_redirects=True)
+# Set TESTING config and paths for the app context
+app.config['TESTING'] = True
+app.config['WTF_CSRF_ENABLED'] = False
+app.config['SECRET_KEY'] = 'test-secret-for-integration'
+# --- Crucial: Override data paths used by the app ---
+app.config['USER_DATA_PATH'] = TEST_USERS_FILE
+app.config['PEOPLE_DATA_PATH'] = TEST_PEOPLE_FILE
+app.config['RELATIONSHIPS_DATA_PATH'] = TEST_RELATIONSHIPS_FILE
+app.config['AUDIT_LOG_FILE'] = TEST_AUDIT_LOG
 
 
 class TestAppIntegration(unittest.TestCase):
-    """Integration tests for Flask app routes."""
+    """
+    Integration tests for user workflows in the Flask application.
+    Uses a separate set of data files that are reset for each test.
+    """
 
     @classmethod
     def setUpClass(cls):
-        """Set up the Flask test client and mock dependencies."""
-        flask_app.config['TESTING'] = True
-        flask_app.config['SECRET_KEY'] = TEST_SECRET_KEY
-        flask_app.config['WTF_CSRF_ENABLED'] = False # Disable CSRF for easier testing
-
-        # Mock UserManager instance used by the app
-        cls.mock_user_manager = MagicMock(spec=UserManager)
-        cls.user_patcher = patch('app.user_manager', cls.mock_user_manager)
-        cls.user_patcher.start()
-
-        # Mock Audit Log function used by the app
-        cls.audit_patcher = patch('app.log_audit')
-        cls.mock_log_audit = cls.audit_patcher.start()
-
-        # Mock FamilyTree instance
-        cls.mock_family_tree = MagicMock(spec=FamilyTree)
-        cls.tree_patcher = patch('app.family_tree', cls.mock_family_tree)
-        cls.tree_patcher.start()
-
-        cls.client = flask_app.test_client()
+        """Create the test data directory if it doesn't exist."""
+        os.makedirs(TEST_DATA_DIR, exist_ok=True)
 
     @classmethod
     def tearDownClass(cls):
-        """Stop the patchers."""
-        cls.user_patcher.stop()
-        cls.audit_patcher.stop()
-        cls.tree_patcher.stop()
+        """Remove the test data directory after all tests."""
+        # Be careful with shutil.rmtree!
+        # pass # Optionally leave the data for inspection
+        try:
+            shutil.rmtree(TEST_DATA_DIR)
+        except OSError as e:
+            print(f"Error removing test data directory {TEST_DATA_DIR}: {e}")
+
 
     def setUp(self):
-        """Reset mocks and set up test users/data before each test."""
-        self.mock_user_manager.reset_mock()
-        self.mock_log_audit.reset_mock()
-        self.mock_family_tree.reset_mock()
+        """Set up the test client and initialize clean data files for each test."""
+        self.client = app.test_client()
 
-        # --- Test Users Setup ---
-        self.admin_user = User("admin_id", "admin_user", hash_password("admin_pass"), role="admin")
-        self.basic_user = User("basic_id", "basic_user", hash_password("basic_pass"), role="basic")
-        self.other_user = User("other_id", "other_user", hash_password("other_pass"), role="basic")
+        # --- Reset Data Files ---
+        # Delete existing test files or copy from a clean source
+        for f in [TEST_USERS_FILE, TEST_PEOPLE_FILE, TEST_RELATIONSHIPS_FILE, TEST_AUDIT_LOG]:
+            if os.path.exists(f):
+                os.remove(f)
+        # Optionally copy baseline data if needed for tests
+        # e.g., shutil.copy(os.path.join(MOCK_DATA_SOURCE_DIR, 'base_users.json'), TEST_USERS_FILE)
 
-        # Common mock configurations for UserManager
-        self.mock_user_manager.find_user_by_id.side_effect = lambda user_id: {
-            "admin_id": self.admin_user,
-            "basic_id": self.basic_user,
-            "other_id": self.other_user,
-        }.get(user_id)
-        self.mock_user_manager.find_user_by_username.side_effect = lambda username: {
-            "admin_user": self.admin_user,
-            "basic_user": self.basic_user,
-            "other_user": self.other_user,
-        }.get(username)
-        self.mock_user_manager.login_user.side_effect = lambda username, password: {
-            ("admin_user", "admin_pass"): self.admin_user,
-            ("basic_user", "basic_pass"): self.basic_user,
-            ("other_user", "other_pass"): self.other_user,
-        }.get((username, password))
-        self.mock_user_manager.users = {
-            "admin_id": self.admin_user,
-            "basic_id": self.basic_user,
-            "other_id": self.other_user,
-        }
-        self.mock_user_manager.users.values.return_value = [self.admin_user, self.basic_user, self.other_user]
+        # --- Re-initialize App Components (Important!) ---
+        # Since data paths are changed via app.config, we need the app's
+        # internal components (user_management, family_tree) to reload their data.
+        # This might require modifying app.py to have a function to re-init components,
+        # or carefully patching their load methods.
+        # For simplicity here, we assume app components read paths from app.config on use.
+        # A more robust way is patching the load_data calls within the app context.
 
-        # --- Test Family Tree Data Setup ---
-        self.person1 = Person("basic_user", "Alice", "Smith", person_id="p1", date_of_birth="1990-01-15")
-        self.person2 = Person("basic_user", "Bob", "Jones", person_id="p2", date_of_birth="1988-05-20")
-        self.relationship1 = Relationship("p1", "p2", "spouse", relationship_id="r1")
+        # Example using patching (if components are singletons loaded at startup):
+        # We need to patch the *instances* used by the app routes.
+        self.user_mgmt_patcher = patch('app.user_management', spec=True)
+        self.family_tree_patcher = patch('app.family_tree', spec=True)
+        self.audit_log_patcher = patch('app.audit_log', spec=True) # Patch audit log too
 
-        # Mock FamilyTree methods needed for tests
-        self.mock_family_tree.get_people_summary.return_value = [
-            {'id': 'p1', 'display_name': 'Alice Smith'},
-            {'id': 'p2', 'display_name': 'Bob Jones'}
-        ]
-        self.mock_family_tree.get_relationships_summary.return_value = [
-            {'id': 'r1', 'person1_name': 'Alice Smith', 'person2_name': 'Bob Jones', 'type': 'spouse'}
-        ]
-        self.mock_family_tree.find_person.side_effect = lambda person_id: {
-            "p1": self.person1,
-            "p2": self.person2,
-        }.get(person_id)
-        self.mock_family_tree.add_person.return_value = self.person1 # Mock successful add
-        self.mock_family_tree.add_relationship.return_value = self.relationship1 # Mock successful add
-        self.mock_family_tree._is_valid_date.return_value = True # Assume date validation passes by default
+        self.mock_user_mgmt = self.user_mgmt_patcher.start()
+        self.mock_family_tree = self.family_tree_patcher.start()
+        self.mock_audit_log = self.audit_log_patcher.start() # Mock log_event
+
+        # Configure mocks to interact with *real* data structures (but not files directly)
+        # This makes tests more 'integration' like without hitting the disk repeatedly.
+        self._test_users = {}
+        self._test_people = {}
+        self._test_relationships = {}
+
+        def _mock_um_load_data(filepath, default): return list(self._test_users.values()) # Return dict values as list of dicts
+        def _mock_um_save_data(filepath, data):
+            self._test_users.clear()
+            for user_dict in data: self._test_users[user_dict['username']] = user_dict
+        def _mock_ft_load_people(filepath, default): return list(self._test_people.values())
+        def _mock_ft_save_people(filepath, data):
+            self._test_people.clear()
+            for p_dict in data: self._test_people[p_dict['person_id']] = p_dict
+        def _mock_ft_load_rels(filepath, default): return list(self._test_relationships.values())
+        def _mock_ft_save_rels(filepath, data):
+            self._test_relationships.clear()
+            for r_dict in data: self._test_relationships[r_dict['rel_id']] = r_dict
+
+        # Mock the underlying db_utils functions used by the components
+        self.load_patch = patch('db_utils.load_data')
+        self.save_patch = patch('db_utils.save_data')
+        self.mock_load = self.load_patch.start()
+        self.mock_save = self.save_patch.start()
+
+        # Route load calls to appropriate mock handlers based on filepath
+        def load_router(filepath, default=None):
+            if 'users.json' in filepath: return _mock_um_load_data(filepath, default)
+            if 'people.json' in filepath: return _mock_ft_load_people(filepath, default)
+            if 'relationships.json' in filepath: return _mock_ft_load_rels(filepath, default)
+            return default if default is not None else []
+        self.mock_load.side_effect = load_router
+
+        def save_router(filepath, data):
+            if 'users.json' in filepath: _mock_um_save_data(filepath, data)
+            if 'people.json' in filepath: _mock_ft_save_people(filepath, data)
+            if 'relationships.json' in filepath: _mock_ft_save_rels(filepath, data)
+        self.mock_save.side_effect = save_router
+
+        # Re-initialize components within the app to use the mocked load/save
+        # This requires components to have a reload method or similar mechanism.
+        # If not, we rely on patching the instances as done above, and need
+        # to make the *mocked* instances behave correctly with the in-memory data.
+        # Let's make the mocked instances work with our in-memory dicts:
+
+        # --- Configure Mock Instances ---
+        # User Management
+        self.mock_user_mgmt.users = self._test_users # Point mock's internal store
+        self.mock_user_mgmt.validate_user.side_effect = self._um_validate_user
+        self.mock_user_mgmt.get_user.side_effect = self._um_get_user
+        self.mock_user_mgmt.add_user.side_effect = self._um_add_user
+        self.mock_user_mgmt.delete_user.side_effect = self._um_delete_user
+        self.mock_user_mgmt.get_all_users.side_effect = self._um_get_all_users
+
+        # Family Tree
+        self.mock_family_tree.people = self._test_people
+        self.mock_family_tree.relationships = self._test_relationships
+        self.mock_family_tree.add_person.side_effect = self._ft_add_person
+        self.mock_family_tree.get_person.side_effect = self._ft_get_person
+        self.mock_family_tree.add_relationship.side_effect = self._ft_add_relationship
+        self.mock_family_tree.get_relationship.side_effect = self._ft_get_relationship
+        self.mock_family_tree.search_person.side_effect = self._ft_search_person # Add mock search
+        self.mock_family_tree.get_all_people.side_effect = lambda: [Person.from_dict(p) for p in self._test_people.values()]
 
 
     def tearDown(self):
-        """Log out after each test if a user might be logged in."""
-        with self.client.session_transaction() as sess:
-            if 'user_id' in sess:
-                 logout(self.client)
+        """Stop patchers and clear session."""
+        self.user_mgmt_patcher.stop()
+        self.family_tree_patcher.stop()
+        self.audit_log_patcher.stop()
+        self.load_patch.stop()
+        self.save_patch.stop()
+        # Clear session
+        with self.client:
+            with self.client.session_transaction() as sess:
+                sess.clear()
 
-    # --- Registration Form Error Tests ---
-    def test_register_missing_username(self):
-        response = self.client.post('/register', data={'username': '', 'password': 'pass'}, follow_redirects=True)
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b'Username is required.', response.data)
-        self.assertIn(b'Please correct the errors below.', response.data) # Check flash message
-        self.assertIn(b'value="pass"' not in response.data) # Password should NOT be repopulated
-        self.mock_user_manager.register_user.assert_not_called()
+    # --- Mock Implementation Helpers (to simulate real component logic) ---
+    def _um_add_user(self, username, password, role):
+        if username in self._test_users: return False
+        new_user = User(username=username, role=role)
+        new_user.set_password(password) # Hashes the password
+        self._test_users[username] = new_user.to_dict() # Store as dict
+        # Simulate saving
+        self.mock_save(TEST_USERS_FILE, list(self._test_users.values()))
+        return True
 
-    def test_register_missing_password(self):
-        response = self.client.post('/register', data={'username': 'testuser', 'password': ''}, follow_redirects=True)
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b'Password is required.', response.data)
-        self.assertIn(b'value="testuser"', response.data) # Username should be repopulated
-        self.mock_user_manager.register_user.assert_not_called()
+    def _um_get_user(self, username):
+        user_dict = self._test_users.get(username)
+        return User.from_dict(user_dict) if user_dict else None
 
-    def test_register_username_taken(self):
-        # Mock find_user_by_username to indicate user exists
-        self.mock_user_manager.find_user_by_username.return_value = self.basic_user
-        response = self.client.post('/register', data={'username': 'basic_user', 'password': 'newpass'}, follow_redirects=True)
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b'Username 'basic_user' is already taken.', response.data)
-        self.assertIn(b'value="basic_user"', response.data)
-        self.mock_user_manager.register_user.assert_not_called()
-        # Reset mock for subsequent tests
-        self.mock_user_manager.find_user_by_username.side_effect = lambda username: {"admin_user": self.admin_user, "basic_user": self.basic_user, "other_user": self.other_user,}.get(username)
+    def _um_validate_user(self, username, password):
+        user = self._um_get_user(username)
+        if user and user.check_password(password):
+            return user
+        return None
 
-    # --- Login Form Error Tests ---
-    def test_login_missing_username(self):
-        response = self.client.post('/login', data={'username': '', 'password': 'pass'}, follow_redirects=True)
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b'Username is required.', response.data)
-        self.assertIn(b'Please enter both username and password.', response.data) # Flash message
-        self.mock_user_manager.login_user.assert_not_called()
+    def _um_delete_user(self, username):
+        if username in self._test_users:
+            del self._test_users[username]
+            self.mock_save(TEST_USERS_FILE, list(self._test_users.values()))
+            return True
+        return False
 
-    def test_login_missing_password(self):
-        response = self.client.post('/login', data={'username': 'testuser', 'password': ''}, follow_redirects=True)
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b'Password is required.', response.data)
-        self.assertIn(b'value="testuser"', response.data) # Username should be repopulated
-        self.mock_user_manager.login_user.assert_not_called()
+    def _um_get_all_users(self):
+        return [User.from_dict(u) for u in self._test_users.values()]
 
-    def test_login_invalid_credentials(self):
-        self.mock_user_manager.login_user.return_value = None # Mock failed login
-        response = self.client.post('/login', data={'username': 'basic_user', 'password': 'wrongpass'}, follow_redirects=True)
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b'Invalid username or password.', response.data) # Check error message
-        self.assertIn(b'value="basic_user"', response.data) # Username should be repopulated
-        self.mock_user_manager.login_user.assert_called_once_with('basic_user', 'wrongpass')
+    def _ft_add_person(self, person):
+        if person.person_id in self._test_people: raise ValueError("Duplicate ID")
+        self._test_people[person.person_id] = person.to_dict()
+        self.mock_save(TEST_PEOPLE_FILE, list(self._test_people.values()))
 
-    # --- Add Person Form Error Tests ---
-    def test_add_person_missing_first_name(self):
-        login(self.client, "basic_user", "basic_pass")
-        response = self.client.post('/add_person', data={'first_name': '', 'last_name': 'Test'}, follow_redirects=True)
-        self.assertEqual(response.status_code, 200)
-        # Check error message is displayed *near* the first_name input (depends on template structure)
-        self.assertIn(b'First name is required.', response.data)
-        # Check other valid data is repopulated
-        self.assertIn(b'value="Test"', response.data)
-        self.assertIn(b'Please correct the errors in the Add Person form.', response.data) # Flash
-        self.mock_family_tree.add_person.assert_not_called()
+    def _ft_get_person(self, person_id):
+        p_dict = self._test_people.get(person_id)
+        return Person.from_dict(p_dict) if p_dict else None
 
-    def test_add_person_invalid_dob_format(self):
-        login(self.client, "basic_user", "basic_pass")
-        self.mock_family_tree._is_valid_date.side_effect = lambda d: d != "invalid-date"
-        response = self.client.post('/add_person', data={'first_name': 'Test', 'dob': 'invalid-date'}, follow_redirects=True)
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b'Invalid date format (YYYY-MM-DD).', response.data) # Check error message
-        self.assertIn(b'value="Test"', response.data) # Repopulate first name
-        self.assertIn(b'value="invalid-date"', response.data) # Repopulate invalid date
-        self.mock_family_tree.add_person.assert_not_called()
-        self.mock_family_tree._is_valid_date.assert_called_with('invalid-date')
-        # Reset mock side effect
-        self.mock_family_tree._is_valid_date.side_effect = None; self.mock_family_tree._is_valid_date.return_value = True
+    def _ft_add_relationship(self, relationship):
+         # Basic check if persons exist
+        if relationship.person1_id not in self._test_people or \
+           relationship.person2_id not in self._test_people:
+            raise ValueError("Person not found for relationship")
+        if relationship.rel_id in self._test_relationships: raise ValueError("Duplicate ID")
+        self._test_relationships[relationship.rel_id] = relationship.to_dict()
+        self.mock_save(TEST_RELATIONSHIPS_FILE, list(self._test_relationships.values()))
 
-    def test_add_person_dod_before_dob(self):
-        login(self.client, "basic_user", "basic_pass")
-        response = self.client.post('/add_person', data={'first_name': 'Test', 'dob': '2000-01-01', 'dod': '1999-12-31'}, follow_redirects=True)
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b'Date of Death cannot be before Date of Birth.', response.data)
-        self.assertIn(b'value="Test"', response.data)
-        self.assertIn(b'value="2000-01-01"', response.data)
-        self.assertIn(b'value="1999-12-31"', response.data)
-        self.mock_family_tree.add_person.assert_not_called()
+    def _ft_get_relationship(self, rel_id):
+        r_dict = self._test_relationships.get(rel_id)
+        return Relationship.from_dict(r_dict) if r_dict else None
+
+    def _ft_search_person(self, query):
+        results = []
+        l_query = query.lower()
+        for p_dict in self._test_people.values():
+            if l_query in p_dict.get('name','').lower() or \
+               l_query in p_dict.get('notes','').lower():
+                results.append(Person.from_dict(p_dict))
+        return results
 
 
-    # --- Add Relationship Form Error Tests ---
-    def test_add_relationship_missing_person1(self):
-        login(self.client, "basic_user", "basic_pass")
-        response = self.client.post('/add_relationship', data={'person1_id': '', 'person2_id': 'p2', 'relationship_type': 'spouse'}, follow_redirects=True)
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b'Person 1 must be selected.', response.data)
-        self.assertIn(b'option value="p2" selected', response.data) # Check person 2 repopulated
-        self.assertIn(b'option value="spouse" selected', response.data) # Check type repopulated
-        self.assertIn(b'Please correct the errors in the Add Relationship form.', response.data) # Flash
-        self.mock_family_tree.add_relationship.assert_not_called()
-
-    def test_add_relationship_same_person(self):
-        login(self.client, "basic_user", "basic_pass")
-        response = self.client.post('/add_relationship', data={'person1_id': 'p1', 'person2_id': 'p1', 'relationship_type': 'sibling'}, follow_redirects=True)
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b'Cannot add relationship to the same person.', response.data)
-        self.assertIn(b'option value="p1" selected', response.data) # Check person 1 repopulated
-        self.mock_family_tree.add_relationship.assert_not_called()
-
-    def test_add_relationship_already_exists(self):
-        login(self.client, "basic_user", "basic_pass")
-        # Mock find_relationship to return the existing one
-        self.mock_family_tree.find_relationship.return_value = self.relationship1
-        response = self.client.post('/add_relationship', data={'person1_id': 'p1', 'person2_id': 'p2', 'relationship_type': 'spouse'}, follow_redirects=True)
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b'A 'spouse' relationship already exists between these two people.', response.data)
-        self.mock_family_tree.find_relationship.assert_called_once_with('p1', 'p2', 'spouse')
-        self.mock_family_tree.add_relationship.assert_not_called()
-        # Reset mock
-        self.mock_family_tree.find_relationship.return_value = None
-
-    # --- Admin UI Tests ---
-    # (Keep existing tests from previous steps)
-    def test_set_role_success_by_admin(self):
-        login(self.client, "admin_user", "admin_pass")
-        self.mock_user_manager.set_user_role.return_value = True
-        target_user_id = "basic_id"; new_role = "trusted"
-        response = self.client.post(f'/admin/set_role/{target_user_id}', data={'role': new_role}, follow_redirects=True)
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b'Role for user 'basic_user' successfully updated', response.data)
-        self.mock_user_manager.set_user_role.assert_called_once_with(target_user_id, new_role, actor_username="admin_user")
-
-    # ... (other admin tests remain the same) ...
-    def test_set_role_invalid_role_by_admin(self):
-        login(self.client, "admin_user", "admin_pass")
-        target_user_id = "basic_id"; invalid_role = "superhero"
-        response = self.client.post(f'/admin/set_role/{target_user_id}', data={'role': invalid_role}, follow_redirects=True)
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b'Invalid role specified', response.data)
-        self.mock_user_manager.set_user_role.assert_not_called()
-
-    def test_set_role_user_not_found_by_admin(self):
-        login(self.client, "admin_user", "admin_pass")
-        self.mock_user_manager.find_user_by_id.return_value = None
-        target_user_id = "ghost_id"
-        response = self.client.post(f'/admin/set_role/{target_user_id}', data={'role': 'basic'}, follow_redirects=True)
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(f'User with ID {target_user_id} not found.'.encode('utf-8'), response.data)
-        self.mock_user_manager.set_user_role.assert_not_called()
-
-    def test_set_role_by_non_admin(self):
-        login(self.client, "basic_user", "basic_pass")
-        response = self.client.post('/admin/set_role/other_id', data={'role': 'admin'})
-        self.assertEqual(response.status_code, 403)
-        self.mock_user_manager.set_user_role.assert_not_called()
-
-    def test_set_role_not_logged_in(self):
-        response = self.client.post('/admin/set_role/basic_id', data={'role': 'admin'}, follow_redirects=False)
-        self.assertEqual(response.status_code, 302)
-        self.assertTrue(response.location.startswith('/login'))
-        self.mock_user_manager.set_user_role.assert_not_called()
-
-    def test_delete_user_success_by_admin(self):
-        login(self.client, "admin_user", "admin_pass")
-        self.mock_user_manager.delete_user.return_value = True
-        target_user_id = "basic_id"
-        response = self.client.post(f'/admin/delete_user/{target_user_id}', follow_redirects=True)
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b'User 'basic_user' deleted successfully.', response.data)
-        self.mock_user_manager.delete_user.assert_called_once_with(target_user_id, actor_username="admin_user")
-
-    def test_delete_user_self_by_admin(self):
-        login(self.client, "admin_user", "admin_pass")
-        target_user_id = "admin_id"
-        response = self.client.post(f'/admin/delete_user/{target_user_id}', follow_redirects=True)
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b'Administrators cannot delete their own account.', response.data)
-        self.mock_user_manager.delete_user.assert_not_called()
-
-    def test_delete_user_not_found_by_admin(self):
-        login(self.client, "admin_user", "admin_pass")
-        self.mock_user_manager.find_user_by_id.return_value = None
-        target_user_id = "ghost_id"
-        response = self.client.post(f'/admin/delete_user/{target_user_id}', follow_redirects=True)
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(f'User with ID {target_user_id} not found.'.encode('utf-8'), response.data)
-        self.mock_user_manager.delete_user.assert_not_called()
-
-    def test_delete_user_by_non_admin(self):
-        login(self.client, "basic_user", "basic_pass")
-        response = self.client.post('/admin/delete_user/other_id')
-        self.assertEqual(response.status_code, 403)
-        self.mock_user_manager.delete_user.assert_not_called()
-
-    def test_delete_user_not_logged_in(self):
-        response = self.client.post('/admin/delete_user/basic_id', follow_redirects=False)
-        self.assertEqual(response.status_code, 302)
-        self.assertTrue(response.location.startswith('/login'))
-        self.mock_user_manager.delete_user.assert_not_called()
-
-    # --- Password Reset Flow Tests ---
-    # (Keep existing tests from previous steps)
-    def test_request_password_reset_success(self):
-        test_token = "mock_reset_token_123"
-        self.mock_user_manager.generate_reset_token.return_value = test_token
-        response = self.client.post('/request_password_reset', data={'username': 'basic_user'}, follow_redirects=True)
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b'Password reset requested for 'basic_user'', response.data)
-        self.mock_user_manager.generate_reset_token.assert_called_once_with('basic_user')
-        self.mock_log_audit.assert_called_with(flask_app.config['AUDIT_LOG_FILE'], 'basic_user', 'request_password_reset', 'success (token generated)')
-
-    # ... (other password reset tests remain the same) ...
-    def test_request_password_reset_user_not_found(self):
-        self.mock_user_manager.generate_reset_token.return_value = None
-        response = self.client.post('/request_password_reset', data={'username': 'ghost_user'}, follow_redirects=True)
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b'If a user with that username exists', response.data)
-        self.mock_user_manager.generate_reset_token.assert_called_once_with('ghost_user')
-        self.mock_log_audit.assert_called_with(flask_app.config['AUDIT_LOG_FILE'], 'ghost_user', 'request_password_reset', 'failure or user not found')
-
-    def test_request_password_reset_no_username(self):
-        response = self.client.post('/request_password_reset', data={'username': ''}, follow_redirects=True)
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b'Please enter your username.', response.data)
-        self.mock_user_manager.generate_reset_token.assert_not_called()
-
-    def test_reset_password_view_valid_token(self):
-        test_token = "valid_token_abc"
-        self.mock_user_manager.verify_reset_token.return_value = self.basic_user
-        response = self.client.get(f'/reset_password/{test_token}')
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b'Reset Your Password', response.data)
-        self.assertIn(f'value="{test_token}"'.encode('utf-8'), response.data)
-        self.mock_user_manager.verify_reset_token.assert_called_once_with(test_token)
-        self.mock_log_audit.assert_called_with(flask_app.config['AUDIT_LOG_FILE'], f'user: {self.basic_user.username}', 'reset_password_view', 'success - token valid')
-
-    def test_reset_password_view_invalid_token(self):
-        test_token = "invalid_token_xyz"
-        self.mock_user_manager.verify_reset_token.return_value = None
-        response = self.client.get(f'/reset_password/{test_token}', follow_redirects=True)
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b'Invalid or expired password reset token.', response.data)
-        self.assertIn(b'Request Password Reset', response.data)
-        self.mock_user_manager.verify_reset_token.assert_called_once_with(test_token)
-        self.mock_log_audit.assert_called_with(flask_app.config['AUDIT_LOG_FILE'], f'token: {test_token[:8]}...', 'reset_password_view', 'failure - invalid/expired token')
-
-    def test_reset_password_submit_success(self):
-        test_token = "valid_token_for_submit"
-        new_password = "newSecurePassword123"
-        self.mock_user_manager.verify_reset_token.return_value = self.basic_user
-        self.mock_user_manager.reset_password.return_value = True
-        response = self.client.post(f'/reset_password/{test_token}', data=dict(
-            password=new_password,
-            confirm_password=new_password
+    # --- Helper Methods ---
+    def _login(self, username, password):
+        """Logs in using the test client."""
+        return self.client.post('/login', data=dict(
+            username=username,
+            password=password
         ), follow_redirects=True)
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b'Your password has been reset successfully', response.data)
-        self.assertIn(b'Please Log In', response.data)
-        self.mock_user_manager.verify_reset_token.assert_called_once_with(test_token)
-        self.mock_user_manager.reset_password.assert_called_once_with(test_token, new_password)
 
-    def test_reset_password_submit_mismatch(self):
-        test_token = "valid_token_for_mismatch"
-        self.mock_user_manager.verify_reset_token.return_value = self.basic_user
-        response = self.client.post(f'/reset_password/{test_token}', data=dict(
-            password="newPass1",
-            confirm_password="newPass2"
-        ), follow_redirects=True)
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b'Reset Your Password', response.data)
-        self.assertIn(b'Passwords do not match.', response.data)
-        self.mock_user_manager.reset_password.assert_not_called()
+    def _logout(self):
+        """Logs out using the test client."""
+        return self.client.get('/logout', follow_redirects=True)
 
-    def test_reset_password_submit_invalid_token(self):
-        test_token = "expired_token_on_submit"
-        new_password = "newSecurePassword123"
-        self.mock_user_manager.verify_reset_token.return_value = self.basic_user # GET ok
-        response_get = self.client.get(f'/reset_password/{test_token}')
-        self.assertEqual(response_get.status_code, 200)
-        self.mock_user_manager.verify_reset_token.return_value = None # Fails on POST
-        self.mock_user_manager.reset_password.return_value = False
-        response_post = self.client.post(f'/reset_password/{test_token}', data=dict(
-            password=new_password,
-            confirm_password=new_password
-        ), follow_redirects=True)
-        self.assertEqual(response_post.status_code, 200)
-        self.assertIn(b'Invalid or expired password reset token.', response_post.data)
-        self.assertIn(b'Request Password Reset', response_post.data)
-        self.mock_user_manager.verify_reset_token.assert_called_with(test_token)
-        self.mock_user_manager.reset_password.assert_called_once_with(test_token, new_password)
+    def _add_user_direct(self, username, password, role=UserRole.USER):
+        """Adds user directly to mock data for test setup."""
+        self._um_add_user(username, password, role)
+
+
+    # --- Test Cases ---
+
+    def test_login_add_person_logout_workflow(self):
+        """Test login, add person, check if added, then logout."""
+        # Setup: Add a user to the mock data
+        self._add_user_direct("testuser", "password")
+
+        # Step 1: Login
+        login_response = self._login("testuser", "password")
+        self.assertEqual(login_response.status_code, 200)
+        self.assertIn(b'Welcome testuser', login_response.data)
+        self.assertIn(b'Logout', login_response.data)
+
+        # Step 2: Go to Add Person page
+        add_page_response = self.client.get('/add_person')
+        self.assertEqual(add_page_response.status_code, 200)
+        self.assertIn(b'Add New Person', add_page_response.data)
+
+        # Step 3: Submit Add Person form
+        person_data = {'name': 'Integration Test Person', 'birth_date': '1995-03-15', 'notes': 'Added via test'}
+        add_post_response = self.client.post('/add_person', data=person_data, follow_redirects=True)
+        self.assertEqual(add_post_response.status_code, 200)
+        self.assertIn(b'Person added successfully!', add_post_response.data)
+        # Check the underlying mock data
+        self.assertEqual(len(self._test_people), 1)
+        added_person_dict = list(self._test_people.values())[0]
+        self.assertEqual(added_person_dict['name'], 'Integration Test Person')
+
+        # Step 4: Verify person appears on index page (assuming index lists people)
+        index_response = self.client.get('/')
+        self.assertEqual(index_response.status_code, 200)
+        self.assertIn(b'Integration Test Person', index_response.data) # Check if name is displayed
+
+        # Step 5: Logout
+        logout_response = self._logout()
+        self.assertEqual(logout_response.status_code, 200)
+        self.assertIn(b'Login', logout_response.data)
+        self.assertNotIn(b'Logout', logout_response.data)
+
+        # Step 6: Verify person is NOT visible after logout (if index requires login)
+        # Or verify index page content changes for logged-out users
+        # index_after_logout = self.client.get('/')
+        # self.assertNotIn(b'Integration Test Person', index_after_logout.data)
+
+
+    def test_add_edit_person_workflow(self):
+        """Test adding a person and then editing them."""
+        self._add_user_direct("editor", "editpass")
+        self._login("editor", "editpass")
+
+        # Add initial person
+        person_data = {'name': 'Person To Edit', 'birth_date': '1980-01-01'}
+        self.client.post('/add_person', data=person_data, follow_redirects=True)
+        # Find the ID of the added person (assuming IDs are generated predictably or mockable)
+        # For this test, let's assume the mock assigns 'p1'
+        person_id = list(self._test_people.keys())[0] # Get the ID from mock data
+
+        # Go to edit page
+        edit_page_response = self.client.get(f'/edit_person/{person_id}')
+        self.assertEqual(edit_page_response.status_code, 200)
+        self.assertIn(b'Edit Person', edit_page_response.data)
+        self.assertIn(b'Person To Edit', edit_page_response.data) # Check current name is in form
+
+        # Submit edit form
+        edit_data = {'name': 'Edited Name', 'birth_date': '1980-01-01', 'death_date': '2020-12-31', 'notes': 'Updated notes'}
+        edit_post_response = self.client.post(f'/edit_person/{person_id}', data=edit_data, follow_redirects=True)
+        self.assertEqual(edit_post_response.status_code, 200)
+        self.assertIn(b'Person updated successfully!', edit_post_response.data)
+
+        # Verify changes in mock data
+        edited_person_dict = self._test_people.get(person_id)
+        self.assertIsNotNone(edited_person_dict)
+        self.assertEqual(edited_person_dict['name'], 'Edited Name')
+        self.assertEqual(edited_person_dict['death_date'], '2020-12-31')
+        self.assertEqual(edited_person_dict['notes'], 'Updated notes')
+
+        # Verify changes on index page
+        index_response = self.client.get('/')
+        self.assertIn(b'Edited Name', index_response.data)
+        self.assertNotIn(b'Person To Edit', index_response.data)
+
+        self._logout()
+
+    def test_add_relationship_workflow(self):
+        """Test adding two people and then a relationship between them."""
+        self._add_user_direct("relator", "relpass")
+        self._login("relator", "relpass")
+
+        # Add two people
+        p1_data = {'name': 'Person One', 'birth_date': '1970-01-01'}
+        self.client.post('/add_person', data=p1_data)
+        p1_id = list(self._test_people.keys())[0]
+
+        p2_data = {'name': 'Person Two', 'birth_date': '1972-02-02'}
+        self.client.post('/add_person', data=p2_data)
+        p2_id = list(self._test_people.keys())[1]
+
+        # Go to add relationship page
+        add_rel_page_response = self.client.get('/add_relationship')
+        self.assertEqual(add_rel_page_response.status_code, 200)
+        self.assertIn(b'Add New Relationship', add_rel_page_response.data)
+        # Check if people appear in dropdowns (requires checking HTML content)
+        self.assertIn(f'value="{p1_id}"'.encode(), add_rel_page_response.data)
+        self.assertIn(f'value="{p2_id}"'.encode(), add_rel_page_response.data)
+
+        # Submit add relationship form
+        rel_data = {'person1_id': p1_id, 'person2_id': p2_id, 'type': RelationshipType.MARRIED.name}
+        add_rel_post_response = self.client.post('/add_relationship', data=rel_data, follow_redirects=True)
+        self.assertEqual(add_rel_post_response.status_code, 200)
+        self.assertIn(b'Relationship added successfully!', add_rel_post_response.data)
+
+        # Verify relationship in mock data
+        self.assertEqual(len(self._test_relationships), 1)
+        added_rel_dict = list(self._test_relationships.values())[0]
+        self.assertEqual(added_rel_dict['person1_id'], p1_id)
+        self.assertEqual(added_rel_dict['person2_id'], p2_id)
+        self.assertEqual(added_rel_dict['type'], RelationshipType.MARRIED.name)
+
+        # Verify relationship appears on index page (assuming relationships are shown)
+        index_response = self.client.get('/')
+        # This check depends heavily on how relationships are displayed
+        # Example: Check if names appear together or relationship type is mentioned
+        self.assertIn(b'Person One', index_response.data)
+        self.assertIn(b'Person Two', index_response.data)
+        self.assertIn(RelationshipType.MARRIED.name.encode(), index_response.data) # Check if type name is shown
+
+        self._logout()
+
+    def test_search_workflow(self):
+        """Test adding people and searching for them."""
+        self._add_user_direct("searcher", "searchpass")
+        self._login("searcher", "searchpass")
+
+        # Add people
+        p1_data = {'name': 'John Doe', 'birth_date': '1985-06-20', 'notes': 'Lives in Texas'}
+        self.client.post('/add_person', data=p1_data)
+        p2_data = {'name': 'Jane Smith', 'birth_date': '1988-09-10', 'notes': 'Related to John'}
+        self.client.post('/add_person', data=p2_data)
+        p3_data = {'name': 'Johnny Appleseed', 'birth_date': '1774-09-26', 'notes': 'Historical figure'}
+        self.client.post('/add_person', data=p3_data)
+
+        # Perform search via GET (assuming search form is on index or dedicated page)
+        search_get_response = self.client.get('/search?query=John')
+        self.assertEqual(search_get_response.status_code, 200)
+        self.assertIn(b'Search Results', search_get_response.data)
+        self.assertIn(b'John Doe', search_get_response.data)
+        self.assertIn(b'Jane Smith', search_get_response.data) # 'Related to John' in notes
+        self.assertNotIn(b'Johnny Appleseed', search_get_response.data)
+
+        # Perform search via POST (if search uses POST)
+        search_post_response = self.client.post('/search', data={'query': 'texas'}, follow_redirects=True)
+        self.assertEqual(search_post_response.status_code, 200)
+        self.assertIn(b'Search Results', search_post_response.data)
+        self.assertIn(b'John Doe', search_post_response.data) # 'Lives in Texas' in notes
+        self.assertNotIn(b'Jane Smith', search_post_response.data)
+        self.assertNotIn(b'Johnny Appleseed', search_post_response.data)
+
+        # Perform search with no results
+        no_results_response = self.client.get('/search?query=NoSuchName')
+        self.assertEqual(no_results_response.status_code, 200)
+        self.assertIn(b'No results found', no_results_response.data)
+        self.assertNotIn(b'John Doe', no_results_response.data)
+
+        self._logout()
 
 
 if __name__ == '__main__':

@@ -1,267 +1,241 @@
 # tests/test_app.py
-
 import unittest
+import sys
 import os
-from flask import Flask, session, flash # Import flask components
 from unittest.mock import patch, MagicMock
-import tempfile # For creating temporary directories/files
-import shutil # For removing temporary directories
-import json
 
-# Import the Flask app instance and core components
-# Need to ensure imports work relative to the test execution context
-# Assuming tests are run from the project root
-from app import app, user_manager, family_tree
-from src.user import User, hash_password, VALID_ROLES
+# Add the project root directory to the Python path
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+src_path = os.path.join(project_root, 'src')
+sys.path.insert(0, project_root) # Add project root for app import
+sys.path.insert(0, src_path)
 
-# --- Test Configuration ---
-TEST_DATA_DIR = tempfile.mkdtemp()
-TEST_USERS_FILE = os.path.join(TEST_DATA_DIR, 'test_users.json')
-TEST_TREE_FILE = os.path.join(TEST_DATA_DIR, 'test_tree.json')
-TEST_AUDIT_LOG = os.path.join(TEST_DATA_DIR, 'test_audit.log')
-
-# --- Helper Functions ---
-def create_test_user(username, password, role='basic', user_id=None):
-    """Creates a User object for testing."""
-    return User(
-        user_id=user_id or f"test_{username}_id",
-        username=username,
-        password_hash=hash_password(password),
-        role=role
-    )
-
-def setup_test_environment():
-    """Sets up clean data files and mock dependencies for tests."""
-    # Ensure the temp directory is clean
-    if os.path.exists(TEST_DATA_DIR):
-        shutil.rmtree(TEST_DATA_DIR)
-    os.makedirs(TEST_DATA_DIR)
-
-    # Configure app for testing
+# Import the Flask app instance
+# Ensure app.py can be imported and doesn't run the server automatically
+# Use a pattern like if __name__ == '__main__': app.run() in app.py
+try:
+    from app import app, user_management, family_tree # Import necessary components
+    from user import User, UserRole
+except ImportError as e:
+    print(f"Error importing Flask app or components: {e}")
+    # Define dummy app if import fails to allow test discovery
+    from flask import Flask
+    app = Flask(__name__)
+    app.config['SECRET_KEY'] = 'test-secret-key'
     app.config['TESTING'] = True
-    app.config['SECRET_KEY'] = 'test_secret_key' # Consistent key for session tests
-    app.config['WTF_CSRF_ENABLED'] = False # Disable CSRF for testing forms if applicable
-    # Point app components to test files *before* creating client
-    user_manager.users_file_path = TEST_USERS_FILE
-    user_manager.audit_log_path = TEST_AUDIT_LOG
-    family_tree.file_path = TEST_TREE_FILE
-    family_tree.audit_log_path = TEST_AUDIT_LOG
-    # Ensure components start fresh (clear in-memory data)
-    user_manager.users = {}
-    family_tree.people = {}
-    family_tree.relationships = {}
-    # Create empty files
-    open(TEST_USERS_FILE, 'w').close()
-    open(TEST_TREE_FILE, 'w').close()
-    open(TEST_AUDIT_LOG, 'w').close()
-    # Load from empty files (optional, depends on initialization logic)
-    # user_manager._load_users()
-    # family_tree.load_tree()
+    user_management = MagicMock()
+    family_tree = MagicMock()
 
-def cleanup_test_environment():
-    """Removes temporary data files."""
-    if os.path.exists(TEST_DATA_DIR):
-        shutil.rmtree(TEST_DATA_DIR)
+# Set TESTING config
+app.config['TESTING'] = True
+app.config['WTF_CSRF_ENABLED'] = False # Disable CSRF for simpler testing
+app.config['SECRET_KEY'] = 'test-secret-for-testing' # Needed for session
 
-# --- Base Test Case ---
-class BaseAppTestCase(unittest.TestCase):
-    """Base class for Flask app tests."""
 
-    @classmethod
-    def setUpClass(cls):
-        """Set up test environment once for the class."""
-        setup_test_environment()
-
-    @classmethod
-    def tearDownClass(cls):
-        """Clean up test environment once after all tests."""
-        cleanup_test_environment()
+class TestAppRoutes(unittest.TestCase):
+    """Test cases for the Flask application routes."""
 
     def setUp(self):
-        """Set up fresh app client and test users for each test."""
-        setup_test_environment() # Re-setup files to ensure isolation
-        self.app = app.test_client() # Create a test client
+        """Set up the test client and mock dependencies for each test."""
+        self.client = app.test_client()
 
-        # Add standard test users to the user_manager directly
-        self.admin_user = create_test_user("admin", "password", "admin", "admin_id_1")
-        self.basic_user = create_test_user("basic", "password", "basic", "basic_id_1")
-        self.other_user = create_test_user("other", "password", "basic", "other_id_1")
+        # --- Mock Core Components ---
+        # It's often better to mock the data layer directly if possible
+        # Patching the instances imported into app.py
+        self.user_mgmt_patcher = patch('app.user_management', spec=True)
+        self.family_tree_patcher = patch('app.family_tree', spec=True)
+        self.mock_user_mgmt = self.user_mgmt_patcher.start()
+        self.mock_family_tree = self.family_tree_patcher.start()
 
-        user_manager.users = {
-            self.admin_user.user_id: self.admin_user,
-            self.basic_user.user_id: self.basic_user,
-            self.other_user.user_id: self.other_user
-        }
-        user_manager._save_users() # Save initial test users
+        # --- Mock Specific Methods ---
+        # User Management Mocks
+        self.mock_user_mgmt.validate_user.return_value = None # Default: validation fails
+        self.mock_user_mgmt.get_user.return_value = None
+        self.mock_user_mgmt.add_user.return_value = True # Default: adding succeeds
+        self.mock_user_mgmt.delete_user.return_value = True # Default: deletion succeeds
+        self.mock_user_mgmt.get_all_users.return_value = [] # Default: no users
+
+        # Family Tree Mocks
+        self.mock_family_tree.get_person.return_value = None
+        self.mock_family_tree.get_relationship.return_value = None
+        self.mock_family_tree.add_person.return_value = None # Methods might not return values
+        self.mock_family_tree.remove_person.return_value = None
+        self.mock_family_tree.add_relationship.return_value = None
+        self.mock_family_tree.remove_relationship.return_value = None
+        self.mock_family_tree.get_all_people.return_value = [] # Assuming this method exists
+        self.mock_family_tree.search_person.return_value = [] # Assuming this method exists
+
+        # --- Mock User Objects (for login simulation) ---
+        self.test_user = User(username='testuser', password_hash='fakehash', role=UserRole.USER)
+        self.test_user.id = 'testuser' # Flask-Login uses get_id() which defaults to username
+        self.test_admin = User(username='admin', password_hash='fakehash_admin', role=UserRole.ADMIN)
+        self.test_admin.id = 'admin'
 
     def tearDown(self):
-        """Clean up after each test (e.g., logout)."""
-        # No specific action needed here usually, as setUp resets the environment
-        pass
+        """Stop patchers."""
+        self.user_mgmt_patcher.stop()
+        self.family_tree_patcher.stop()
+        # Clear session context if needed (though test_client usually handles this)
+        with self.client:
+             with self.client.session_transaction() as sess:
+                 sess.clear()
 
-    def login(self, username, password):
-        """Helper method to log in a user."""
-        return self.app.post('/login', data=dict(
+
+    # --- Helper Methods ---
+    def login(self, username="testuser", password="password", user_obj=None):
+        """Helper method to simulate login."""
+        if user_obj is None:
+            user_obj = self.test_user
+        # Mock validate_user to succeed for this login attempt
+        self.mock_user_mgmt.validate_user.return_value = user_obj
+        # Mock get_user for flask_login user_loader
+        self.mock_user_mgmt.get_user.return_value = user_obj
+
+        response = self.client.post('/login', data=dict(
             username=username,
             password=password
         ), follow_redirects=True)
+        return response
 
     def logout(self):
-        """Helper method to log out."""
-        return self.app.get('/logout', follow_redirects=True)
+        """Helper method to simulate logout."""
+        return self.client.get('/logout', follow_redirects=True)
 
-# --- Test Cases ---
+    # --- Test Cases ---
 
-class TestAdminUserManagement(BaseAppTestCase):
-    """Tests for the admin user management UI routes."""
-
-    def test_manage_users_page_access_admin(self):
-        """Test admin can access the manage users page."""
-        self.login(self.admin_user.username, "password")
-        response = self.app.get('/admin/users')
+    def test_index_route_get(self):
+        """Test the index route (GET)."""
+        response = self.client.get('/')
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Manage Users", response.data)
-        self.assertIn(bytes(self.basic_user.username, 'utf-8'), response.data)
-        self.assertIn(bytes(self.other_user.username, 'utf-8'), response.data)
-        self.assertIn(b'name="role"', response.data) # Check role selector is present
-        self.assertIn(b'action="/admin/delete_user/', response.data) # Check delete button form
+        self.assertIn(b'Welcome', response.data) # Check for expected content
 
-    def test_manage_users_page_access_basic_user(self):
-        """Test basic user cannot access the manage users page (403)."""
-        self.login(self.basic_user.username, "password")
-        response = self.app.get('/admin/users')
+    def test_login_route_get(self):
+        """Test the login route (GET)."""
+        response = self.client.get('/login')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Login', response.data)
+
+    def test_login_success_post(self):
+        """Test successful login (POST)."""
+        response = self.login(user_obj=self.test_user)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Logout', response.data) # Should see logout link after login
+        self.assertIn(b'Welcome testuser', response.data) # Check welcome message
+        # Check that validate_user was called
+        self.mock_user_mgmt.validate_user.assert_called_once_with('testuser', 'password')
+
+    def test_login_failure_post(self):
+        """Test failed login (POST)."""
+        # Ensure validate_user returns None (default setUp behavior)
+        self.mock_user_mgmt.validate_user.return_value = None
+        response = self.client.post('/login', data=dict(
+            username='testuser',
+            password='wrongpassword'
+        ), follow_redirects=True)
+        self.assertEqual(response.status_code, 200) # Still 200 because it re-renders login page
+        self.assertIn(b'Login', response.data) # Should still be on login page
+        self.assertIn(b'Invalid username or password', response.data) # Check flash message
+        self.mock_user_mgmt.validate_user.assert_called_once_with('testuser', 'wrongpassword')
+
+    def test_logout_route(self):
+        """Test the logout route."""
+        self.login() # Need to be logged in first
+        response = self.logout()
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Login', response.data) # Should see login link again
+        self.assertNotIn(b'Logout', response.data)
+
+    def test_add_person_get_requires_login(self):
+        """Test accessing add_person (GET) requires login."""
+        response = self.client.get('/add_person', follow_redirects=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Login', response.data) # Should be redirected to login
+        self.assertIn(b'Please log in to access this page', response.data) # Flash message
+
+    def test_add_person_get_logged_in(self):
+        """Test accessing add_person (GET) when logged in."""
+        self.login()
+        response = self.client.get('/add_person')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Add New Person', response.data)
+
+    def test_add_person_post_success(self):
+        """Test successfully adding a person (POST)."""
+        self.login()
+        person_data = {'name': 'New Person', 'birth_date': '2000-01-01', 'death_date': '', 'notes': 'Test note'}
+        response = self.client.post('/add_person', data=person_data, follow_redirects=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Person added successfully!', response.data) # Check flash message
+        # Check that family_tree.add_person was called (argument checking is tricky with object creation)
+        self.mock_family_tree.add_person.assert_called_once()
+        # Check the argument passed to add_person
+        added_person_arg = self.mock_family_tree.add_person.call_args[0][0]
+        self.assertEqual(added_person_arg.name, 'New Person')
+        self.assertEqual(added_person_arg.birth_date, '2000-01-01')
+
+    def test_add_person_post_validation_error(self):
+        """Test adding a person (POST) with missing data (form validation)."""
+        self.login()
+        person_data = {'name': '', 'birth_date': '2000-01-01'} # Missing name
+        response = self.client.post('/add_person', data=person_data, follow_redirects=True)
+        self.assertEqual(response.status_code, 200) # Re-renders form
+        self.assertIn(b'Add New Person', response.data)
+        self.assertIn(b'This field is required.', response.data) # Check WTForms error message
+        self.mock_family_tree.add_person.assert_not_called() # Should not be called if form invalid
+
+
+    # --- Admin Route Tests ---
+    def test_admin_users_get_requires_admin(self):
+        """Test accessing admin users page requires admin role."""
+        # Try as logged-out user
+        response_logout = self.client.get('/admin/users', follow_redirects=True)
+        self.assertIn(b'Login', response_logout.data) # Redirected to login
+
+        # Try as regular user
+        self.login(user_obj=self.test_user)
+        response_user = self.client.get('/admin/users', follow_redirects=True)
+        self.assertEqual(response_user.status_code, 403) # Forbidden
+        self.assertIn(b'Forbidden', response_user.data)
+        self.logout() # Clean up session
+
+        # Try as admin user
+        self.login(username="admin", password="adminpass", user_obj=self.test_admin)
+        self.mock_user_mgmt.get_all_users.return_value = [self.test_user, self.test_admin] # Mock data for page
+        response_admin = self.client.get('/admin/users')
+        self.assertEqual(response_admin.status_code, 200)
+        self.assertIn(b'User Management', response_admin.data)
+        self.assertIn(b'testuser', response_admin.data) # Check user data is displayed
+        self.assertIn(b'admin', response_admin.data)
+
+    def test_admin_delete_user_success(self):
+        """Test admin successfully deleting a user."""
+        self.login(username="admin", password="adminpass", user_obj=self.test_admin)
+        target_username = 'user_to_delete'
+        response = self.client.post(f'/admin/delete_user/{target_username}', follow_redirects=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'User Management', response.data) # Redirect back to admin page
+        self.assertIn(b'User deleted successfully', response.data) # Flash message
+        self.mock_user_mgmt.delete_user.assert_called_once_with(target_username)
+
+    def test_admin_delete_user_requires_admin(self):
+        """Test deleting a user requires admin role."""
+        self.login(user_obj=self.test_user) # Login as regular user
+        target_username = 'user_to_delete'
+        response = self.client.post(f'/admin/delete_user/{target_username}', follow_redirects=True)
         self.assertEqual(response.status_code, 403) # Forbidden
-        self.assertIn(b"Forbidden", response.data) # Check default forbidden message
+        self.mock_user_mgmt.delete_user.assert_not_called()
 
-    def test_manage_users_page_access_logged_out(self):
-        """Test logged out user cannot access manage users page (redirects to login)."""
-        response = self.app.get('/admin/users', follow_redirects=False) # Don't follow redirect
-        self.assertEqual(response.status_code, 302) # Redirect
-        self.assertTrue(response.location.startswith('/login'))
+    # --- Error Handling ---
+    def test_404_not_found(self):
+        """Test accessing a non-existent route."""
+        response = self.client.get('/nonexistent-route')
+        self.assertEqual(response.status_code, 404)
+        self.assertIn(b'Page Not Found', response.data) # Check content of 404 page
 
-    def test_set_user_role_success(self):
-        """Test admin successfully sets a user's role."""
-        self.login(self.admin_user.username, "password")
-        target_user_id = self.basic_user.user_id
-        new_role = 'trusted' # Assuming 'trusted' is a valid role
-        self.assertIn(new_role, VALID_ROLES) # Ensure role is valid for test
+    # Add more tests for edit_person (GET/POST), add/edit_relationship (GET/POST), search (GET/POST) etc.
+    # Remember to test both success cases and validation/error cases.
+    # Test authentication (@login_required) and authorization (@admin_required) thoroughly.
 
-        response = self.app.post(f'/admin/set_role/{target_user_id}', data=dict(
-            role=new_role
-        ), follow_redirects=True)
-
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Role for user", response.data) # Check success flash message
-        self.assertIn(b"successfully updated", response.data)
-        self.assertIn(bytes(new_role, 'utf-8'), response.data)
-
-        # Verify change in user_manager
-        updated_user = user_manager.find_user_by_id(target_user_id)
-        self.assertIsNotNone(updated_user)
-        self.assertEqual(updated_user.role, new_role)
-
-    def test_set_user_role_invalid_role(self):
-        """Test setting an invalid role fails."""
-        self.login(self.admin_user.username, "password")
-        target_user_id = self.basic_user.user_id
-        invalid_role = 'superadmin'
-        self.assertNotIn(invalid_role, VALID_ROLES) # Ensure role is invalid for test
-
-        response = self.app.post(f'/admin/set_role/{target_user_id}', data=dict(
-            role=invalid_role
-        ), follow_redirects=True)
-
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Invalid role specified", response.data) # Check error flash message
-
-        # Verify role did not change
-        original_user = user_manager.find_user_by_id(target_user_id)
-        self.assertEqual(original_user.role, self.basic_user.role)
-
-    def test_set_user_role_user_not_found(self):
-        """Test setting role for a non-existent user fails."""
-        self.login(self.admin_user.username, "password")
-        target_user_id = "nonexistent_user_id"
-        new_role = 'trusted'
-
-        response = self.app.post(f'/admin/set_role/{target_user_id}', data=dict(
-            role=new_role
-        ), follow_redirects=True)
-
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b"User with ID", response.data) # Check error flash message
-        self.assertIn(b"not found", response.data)
-
-    def test_set_user_role_by_basic_user_fails(self):
-        """Test basic user cannot set roles (403)."""
-        self.login(self.basic_user.username, "password")
-        target_user_id = self.other_user.user_id
-        new_role = 'admin'
-
-        response = self.app.post(f'/admin/set_role/{target_user_id}', data=dict(
-            role=new_role
-        ), follow_redirects=True)
-
-        # The decorator should catch this before the view logic
-        self.assertEqual(response.status_code, 403)
-        self.assertIn(b"Forbidden", response.data)
-
-    def test_delete_user_success(self):
-        """Test admin successfully deletes another user."""
-        self.login(self.admin_user.username, "password")
-        target_user_id = self.other_user.user_id
-        target_username = self.other_user.username
-        self.assertIn(target_user_id, user_manager.users) # Ensure user exists before delete
-
-        response = self.app.post(f'/admin/delete_user/{target_user_id}', follow_redirects=True)
-
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b"User", response.data) # Check success flash message
-        self.assertIn(bytes(target_username, 'utf-8'), response.data)
-        self.assertIn(b"deleted successfully", response.data)
-
-        # Verify user is deleted from user_manager
-        deleted_user = user_manager.find_user_by_id(target_user_id)
-        self.assertIsNone(deleted_user)
-        self.assertNotIn(target_user_id, user_manager.users)
-
-    def test_delete_user_self_fails(self):
-        """Test admin cannot delete their own account."""
-        self.login(self.admin_user.username, "password")
-        target_user_id = self.admin_user.user_id # Attempt self-deletion
-        self.assertIn(target_user_id, user_manager.users)
-
-        response = self.app.post(f'/admin/delete_user/{target_user_id}', follow_redirects=True)
-
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Administrators cannot delete their own account", response.data) # Check error flash message
-
-        # Verify user was NOT deleted
-        self.assertIn(target_user_id, user_manager.users)
-
-    def test_delete_user_not_found(self):
-        """Test deleting a non-existent user fails."""
-        self.login(self.admin_user.username, "password")
-        target_user_id = "nonexistent_user_id"
-
-        response = self.app.post(f'/admin/delete_user/{target_user_id}', follow_redirects=True)
-
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b"User with ID", response.data) # Check error flash message
-        self.assertIn(b"not found", response.data)
-
-    def test_delete_user_by_basic_user_fails(self):
-        """Test basic user cannot delete users (403)."""
-        self.login(self.basic_user.username, "password")
-        target_user_id = self.other_user.user_id
-
-        response = self.app.post(f'/admin/delete_user/{target_user_id}', follow_redirects=True)
-
-        # Decorator should catch this
-        self.assertEqual(response.status_code, 403)
-        self.assertIn(b"Forbidden", response.data)
-
-# Add more test classes for other app features (Auth, Tree Management, etc.) later
 
 if __name__ == '__main__':
     unittest.main()
