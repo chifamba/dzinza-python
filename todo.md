@@ -6,8 +6,8 @@
 - [x] `Relationship` class implementation (attributes: person1_id, person2_id, rel_type)
 - [x] `FamilyTree` class core logic (add person, add relationship, find person)
 - [x] Data persistence for family tree (e.g., JSON file using db_utils)
-- [ ] Implement editing a person's details (Backend method exists, no web route)
-- [ ] Implement deleting a person (Backend method exists, no web route)
+- [x] Implement editing a person's details (Backend method exists, Web route added)
+- [x] Implement deleting a person (Backend method exists, Web route added)
 - [ ] Implement editing a relationship
 - [ ] Implement deleting a relationship
 - [x] Add support for different relationship types (parent-child, spouse, sibling, etc.)
@@ -32,8 +32,8 @@
 - [x] Web form for adding a new person to the tree
 - [x] Web form for adding a new relationship between people
 - [x] Display family tree data on the web page (list view for people & relationships)
-- [ ] Interface for editing people/relationships
-- [ ] Interface for deleting people/relationships
+- [x] Interface for editing people/relationships (People Edit Done)
+- [x] Interface for deleting people/relationships (People Delete Done)
 - [x] Protect family tree modification routes (require login)
 - [ ] Improve UI/UX (styling, layout, feedback messages)
 
@@ -50,7 +50,7 @@
 - [ ] CSRF protection for forms
 
 ## Logging & Error Handling
-- [x] Basic audit logging for user actions (registration, login, add person/relationship)
+- [x] Basic audit logging for user actions (registration, login, add/edit/delete person/relationship)
 - [x] Expand audit logging for family tree modifications (Partially done)
 - [ ] Implement robust error handling and user feedback (Basic Flask flashing added)
 
