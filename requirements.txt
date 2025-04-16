@@ -3,8 +3,11 @@
 # Web Framework
 Flask
 
-# Database
-tinydb
+# Database (If you were using TinyDB, keep it, otherwise remove if not used)
+# tinydb
+
+# Password Hashing
+bcrypt
 
 # For GEDCOM import/export (Optional - Keep if needed for future API endpoints)
 # gedcom-py
@@ -12,7 +15,3 @@ tinydb
 # For real encryption (Optional - requires implementing DataEncryptor)
 # pycryptodome
 
-# For real password hashing (Optional - already using hashlib's pbkdf2_hmac)
-# passlib[bcrypt]
-# or
-# Werkzeug

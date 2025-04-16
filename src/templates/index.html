@@ -8,7 +8,7 @@
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/dagre@0.8.5/dist/dagre.min.js"></script>
     <style>
-        /* Keep existing styles from index_html_dagre_layout */
+        /* Keep existing styles */
         body { font-family: 'Inter', sans-serif; }
         .flash-message { padding: 1rem; margin-bottom: 1rem; border-radius: 0.375rem; border-width: 1px; }
         .flash-success { background-color: #d1fae5; border-color: #6ee7b7; color: #065f46; }
@@ -35,71 +35,93 @@
 <body class="bg-gray-100 text-gray-800">
     <div class="container mx-auto p-4 md:p-8 max-w-7xl">
 
-        <header class="mb-8 text-center">
-            <h1 class="text-4xl font-bold text-blue-700">Dzinza Family Tree</h1>
-            <p class="text-gray-600">Manage your family history</p>
-        </header>
+        <header class="mb-8 text-center"> <h1 class="text-4xl font-bold text-blue-700">Dzinza Family Tree</h1> <p class="text-gray-600">Manage your family history</p> </header>
 
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %} <div class="mb-4"> {% for category, message in messages %} <div class="flash-message flash-{{ category }}">{{ message }}</div> {% endfor %} </div> {% endif %}
-        {% endwith %}
+        {% with messages = get_flashed_messages(with_categories=true) %} {% if messages %} <div class="mb-4"> {% for category, message in messages %} <div class="flash-message flash-{{ category }}">{{ message }}</div> {% endfor %} </div> {% endif %} {% endwith %}
 
         {% if session['user_id'] %}
-        <div class="flex justify-between items-center mb-6">
-            <p class="text-lg">Welcome, <strong class="font-semibold">{{ session['username'] }}</strong>!</p>
-            <a href="{{ url_for('logout') }}" class="bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-4 rounded-md transition duration-150 ease-in-out">Logout</a>
-        </div>
+        <div class="flex justify-between items-center mb-6"> <p class="text-lg">Welcome, <strong class="font-semibold">{{ session['username'] }}</strong>!</p> <a href="{{ url_for('logout') }}" class="bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-4 rounded-md transition duration-150 ease-in-out">Logout</a> </div>
 
         <div class="mb-6 bg-white p-4 rounded-lg shadow-sm border border-gray-200">
-            <form action="{{ url_for('search') }}" method="GET" class="flex items-center space-x-3">
-                <label for="search-query" class="sr-only">Search People:</label> <input type="search" id="search-query" name="q" placeholder="Search by name or nickname..."
-                       class="flex-grow px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                       value="{{ request.args.get('q', '') }}"> <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-md transition duration-150 ease-in-out">Search</button>
+            <form action="{{ url_for('search') }}" method="GET" class="space-y-3">
+                 <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                    <div class="md:col-span-2">
+                        <label for="search-query" class="block text-sm font-medium text-gray-700">Search Name:</label>
+                        <input type="search" id="search-query" name="q" placeholder="Name or nickname..."
+                               class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                               value="{{ request.args.get('q', '') }}">
+                    </div>
+                    <div>
+                         <label for="search-location" class="block text-sm font-medium text-gray-700">Location:</label>
+                         <input type="search" id="search-location" name="location" placeholder="Birth/Death place..."
+                                class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                                value="{{ request.args.get('location', '') }}">
+                    </div>
+                    <div class="flex-shrink-0 pt-1 md:pt-0">
+                         <button type="submit" class="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-md transition duration-150 ease-in-out">Search</button>
+                     </div>
+                 </div>
+                  <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                     <div class="md:col-start-2"> <label for="dob_start" class="block text-sm font-medium text-gray-700">Born After:</label>
+                         <input type="date" id="dob_start" name="dob_start"
+                                class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                                value="{{ request.args.get('dob_start', '') }}">
+                    </div>
+                     <div>
+                         <label for="dob_end" class="block text-sm font-medium text-gray-700">Born Before:</label>
+                         <input type="date" id="dob_end" name="dob_end"
+                                class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                                value="{{ request.args.get('dob_end', '') }}">
+                    </div>
+                 </div>
             </form>
         </div>
         <div class="bg-white p-6 rounded-lg shadow-md">
-
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-                 <div class="p-4 border border-gray-200 rounded-md"> <h2 class="text-2xl font-semibold mb-4 text-blue-600">Add New Person</h2> <form action="{{ url_for('add_person') }}" method="POST" class="space-y-4"> <div class="form-grid"> <div><label for="first_name" class="block text-sm font-medium text-gray-700">First Name:</label><input type="text" id="first_name" name="first_name" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></div> <div><label for="last_name" class="block text-sm font-medium text-gray-700">Last Name:</label><input type="text" id="last_name" name="last_name" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></div> <div class="md:grid-col-span-2"><label for="nickname" class="block text-sm font-medium text-gray-700">Nickname (opt):</label><input type="text" id="nickname" name="nickname" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></div> </div> <div class="grid grid-cols-1 md:grid-cols-2 gap-4"> <div><label for="dob" class="block text-sm font-medium text-gray-700">Date of Birth:</label><input type="date" id="dob" name="dob" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></div> <div><label for="dod" class="block text-sm font-medium text-gray-700">Date of Death (opt):</label><input type="date" id="dod" name="dod" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></div> </div> <div><label for="gender" class="block text-sm font-medium text-gray-700">Gender (opt):</label><select id="gender" name="gender" class="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"><option value="">Select...</option><option value="Male">Male</option><option value="Female">Female</option><option value="Other">Other</option></select></div> <button type="submit" class="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-md transition duration-150 ease-in-out">Add Person</button> </form> </div>
+                 <div class="p-4 border border-gray-200 rounded-md"> <h2 class="text-2xl font-semibold mb-4 text-blue-600">Add New Person</h2>
+                     <form action="{{ url_for('add_person') }}" method="POST" class="space-y-4">
+                         <div class="form-grid"> <div><label for="first_name" class="block text-sm font-medium text-gray-700">First Name:</label><input type="text" id="first_name" name="first_name" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></div> <div><label for="last_name" class="block text-sm font-medium text-gray-700">Last Name:</label><input type="text" id="last_name" name="last_name" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></div> <div class="md:grid-col-span-2"><label for="nickname" class="block text-sm font-medium text-gray-700">Nickname (opt):</label><input type="text" id="nickname" name="nickname" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></div> </div>
+                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4"> <div><label for="dob" class="block text-sm font-medium text-gray-700">Date of Birth:</label><input type="date" id="dob" name="dob" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></div> <div><label for="dod" class="block text-sm font-medium text-gray-700">Date of Death (opt):</label><input type="date" id="dod" name="dod" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></div> </div>
+                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                             <div><label for="pob" class="block text-sm font-medium text-gray-700">Place of Birth (opt):</label><input type="text" id="pob" name="pob" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></div>
+                             <div><label for="pod" class="block text-sm font-medium text-gray-700">Place of Death (opt):</label><input type="text" id="pod" name="pod" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></div>
+                         </div>
+                         <div><label for="gender" class="block text-sm font-medium text-gray-700">Gender (opt):</label><select id="gender" name="gender" class="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"><option value="">Select...</option><option value="Male">Male</option><option value="Female">Female</option><option value="Other">Other</option></select></div>
+                         <button type="submit" class="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-md transition duration-150 ease-in-out">Add Person</button>
+                     </form>
+                 </div>
                  <div class="p-4 border border-gray-200 rounded-md"> <h2 class="text-2xl font-semibold mb-4 text-green-600">Add Relationship</h2> {% if people and people|length >= 2 %} <form action="{{ url_for('add_relationship') }}" method="POST" class="space-y-4"> <div><label for="person1_id" class="block text-sm font-medium text-gray-700">Person 1:</label><select id="person1_id" name="person1_id" required class="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm"><option value="">Select Person...</option>{% for person in people %}<option value="{{ person.person_id }}">{{ person.display_name }} ({{ person.person_id[:8] }}...)</option>{% endfor %}</select></div> <div><label for="relationship_type" class="block text-sm font-medium text-gray-700">Relationship Type:</label><select id="relationship_type" name="relationship_type" required class="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm"><option value="">Select Type...</option><option value="Parent">Parent (P1 is Parent of P2)</option><option value="Child">Child (P1 is Child of P2)</option><option value="Spouse">Spouse</option><option value="Sibling">Sibling</option><option value="Partner">Partner</option><option value="Other">Other</option></select></div> <div><label for="person2_id" class="block text-sm font-medium text-gray-700">Person 2:</label><select id="person2_id" name="person2_id" required class="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm"><option value="">Select Person...</option>{% for person in people %}<option value="{{ person.person_id }}">{{ person.display_name }} ({{ person.person_id[:8] }}...)</option>{% endfor %}</select></div> <button type="submit" class="w-full md:w-auto bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-md transition duration-150 ease-in-out">Add Relationship</button> </form> {% elif people and people|length < 2 %} <p class="text-gray-500">You need at least two people to add a relationship.</p> {% else %} <p class="text-gray-500">Add people first.</p> {% endif %} </div>
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                 <div class="p-4 border border-gray-200 rounded-md"> <h2 class="text-2xl font-semibold mb-4 text-indigo-600">Family Members</h2> {% if people %}<ul class="list-none space-y-1 max-h-96 overflow-y-auto"> {% for person in people %}<li class="p-2 border-b border-gray-100 flex justify-between items-center"> <div> <strong class="text-indigo-700">{{ person.display_name }}</strong> <span class="text-xs text-gray-500">(ID: {{ person.person_id[:8] }}...)</span><br> <span class="text-sm text-gray-600"> {% if person.gender %} [{{ person.gender }}]{% endif %} {% if person.dob %} Born: {{ person.dob }}{% endif %} {% if person.dod %} Died: {{ person.dod }}{% endif %} </span> </div> <div class="flex-shrink-0"> <a href="{{ url_for('edit_person', person_id=person.person_id) }}" class="action-btn btn-edit">Edit</a> <form action="{{ url_for('delete_person', person_id=person.person_id) }}" method="POST" class="inline" onsubmit="return confirm('Are you sure you want to delete {{ person.display_name | escape | replace('\'', '\\\'') }}? This cannot be undone.');"> <button type="submit" class="action-btn btn-delete">Delete</button> </form> </div> </li> {% else %}<p class="text-gray-500">No people added yet.</p>{% endfor %}</ul> {% else %}<p class="text-gray-500">No people added yet.</p>{% endif %} </div>
-                 <div class="p-4 border border-gray-200 rounded-md"> <h2 class="text-2xl font-semibold mb-4 text-purple-600">Relationships</h2> {% if relationships %}<ul class="list-none space-y-2 max-h-96 overflow-y-auto">{% for rel in relationships %}<li class="p-2 border-b border-gray-100"><strong class="text-purple-700">{{ rel.person1_name }}</strong> is the <em class="text-purple-700">{{ rel.relationship_type }}</em> of <strong class="text-purple-700">{{ rel.person2_name }}</strong> (ID: <code class="text-xs text-gray-500">{{ rel.relationship_id[:8] }}...</code>)</li>{% else %}<p class="text-gray-500">No relationships added yet.</p>{% endfor %}</ul> {% else %}<p class="text-gray-500">No relationships added yet.</p>{% endif %} </div>
+                 <div class="p-4 border border-gray-200 rounded-md"> <h2 class="text-2xl font-semibold mb-4 text-indigo-600">Family Members</h2> {% if people %}<ul class="list-none space-y-1 max-h-96 overflow-y-auto"> {% for person in people %}<li class="p-2 border-b border-gray-100 flex justify-between items-center"> <div> <strong class="text-indigo-700">{{ person.display_name }}</strong> <span class="text-xs text-gray-500">(ID: {{ person.person_id[:8] }}...)</span><br> <span class="text-sm text-gray-600"> {% if person.gender %} [{{ person.gender }}]{% endif %} {% if person.dob %} Born: {{ person.dob }}{% endif %} {% if person.pob %} in {{ person.pob }}{% endif %} {% if person.dod %} Died: {{ person.dod }}{% endif %} {% if person.pod %} in {{ person.pod }}{% endif %} </span> </div> <div class="flex-shrink-0"> <a href="{{ url_for('edit_person', person_id=person.person_id) }}" class="action-btn btn-edit">Edit</a> <form action="{{ url_for('delete_person', person_id=person.person_id) }}" method="POST" class="inline" onsubmit="return confirm('Are you sure you want to delete {{ person.display_name | escape | replace('\'', '\\\'') }}? This cannot be undone.');"> <button type="submit" class="action-btn btn-delete">Delete</button> </form> </div> </li> {% else %}<p class="text-gray-500">No people added yet.</p>{% endfor %}</ul> {% else %}<p class="text-gray-500">No people added yet.</p>{% endif %} </div>
+                 <div class="p-4 border border-gray-200 rounded-md"> <h2 class="text-2xl font-semibold mb-4 text-purple-600">Relationships</h2> {% if relationships %}<ul class="list-none space-y-1 max-h-96 overflow-y-auto"> {% for rel in relationships %}<li class="p-2 border-b border-gray-100 flex justify-between items-center"> <div> <strong class="text-purple-700">{{ rel.person1_name }}</strong> is the <em class="text-purple-700">{{ rel.relationship_type }}</em> of <strong class="text-purple-700">{{ rel.person2_name }}</strong><br> <span class="text-xs text-gray-500">(ID: {{ rel.relationship_id[:8] }}...)</span> </div> <div class="flex-shrink-0"> <a href="{{ url_for('edit_relationship', relationship_id=rel.relationship_id) }}" class="action-btn btn-edit">Edit</a> <form action="{{ url_for('delete_relationship', relationship_id=rel.relationship_id) }}" method="POST" class="inline" onsubmit="return confirm('Are you sure you want to delete the {{ rel.relationship_type }} relationship between {{ rel.person1_name | escape | replace('\'', '\\\'') }} and {{ rel.person2_name | escape | replace('\'', '\\\'') }}?');"> <button type="submit" class="action-btn btn-delete">Delete</button> </form> </div> </li> {% else %}<p class="text-gray-500">No relationships added yet.</p>{% endfor %}</ul> {% else %}<p class="text-gray-500">No relationships added yet.</p>{% endif %} </div>
             </div>
 
              <div id="tree-container" class="mt-8 p-4 border border-gray-200 rounded-md bg-gray-50"> <h2 class="text-2xl font-semibold mb-4 text-teal-600">Family Tree View (Layered)</h2> <p class="text-sm text-gray-600 mb-2">Scroll to zoom. Click and drag background to pan.</p> <svg id="tree-svg"> <g class="graph-content"></g> </svg> </div>
 
             {% else %}
              <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div class="p-4 border border-gray-200 rounded-md"><h2 class="text-2xl font-semibold mb-4 text-blue-600">Login</h2><form action="{{ url_for('login') }}" method="POST" class="space-y-4"><div><label for="login-username" class="block text-sm font-medium text-gray-700">Username:</label><input type="text" id="login-username" name="username" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></div><div><label for="login-password" class="block text-sm font-medium text-gray-700">Password:</label><input type="password" id="login-password" name="password" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></div><button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-md transition duration-150 ease-in-out">Login</button></form></div>
-                <div class="p-4 border border-gray-200 rounded-md"><h2 class="text-2xl font-semibold mb-4 text-green-600">Register</h2><form action="{{ url_for('register') }}" method="POST" class="space-y-4"><div><label for="register-username" class="block text-sm font-medium text-gray-700">Username:</label><input type="text" id="register-username" name="username" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm"></div><div><label for="register-password" class="block text-sm font-medium text-gray-700">Password:</label><input type="password" id="register-password" name="password" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm"></div><button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-md transition duration-150 ease-in-out">Register</button></form></div>
+                <div class="p-4 border border-gray-200 rounded-md"><h2 class="text-2xl font-semibold mb-4 text-blue-600">Login</h2> <form action="{{ url_for('login') }}" method="POST" class="space-y-4"> <div><label for="login-username" class="block text-sm font-medium text-gray-700">Username:</label><input type="text" id="login-username" name="username" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></div><div><label for="login-password" class="block text-sm font-medium text-gray-700">Password:</label><input type="password" id="login-password" name="password" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></div><button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-md transition duration-150 ease-in-out">Login</button> </form> </div>
+                <div class="p-4 border border-gray-200 rounded-md"><h2 class="text-2xl font-semibold mb-4 text-green-600">Register</h2> <form action="{{ url_for('register') }}" method="POST" class="space-y-4"> <div><label for="register-username" class="block text-sm font-medium text-gray-700">Username:</label><input type="text" id="register-username" name="username" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm"></div><div><label for="register-password" class="block text-sm font-medium text-gray-700">Password:</label><input type="password" id="register-password" name="password" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm"></div><button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-md transition duration-150 ease-in-out">Register</button> </form> </div>
             </div>
             {% endif %}
 
         </div>
 
-        <footer class="mt-8 text-center text-gray-500 text-sm">
-            <p>&copy; 2025 Dzinza Project. All rights reserved.</p>
-        </footer>
-
+        <footer class="mt-8 text-center text-gray-500 text-sm"> <p>&copy; 2025 Dzinza Project. All rights reserved.</p> </footer>
     </div>
 
     <div id="tooltip" class="tooltip"></div>
 
     {% if session['user_id'] %}
     <script>
-        // Keep the existing Dagre/D3 script from index_html_dagre_layout
+        // Keep the existing Dagre/D3 script
         document.addEventListener('DOMContentLoaded', function() {
-            const treeContainer = document.getElementById('tree-container');
-            if (!treeContainer) return;
-            const svgElement = document.getElementById('tree-svg');
-            if (!svgElement) return;
-            const svg = d3.select(svgElement);
-            const innerG = svg.select("g.graph-content");
-            const tooltip = d3.select("#tooltip");
-            const nodeWidth = 140; const nodeHeight = 40;
+            const treeContainer = document.getElementById('tree-container'); if (!treeContainer) return;
+            const svgElement = document.getElementById('tree-svg'); if (!svgElement) return;
+            const svg = d3.select(svgElement); const innerG = svg.select("g.graph-content");
+            const tooltip = d3.select("#tooltip"); const nodeWidth = 140; const nodeHeight = 40;
             const margin = { top: 20, right: 20, bottom: 20, left: 20 };
 
             fetch('/api/tree_data')
@@ -107,34 +129,21 @@
                 .then(data => {
                     if (!data || !data.nodes || !data.links) throw new Error("Invalid data received from API");
                     if (data.nodes.length === 0) { treeContainer.innerHTML += '<p class="text-gray-500 text-center mt-4">No people in the tree to display.</p>'; svgElement.style.display = 'none'; return; }
-
                     const nodes = data.nodes; const links = data.links;
-                    const idToNodeMap = new Map(nodes.map(n => [n.id, n]));
-                    const g = new dagre.graphlib.Graph();
-                    g.setGraph({ rankdir: 'TB', nodesep: 30, ranksep: 70 });
-                    g.setDefaultEdgeLabel(() => ({}));
+                    const idToNodeMap = new Map(nodes.map(n => [n.id, n])); const g = new dagre.graphlib.Graph();
+                    g.setGraph({ rankdir: 'TB', nodesep: 30, ranksep: 70 }); g.setDefaultEdgeLabel(() => ({}));
                     nodes.forEach(node => g.setNode(node.id, { label: node.name, width: nodeWidth, height: nodeHeight, data: node }));
                     links.forEach(link => { if (link.type === 'parent_child') g.setEdge(link.source, link.target); });
                     dagre.layout(g);
-
-                    const graphWidth = g.graph().width + margin.left + margin.right;
-                    const graphHeight = g.graph().height + margin.top + margin.bottom;
-                    svg.attr("width", graphWidth); svg.attr("height", graphHeight);
-                    innerG.attr("transform", `translate(${margin.left}, ${margin.top})`);
-
+                    const graphWidth = g.graph().width + margin.left + margin.right; const graphHeight = g.graph().height + margin.top + margin.bottom;
+                    svg.attr("width", graphWidth); svg.attr("height", graphHeight); innerG.attr("transform", `translate(${margin.left}, ${margin.top})`);
                     innerG.append("g").attr("class", "edges").selectAll("path.edgePath").data(g.edges()).enter().append("path").attr("class", "edgePath").attr("d", d => d3.line().x(p => p.x).y(p => p.y).curve(d3.curveBasis)(g.edge(d).points));
                     innerG.append("g").attr("class", "spouse-links").selectAll("line.spouse-link").data(links.filter(l => l.type === 'spouse' || l.type === 'partner')).enter().append("line").attr("class", "spouse-link").attr("x1", d => g.node(d.source)?.x).attr("y1", d => g.node(d.source)?.y).attr("x2", d => g.node(d.target)?.x).attr("y2", d => g.node(d.target)?.y).style("display", d => (g.node(d.source) && g.node(d.target)) ? null : "none");
-                    const nodeEnter = innerG.append("g").attr("class", "nodes").selectAll("g.node").data(g.nodes()).enter().append("g").attr("class", d => `node ${g.node(d).data.gender ? g.node(d).data.gender.toLowerCase() : 'unknown'}`).attr("transform", d => `translate(${g.node(d).x},${g.node(d).y})`).on("mouseover", (event, d) => { const nodeData = g.node(d).data; tooltip.style("opacity", 1); tooltip.html(`<strong>${nodeData.name}</strong><br/>Born: ${nodeData.dob || '?'}`).style("left", (event.pageX + 10) + "px").style("top", (event.pageY - 15) + "px"); }).on("mouseout", () => { tooltip.style("opacity", 0); });
+                    const nodeEnter = innerG.append("g").attr("class", "nodes").selectAll("g.node").data(g.nodes()).enter().append("g").attr("class", d => `node ${g.node(d).data.gender ? g.node(d).data.gender.toLowerCase() : 'unknown'}`).attr("transform", d => `translate(${g.node(d).x},${g.node(d).y})`).on("mouseover", (event, d) => { const nodeData = g.node(d).data; tooltip.style("opacity", 1); tooltip.html(`<strong>${nodeData.name}</strong><br/>Born: ${nodeData.dob || '?'} ${nodeData.pob ? 'in '+nodeData.pob : ''}`).style("left", (event.pageX + 10) + "px").style("top", (event.pageY - 15) + "px"); }).on("mouseout", () => { tooltip.style("opacity", 0); }); // Added pob to tooltip
                     nodeEnter.append("rect").attr("width", d => g.node(d).width).attr("height", d => g.node(d).height).attr("x", d => -g.node(d).width / 2).attr("y", d => -g.node(d).height / 2);
                     nodeEnter.append("text").attr("dy", "0.31em").text(d => g.node(d).label);
-
-                    const zoom = d3.zoom().scaleExtent([0.1, 2]).on("zoom", (event) => { innerG.attr("transform", event.transform); });
-                    svg.call(zoom);
-                    const graphBox = innerG.node().getBBox();
-                    const scale = Math.min((treeContainer.clientWidth - margin.left - margin.right) / graphBox.width, (treeContainer.clientHeight - margin.top - margin.bottom) / graphBox.height, 1);
-                    const translateX = (treeContainer.clientWidth / 2) - (graphBox.x + graphBox.width / 2) * scale;
-                    const translateY = (treeContainer.clientHeight / 2) - (graphBox.y + graphBox.height / 2) * scale;
-                    svg.call(zoom.transform, d3.zoomIdentity.translate(translateX, translateY).scale(scale * 0.95));
+                    const zoom = d3.zoom().scaleExtent([0.1, 2]).on("zoom", (event) => { innerG.attr("transform", event.transform); }); svg.call(zoom);
+                    const graphBox = innerG.node().getBBox(); const scale = Math.min((treeContainer.clientWidth - margin.left - margin.right) / graphBox.width, (treeContainer.clientHeight - margin.top - margin.bottom) / graphBox.height, 1); const translateX = (treeContainer.clientWidth / 2) - (graphBox.x + graphBox.width / 2) * scale; const translateY = (treeContainer.clientHeight / 2) - (graphBox.y + graphBox.height / 2) * scale; svg.call(zoom.transform, d3.zoomIdentity.translate(translateX, translateY).scale(scale * 0.95));
                 })
                 .catch(error => { console.error('Error fetching or processing tree data:', error); treeContainer.innerHTML += `<p class="text-red-500 text-center mt-4">Error loading tree data: ${error.message}</p>`; });
         });

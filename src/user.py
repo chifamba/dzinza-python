@@ -1,9 +1,15 @@
-# src/user.py
-import base64 # Using base64 for slightly better hash storage than raw bytes string
+# Modify src/user.py to add reset token fields
+import base64
+import logging
+from datetime import datetime, timedelta # Import datetime and timedelta
+
+# Define valid roles
+VALID_ROLES = ["basic", "admin"]
 
 class User:
     """Represents a user of the application."""
-    def __init__(self, user_id, username, password_hash):
+    def __init__(self, user_id, username, password_hash, role="basic",
+                 reset_token=None, reset_token_expiry=None): # Add token fields
         """
         Initializes a User object.
 
@@ -11,27 +17,58 @@ class User:
             user_id (str): The unique ID for the user.
             username (str): The user's chosen username.
             password_hash (bytes): The bcrypt hashed password (as bytes).
+            role (str): The user's role (e.g., 'basic', 'admin'). Defaults to 'basic'.
+            reset_token (str, optional): Password reset token. Defaults to None.
+            reset_token_expiry (datetime, optional): Expiry time for the reset token. Defaults to None.
         """
+        if not username:
+            logging.warning("Username cannot be empty during User initialization.")
+            # raise ValueError("Username cannot be empty") # Optionally raise error
+
         self.user_id = user_id
-        self.username = username # Ensure this attribute is assigned
+        self.username = username
         self.password_hash = password_hash # Should be bytes
+
+        # Validate and set role
+        if role not in VALID_ROLES:
+            logging.warning(f"Invalid role '{role}' provided for user {username}. Defaulting to 'basic'. Valid roles are: {VALID_ROLES}")
+            self.role = "basic"
+        else:
+            self.role = role
+
+        # Set reset token details
+        self.reset_token = reset_token
+        # Ensure expiry is datetime object if provided
+        if isinstance(reset_token_expiry, str):
+            try:
+                self.reset_token_expiry = datetime.fromisoformat(reset_token_expiry)
+            except (ValueError, TypeError):
+                logging.warning(f"Invalid reset token expiry format '{reset_token_expiry}' for user {username}. Setting to None.")
+                self.reset_token_expiry = None
+        else:
+             self.reset_token_expiry = reset_token_expiry
+
 
     def to_dict(self):
         """
         Converts the User object to a dictionary suitable for JSON serialization.
         Stores the password hash as a base64 encoded string for better compatibility.
+        Stores datetime as ISO format string.
         """
-        # Encode bytes hash to base64 string for JSON storage
         hash_str = base64.b64encode(self.password_hash).decode('utf-8') if isinstance(self.password_hash, bytes) else None
-        if not hash_str:
-             print(f"Warning: Password hash for user {self.username} is not bytes, cannot serialize properly.")
-             # Decide how to handle this - store None, empty string, or raise error?
-             hash_str = None # Store None if hash wasn't bytes
+        if not hash_str and self.password_hash is not None:
+             logging.warning(f"Password hash for user {self.username} is not bytes, cannot serialize properly.")
+             hash_str = None
+
+        expiry_str = self.reset_token_expiry.isoformat() if self.reset_token_expiry else None
 
         return {
             "user_id": self.user_id,
             "username": self.username,
-            "password_hash_b64": hash_str # Store base64 string
+            "password_hash_b64": hash_str,
+            "role": self.role,
+            "reset_token": self.reset_token, # Add token
+            "reset_token_expiry": expiry_str # Add expiry string
         }
 
     @classmethod
@@ -39,36 +76,56 @@ class User:
         """
         Creates a User object from a dictionary (e.g., loaded from JSON).
         Expects the password hash to be a base64 encoded string.
+        Parses expiry string back to datetime.
         """
         user_id = data.get("user_id")
-        username = data.get("username") # Get username from data
-        password_hash_b64 = data.get("password_hash_b64") # Get base64 hash string
+        username = data.get("username")
+        password_hash_b64 = data.get("password_hash_b64")
+        role = data.get("role", "basic")
+        reset_token = data.get("reset_token") # Get token
+        reset_token_expiry_str = data.get("reset_token_expiry") # Get expiry string
 
         password_hash_bytes = None
         if password_hash_b64:
             try:
-                # Decode base64 string back to bytes
                 password_hash_bytes = base64.b64decode(password_hash_b64.encode('utf-8'))
             except (base64.binascii.Error, TypeError, ValueError) as e:
-                 print(f"Warning: Could not decode password hash for user {username} from base64: {e}")
-                 # Decide how to handle - set hash to None, raise error?
-                 password_hash_bytes = None # Set to None if decoding fails
+                 logging.warning(f"Could not decode password hash for user {username} from base64: {e}")
+                 password_hash_bytes = None
         else:
-             # Handle case where hash might be missing or stored under old key 'password_hash'
-             # For backward compatibility, you might check data.get('password_hash') here
-             # and try to encode it if it exists.
              old_hash_str = data.get("password_hash")
              if isinstance(old_hash_str, str):
-                 print(f"Warning: Found old hash format for user {username}. Attempting to encode.")
-                 password_hash_bytes = old_hash_str.encode('utf-8')
-             else:
-                 print(f"Warning: Missing or invalid password hash for user {username}.")
+                 logging.warning(f"Found old string hash format for user {username}. Attempting to encode.")
+                 try:
+                     password_hash_bytes = old_hash_str.encode('utf-8')
+                 except Exception as enc_e:
+                      logging.error(f"Could not encode old string hash for user {username}: {enc_e}")
+                      password_hash_bytes = None
+
+        reset_token_expiry = None
+        if reset_token_expiry_str:
+            try:
+                reset_token_expiry = datetime.fromisoformat(reset_token_expiry_str)
+            except (ValueError, TypeError):
+                 logging.warning(f"Invalid reset token expiry format '{reset_token_expiry_str}' in data for user {username}. Setting expiry to None.")
+                 reset_token_expiry = None
 
 
-        # Ensure username is assigned, even if it's None from the data
-        return cls(
-            user_id=user_id,
-            username=username, # Assigns the value retrieved from data.get("username")
-            password_hash=password_hash_bytes # Store as bytes (or None if failed)
-        )
+        if not user_id:
+             raise ValueError("User ID is missing in user data.")
 
+        try:
+            return cls(
+                user_id=user_id,
+                username=username,
+                password_hash=password_hash_bytes,
+                role=role,
+                reset_token=reset_token, # Pass token
+                reset_token_expiry=reset_token_expiry # Pass expiry datetime
+            )
+        except ValueError as e:
+            logging.error(f"Failed to create User object from dict for user ID {user_id}: {e}")
+            raise
+
+    def __repr__(self):
+         return f"User(user_id='{self.user_id}', username='{self.username}', role='{self.role}')"
