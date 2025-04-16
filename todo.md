@@ -2,24 +2,24 @@
 
 ## Core Functionality
 - [x] Basic project structure setup (folders, main files)
-- [x] `Person` class implementation (attributes: id, name, dob, dod, etc.)
-- [x] `Relationship` class implementation (attributes: id, person1_id, person2_id, type)
+- [x] `Person` class implementation (attributes: id, first_name, last_name, nickname, dob, dod, etc.)
+- [x] `Relationship` class implementation (attributes: person1_id, person2_id, rel_type)
 - [x] `FamilyTree` class core logic (add person, add relationship, find person)
-- [x] Data persistence for family tree (e.g., JSON file)
-- [ ] Implement editing a person's details
-- [ ] Implement deleting a person
+- [x] Data persistence for family tree (e.g., JSON file using db_utils)
+- [ ] Implement editing a person's details (Backend method exists, no web route)
+- [ ] Implement deleting a person (Backend method exists, no web route)
 - [ ] Implement editing a relationship
 - [ ] Implement deleting a relationship
-- [ ] Add support for different relationship types (parent-child, spouse, sibling) - *Partially done in `Relationship` class, needs explicit handling/validation*
-- [ ] Implement search/filtering functionality (by name, date range, etc.)
+- [x] Add support for different relationship types (parent-child, spouse, sibling, etc.)
+- [ ] Implement search/filtering functionality (by name, date range, etc.) (Basic find_person exists)
 - [ ] Visualization of the family tree (optional, advanced)
 
 ## User Management
 - [x] `User` class implementation (attributes: id, username, password_hash)
 - [x] User registration logic
 - [x] User login logic
-- [x] Password hashing (e.g., using bcrypt)
-- [x] Data persistence for users (e.g., JSON file)
+- [x] Password hashing (using bcrypt via encryption.py)
+- [x] Data persistence for users (e.g., JSON file using UserManagement & db_utils)
 - [ ] User roles/permissions (if needed, e.g., admin vs regular user)
 - [ ] Password reset functionality
 
@@ -30,8 +30,8 @@
 - [x] Web interface for user login
 - [x] User session management (login/logout)
 - [x] Web form for adding a new person to the tree
-- [ ] Web form for adding a new relationship between people
-- [x] Display family tree data on the web page (list view initially)
+- [x] Web form for adding a new relationship between people
+- [x] Display family tree data on the web page (list view for people & relationships)
 - [ ] Interface for editing people/relationships
 - [ ] Interface for deleting people/relationships
 - [x] Protect family tree modification routes (require login)
@@ -40,33 +40,33 @@
 ## Data Management & Storage
 - [x] Utility functions for loading/saving JSON data (`db_utils.py`)
 - [ ] Consider switching to a database (SQLite, PostgreSQL) for larger trees
-- [ ] Data validation (e.g., date formats, required fields)
+- [ ] Data validation (e.g., date formats, required fields) (Minimal validation added)
 - [ ] Backup and restore functionality
 
 ## Security
 - [x] Password hashing
-- [ ] Input validation and sanitization to prevent injection attacks
+- [ ] Input validation and sanitization to prevent injection attacks (Minimal validation added)
 - [x] Secure session management (e.g., Flask's secret key)
 - [ ] CSRF protection for forms
 
 ## Logging & Error Handling
-- [x] Basic audit logging for user actions (registration, login)
-- [x] Expand audit logging for family tree modifications - *Partially done via add_person*
-- [ ] Implement robust error handling and user feedback
+- [x] Basic audit logging for user actions (registration, login, add person/relationship)
+- [x] Expand audit logging for family tree modifications (Partially done)
+- [ ] Implement robust error handling and user feedback (Basic Flask flashing added)
 
 ## Testing
-- [x] Unit tests for `Person` class
-- [x] Unit tests for `Relationship` class
-- [x] Unit tests for `FamilyTree` class
-- [x] Unit tests for `User` class
-- [x] Unit tests for `UserManagement`
+- [x] Unit tests for `Person` class (File exists)
+- [x] Unit tests for `Relationship` class (File exists)
+- [x] Unit tests for `FamilyTree` class (File exists)
+- [x] Unit tests for `User` class (File exists)
+- [x] Unit tests for `UserManagement` (File exists)
 - [ ] Integration tests for web endpoints
-- [ ] Test edge cases and error conditions
+- [ ] Test edge cases and error conditions (Partially covered)
 
 ## Documentation
-- [x] Basic `README.md`
+- [x] Basic `README.md` (File exists)
 - [ ] Add usage instructions to `README.md`
-- [ ] Document code with comments and docstrings
+- [ ] Document code with comments and docstrings (Partially done)
 - [ ] User guide (optional)
 
 ## Deployment

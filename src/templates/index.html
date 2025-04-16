@@ -5,29 +5,79 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dzinza Family Tree</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
-        /* Optional: Add custom styles or overrides here */
         body { font-family: 'Inter', sans-serif; }
-        /* Simple flash message styling */
-        .flash-message {
-            padding: 1rem;
-            margin-bottom: 1rem;
-            border-radius: 0.375rem; /* rounded-md */
-            border-width: 1px;
+        /* Flash message styles */
+        .flash-message { padding: 1rem; margin-bottom: 1rem; border-radius: 0.375rem; border-width: 1px; }
+        .flash-success { background-color: #d1fae5; border-color: #6ee7b7; color: #065f46; }
+        .flash-danger { background-color: #fee2e2; border-color: #fca5a5; color: #991b1b; }
+        .flash-warning { background-color: #fef3c7; border-color: #fcd34d; color: #92400e; }
+        .flash-info { background-color: #dbeafe; border-color: #93c5fd; color: #1e40af; }
+
+        /* Form layout styles */
+        .form-grid { display: grid; grid-template-columns: repeat(1, minmax(0, 1fr)); gap: 1rem; }
+        @media (min-width: 768px) {
+            .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .grid-col-span-2 { grid-column: span 2 / span 2; }
         }
-        .flash-success { background-color: #d1fae5; border-color: #6ee7b7; color: #065f46; } /* green-100, green-300, green-800 */
-        .flash-danger { background-color: #fee2e2; border-color: #fca5a5; color: #991b1b; } /* red-100, red-300, red-800 */
-        .flash-warning { background-color: #fef3c7; border-color: #fcd34d; color: #92400e; } /* amber-100, amber-300, amber-800 */
-        .flash-info { background-color: #dbeafe; border-color: #93c5fd; color: #1e40af; } /* blue-100, blue-300, blue-800 */
+
+        /* D3 Tree View Styles */
+        #tree-container {
+            position: relative; /* Needed for potential absolute positioning inside */
+            background-color: #f9fafb; /* Light gray background */
+            overflow: hidden; /* Hide parts of the graph outside the container */
+             min-height: 500px; /* Ensure container has some height */
+        }
+        #tree-svg {
+            display: block; /* Remove extra space below SVG */
+            width: 100%;
+            height: 600px; /* Adjust as needed, or make dynamic */
+            cursor: grab; /* Indicate draggability */
+        }
+        #tree-svg:active {
+             cursor: grabbing;
+        }
+
+        .node circle {
+            /* fill: #60a5fa; blue-400 */
+            stroke: #1d4ed8; /* blue-700 */
+            stroke-width: 1.5px;
+            cursor: pointer;
+        }
+         /* Style nodes based on gender */
+        .node.male circle { fill: #60a5fa; } /* Blue for male */
+        .node.female circle { fill: #f472b6; } /* Pink for female */
+        .node.other circle { fill: #a78bfa; } /* Violet for other */
+        .node.unknown circle { fill: #9ca3af; } /* Gray for unknown */
+
+
+        .node text {
+            font-size: 10px;
+            font-family: sans-serif;
+            pointer-events: none; /* Text shouldn't block node drag */
+            fill: #374151; /* gray-700 */
+        }
+
+        .link {
+            /* stroke: #9ca3af; gray-400 */
+            stroke-opacity: 0.6;
+            stroke-width: 1.5px;
+        }
+         /* Style links based on type */
+        .link.spouse, .link.partner { stroke: #16a34a; stroke-dasharray: 4 2; } /* Green dashed for spouse/partner */
+        .link.parent, .link.child { stroke: #9ca3af; } /* Gray solid for parent/child */
+        .link.sibling { stroke: #fbbf24; stroke-dasharray: 1 3; } /* Amber dotted for sibling */
+        .link.other { stroke: #f87171; } /* Red for other */
+
+
     </style>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body class="bg-gray-100 text-gray-800">
-    <div class="container mx-auto p-4 md:p-8 max-w-4xl">
-
-        <header class="mb-8 text-center">
+    <div class="container mx-auto p-4 md:p-8 max-w-6xl"> <header class="mb-8 text-center">
             <h1 class="text-4xl font-bold text-blue-700">Dzinza Family Tree</h1>
             <p class="text-gray-600">Manage your family history</p>
         </header>
@@ -51,33 +101,19 @@
             </div>
 
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-
                 <div class="p-4 border border-gray-200 rounded-md">
                     <h2 class="text-2xl font-semibold mb-4 text-blue-600">Add New Person</h2>
                     <form action="{{ url_for('add_person') }}" method="POST" class="space-y-4">
-                        <div>
-                            <label for="name" class="block text-sm font-medium text-gray-700">Full Name:</label>
-                            <input type="text" id="name" name="name" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                         <div class="form-grid">
+                             <div><label for="first_name" class="block text-sm font-medium text-gray-700">First Name:</label><input type="text" id="first_name" name="first_name" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></div>
+                            <div><label for="last_name" class="block text-sm font-medium text-gray-700">Last Name:</label><input type="text" id="last_name" name="last_name" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></div>
+                             <div class="md:grid-col-span-2"><label for="nickname" class="block text-sm font-medium text-gray-700">Nickname (opt):</label><input type="text" id="nickname" name="nickname" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></div>
                         </div>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                                <label for="dob" class="block text-sm font-medium text-gray-700">Date of Birth:</label>
-                                <input type="date" id="dob" name="dob" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                            </div>
-                            <div>
-                                <label for="dod" class="block text-sm font-medium text-gray-700">Date of Death (opt):</label>
-                                <input type="date" id="dod" name="dod" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                            </div>
+                            <div><label for="dob" class="block text-sm font-medium text-gray-700">Date of Birth:</label><input type="date" id="dob" name="dob" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></div>
+                            <div><label for="dod" class="block text-sm font-medium text-gray-700">Date of Death (opt):</label><input type="date" id="dod" name="dod" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></div>
                         </div>
-                         <div>
-                            <label for="gender" class="block text-sm font-medium text-gray-700">Gender (opt):</label>
-                            <select id="gender" name="gender" class="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                                <option value="">Select...</option>
-                                <option value="Male">Male</option>
-                                <option value="Female">Female</option>
-                                <option value="Other">Other</option>
-                            </select>
-                        </div>
+                        <div><label for="gender" class="block text-sm font-medium text-gray-700">Gender (opt):</label><select id="gender" name="gender" class="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"><option value="">Select...</option><option value="Male">Male</option><option value="Female">Female</option><option value="Other">Other</option></select></div>
                         <button type="submit" class="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-md transition duration-150 ease-in-out">Add Person</button>
                     </form>
                 </div>
@@ -86,129 +122,217 @@
                     <h2 class="text-2xl font-semibold mb-4 text-green-600">Add Relationship</h2>
                     {% if people and people|length >= 2 %}
                         <form action="{{ url_for('add_relationship') }}" method="POST" class="space-y-4">
-                            <div>
-                                <label for="person1_id" class="block text-sm font-medium text-gray-700">Person 1:</label>
-                                <select id="person1_id" name="person1_id" required class="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm">
-                                    <option value="">Select Person...</option>
-                                    {% for person in people %}
-                                        <option value="{{ person.person_id }}">{{ person.name }} ({{ person.person_id[:8] }}...)</option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-
-                            <div>
-                                <label for="relationship_type" class="block text-sm font-medium text-gray-700">Relationship Type:</label>
-                                <select id="relationship_type" name="relationship_type" required class="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm">
-                                    <option value="">Select Type...</option>
-                                    <option value="Parent">Parent (Person 1 is Parent of Person 2)</option>
-                                    <option value="Child">Child (Person 1 is Child of Person 2)</option>
-                                    <option value="Spouse">Spouse</option>
-                                    <option value="Sibling">Sibling</option>
-                                    <option value="Partner">Partner</option>
-                                    <option value="Other">Other</option>
-                                </select>
-                                </div>
-
-                             <div>
-                                <label for="person2_id" class="block text-sm font-medium text-gray-700">Person 2:</label>
-                                <select id="person2_id" name="person2_id" required class="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm">
-                                    <option value="">Select Person...</option>
-                                     {% for person in people %}
-                                        <option value="{{ person.person_id }}">{{ person.name }} ({{ person.person_id[:8] }}...)</option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-
+                            <div><label for="person1_id" class="block text-sm font-medium text-gray-700">Person 1:</label><select id="person1_id" name="person1_id" required class="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm"><option value="">Select Person...</option>{% for person in people %}<option value="{{ person.person_id }}">{{ person.display_name }} ({{ person.person_id[:8] }}...)</option>{% endfor %}</select></div>
+                            <div><label for="relationship_type" class="block text-sm font-medium text-gray-700">Relationship Type:</label><select id="relationship_type" name="relationship_type" required class="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm"><option value="">Select Type...</option><option value="Parent">Parent (P1 is Parent of P2)</option><option value="Child">Child (P1 is Child of P2)</option><option value="Spouse">Spouse</option><option value="Sibling">Sibling</option><option value="Partner">Partner</option><option value="Other">Other</option></select></div>
+                             <div><label for="person2_id" class="block text-sm font-medium text-gray-700">Person 2:</label><select id="person2_id" name="person2_id" required class="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm"><option value="">Select Person...</option>{% for person in people %}<option value="{{ person.person_id }}">{{ person.display_name }} ({{ person.person_id[:8] }}...)</option>{% endfor %}</select></div>
                             <button type="submit" class="w-full md:w-auto bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-md transition duration-150 ease-in-out">Add Relationship</button>
                         </form>
-                    {% elif people and people|length < 2 %}
-                         <p class="text-gray-500">You need at least two people in the tree to add a relationship.</p>
-                    {% else %}
-                         <p class="text-gray-500">Add some people first before creating relationships.</p>
-                    {% endif %}
+                    {% elif people and people|length < 2 %} <p class="text-gray-500">You need at least two people to add a relationship.</p>
+                    {% else %} <p class="text-gray-500">Add people first.</p> {% endif %}
                 </div>
+            </div>
 
-            </div> <div class="mb-8 p-4 border border-gray-200 rounded-md">
-                <h2 class="text-2xl font-semibold mb-4 text-indigo-600">Family Members</h2>
-                {% if people %}
-                    <ul class="list-none space-y-2">
-                        {% for person in people %}
-                            <li class="p-2 border-b border-gray-100">
-                                <strong class="text-indigo-700">{{ person.name }}</strong> (ID: <code class="text-xs text-gray-500">{{ person.person_id[:8] }}...</code>)
-                                <span class="text-sm text-gray-600">
-                                    {% if person.gender %} [{{ person.gender }}]{% endif %}
-                                    {% if person.dob %} - Born: {{ person.dob }}{% endif %}
-                                    {% if person.dod %} - Died: {{ person.dod }}{% endif %}
-                                </span>
-                                </li>
-                        {% else %}
-                            <p class="text-gray-500">No people added yet.</p>
-                        {% endfor %}
-                    </ul>
-                {% else %}
-                     <p class="text-gray-500">No people added yet.</p>
-                {% endif %}
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                <div class="p-4 border border-gray-200 rounded-md">
+                    <h2 class="text-2xl font-semibold mb-4 text-indigo-600">Family Members</h2>
+                    {% if people %}<ul class="list-none space-y-2 max-h-96 overflow-y-auto">{% for person in people %}<li class="p-2 border-b border-gray-100"><strong class="text-indigo-700">{{ person.display_name }}</strong> (ID: <code class="text-xs text-gray-500">{{ person.person_id[:8] }}...</code>)<span class="text-sm text-gray-600">{% if person.gender %} [{{ person.gender }}]{% endif %}{% if person.dob %} - Born: {{ person.dob }}{% endif %}{% if person.dod %} - Died: {{ person.dod }}{% endif %}</span></li>{% else %}<p class="text-gray-500">No people added yet.</p>{% endfor %}</ul>
+                    {% else %}<p class="text-gray-500">No people added yet.</p>{% endif %}
                 </div>
+                <div class="p-4 border border-gray-200 rounded-md">
+                    <h2 class="text-2xl font-semibold mb-4 text-purple-600">Relationships</h2>
+                    {% if relationships %}<ul class="list-none space-y-2 max-h-96 overflow-y-auto">{% for rel in relationships %}<li class="p-2 border-b border-gray-100"><strong class="text-purple-700">{{ rel.person1_name }}</strong> is the <em class="text-purple-700">{{ rel.relationship_type }}</em> of <strong class="text-purple-700">{{ rel.person2_name }}</strong> (ID: <code class="text-xs text-gray-500">{{ rel.relationship_id[:8] }}...</code>)</li>{% else %}<p class="text-gray-500">No relationships added yet.</p>{% endfor %}</ul>
+                    {% else %}<p class="text-gray-500">No relationships added yet.</p>{% endif %}
+                </div>
+            </div>
 
-
-            <div class="p-4 border border-gray-200 rounded-md">
-                <h2 class="text-2xl font-semibold mb-4 text-purple-600">Relationships</h2>
-                {# {% if relationships %}
-                    <ul class="list-none space-y-2">
-                        {% for rel in relationships %}
-                            <li class="p-2 border-b border-gray-100">
-                                {{ rel.person1_name }} is the {{ rel.relationship_type }} of {{ rel.person2_name }}
-                                (ID: <code class="text-xs text-gray-500">{{ rel.relationship_id[:8] }}...</code>)
-                            </li>
-                        {% else %}
-                            <p class="text-gray-500">No relationships added yet.</p>
-                        {% endfor %}
-                    </ul>
-                {% else %}
-                     <p class="text-gray-500">No relationships added yet.</p>
-                {% endif %} #}
-                <p class="text-gray-500">Displaying relationships is the next step!</p>
-             </div>
+             <div id="tree-container" class="mt-8 p-4 border border-gray-200 rounded-md bg-gray-50">
+                <h2 class="text-2xl font-semibold mb-4 text-teal-600">Family Tree View</h2>
+                <p class="text-sm text-gray-600 mb-2">Drag nodes to rearrange. Scroll to zoom.</p>
+                 <svg id="tree-svg"></svg> </div>
 
 
             {% else %}
             <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-
-                <div class="p-4 border border-gray-200 rounded-md">
-                    <h2 class="text-2xl font-semibold mb-4 text-blue-600">Login</h2>
-                    <form action="{{ url_for('login') }}" method="POST" class="space-y-4">
-                        <div>
-                            <label for="login-username" class="block text-sm font-medium text-gray-700">Username:</label>
-                            <input type="text" id="login-username" name="username" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                        </div>
-                        <div>
-                            <label for="login-password" class="block text-sm font-medium text-gray-700">Password:</label>
-                            <input type="password" id="login-password" name="password" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                        </div>
-                        <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-md transition duration-150 ease-in-out">Login</button>
-                    </form>
-                </div>
-
-                <div class="p-4 border border-gray-200 rounded-md">
-                    <h2 class="text-2xl font-semibold mb-4 text-green-600">Register</h2>
-                    <form action="{{ url_for('register') }}" method="POST" class="space-y-4">
-                        <div>
-                            <label for="register-username" class="block text-sm font-medium text-gray-700">Username:</label>
-                            <input type="text" id="register-username" name="username" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm">
-                        </div>
-                        <div>
-                            <label for="register-password" class="block text-sm font-medium text-gray-700">Password:</label>
-                            <input type="password" id="register-password" name="password" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm">
-                        </div>
-                        <button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-md transition duration-150 ease-in-out">Register</button>
-                    </form>
-                </div>
+                <div class="p-4 border border-gray-200 rounded-md"><h2 class="text-2xl font-semibold mb-4 text-blue-600">Login</h2><form action="{{ url_for('login') }}" method="POST" class="space-y-4"><div><label for="login-username" class="block text-sm font-medium text-gray-700">Username:</label><input type="text" id="login-username" name="username" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></div><div><label for="login-password" class="block text-sm font-medium text-gray-700">Password:</label><input type="password" id="login-password" name="password" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></div><button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-md transition duration-150 ease-in-out">Login</button></form></div>
+                <div class="p-4 border border-gray-200 rounded-md"><h2 class="text-2xl font-semibold mb-4 text-green-600">Register</h2><form action="{{ url_for('register') }}" method="POST" class="space-y-4"><div><label for="register-username" class="block text-sm font-medium text-gray-700">Username:</label><input type="text" id="register-username" name="username" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm"></div><div><label for="register-password" class="block text-sm font-medium text-gray-700">Password:</label><input type="password" id="register-password" name="password" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm"></div><button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-md transition duration-150 ease-in-out">Register</button></form></div>
             </div>
             {% endif %}
 
-        </div> <footer class="mt-8 text-center text-gray-500 text-sm">
+        </div>
+
+        <footer class="mt-8 text-center text-gray-500 text-sm">
             <p>&copy; 2025 Dzinza Project. All rights reserved.</p>
         </footer>
 
-    </div> </body>
+    </div>
+
+    {% if session['user_id'] %}
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const treeContainer = document.getElementById('tree-container');
+            if (!treeContainer) return; // Exit if container not found
+
+            const svgElement = document.getElementById('tree-svg');
+            if (!svgElement) return; // Exit if SVG element not found
+
+            // Get dimensions from container (can be dynamic)
+            const containerWidth = treeContainer.clientWidth;
+            // Use a fixed height or calculate based on container/content
+            const height = 600;
+            // Set SVG width dynamically
+            svgElement.setAttribute('width', containerWidth);
+            svgElement.setAttribute('height', height);
+
+            const svg = d3.select("#tree-svg");
+            const width = +svg.attr("width");
+
+            // Clear previous render if any
+            svg.selectAll("*").remove();
+
+            // Create main group element for zoom/pan
+            const g = svg.append("g");
+
+            // Tooltip div (hidden by default)
+            const tooltip = d3.select("body").append("div")
+                .attr("class", "tooltip absolute bg-gray-800 text-white text-xs rounded py-1 px-2 pointer-events-none opacity-0 transition-opacity duration-200")
+                .style("position", "absolute") // Ensure absolute positioning
+                .style("opacity", 0);
+
+
+            // Fetch data from the API
+            fetch('/api/tree_data')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (!data || !data.nodes || !data.links) {
+                        console.error("Invalid data received from API:", data);
+                        // Display a message in the container
+                        treeContainer.innerHTML += '<p class="text-red-500 text-center mt-4">Error loading tree data or no data available.</p>';
+                        return;
+                    }
+                    if (data.nodes.length === 0) {
+                         treeContainer.innerHTML += '<p class="text-gray-500 text-center mt-4">No people in the tree to display.</p>';
+                         return;
+                    }
+
+                    const nodes = data.nodes;
+                    const links = data.links;
+
+                    // --- Force Simulation Setup ---
+                    const simulation = d3.forceSimulation(nodes)
+                        // Link force pulls linked nodes together
+                        .force("link", d3.forceLink(links)
+                                        .id(d => d.id) // Use person_id from node data
+                                        .distance(d => (d.type === 'Spouse' || d.type === 'Partner') ? 50 : 80) // Shorter distance for spouses
+                                        .strength(0.6) // Adjust link strength
+                               )
+                        // Charge force pushes nodes apart (negative strength)
+                        .force("charge", d3.forceManyBody().strength(-150)) // Increased repulsion
+                        // Center force pulls the whole graph towards the center
+                        .force("center", d3.forceCenter(width / 2, height / 2))
+                         // Collision force prevents nodes overlapping
+                        .force("collide", d3.forceCollide().radius(20)); // Radius based on node size + padding
+
+
+                    // --- Draw Links ---
+                    const link = g.append("g")
+                        .attr("class", "links")
+                        .selectAll("line")
+                        .data(links)
+                        .join("line")
+                        .attr("class", d => `link ${d.type ? d.type.toLowerCase() : 'other'}`) // Add class based on relationship type
+                        .attr("stroke-width", 1.5); // Default stroke width
+
+
+                    // --- Draw Nodes ---
+                    const node = g.append("g")
+                        .attr("class", "nodes")
+                        .selectAll("g") // Select groups for circle + text
+                        .data(nodes)
+                        .join("g")
+                        .attr("class", d => `node ${d.gender ? d.gender.toLowerCase() : 'unknown'}`) // Class for gender styling
+                        .call(drag(simulation)) // Make nodes draggable
+                        .on("mouseover", (event, d) => {
+                            tooltip.transition().duration(200).style("opacity", .9);
+                            tooltip.html(`<strong>${d.name}</strong><br/>Born: ${d.dob || '?'}`) // Customize tooltip content
+                                   .style("left", (event.pageX + 5) + "px")
+                                   .style("top", (event.pageY - 28) + "px");
+                        })
+                        .on("mouseout", () => {
+                            tooltip.transition().duration(500).style("opacity", 0);
+                        });
+
+                    // Add circles to the node group
+                    node.append("circle")
+                        .attr("r", 8); // Node radius
+
+                    // Add text labels to the node group
+                    node.append("text")
+                        .text(d => d.name) // Display name (includes nickname)
+                        .attr("x", 12) // Offset text slightly from circle center
+                        .attr("y", 4); // Adjust vertical alignment
+
+
+                    // --- Simulation Ticker ---
+                    // This function runs on each 'tick' of the simulation to update positions
+                    simulation.on("tick", () => {
+                        link
+                            .attr("x1", d => d.source.x)
+                            .attr("y1", d => d.source.y)
+                            .attr("x2", d => d.target.x)
+                            .attr("y2", d => d.target.y);
+
+                        node
+                            .attr("transform", d => `translate(${d.x},${d.y})`); // Move the entire node group
+                    });
+
+                    // --- Zoom/Pan Functionality ---
+                    const zoom = d3.zoom()
+                        .scaleExtent([0.1, 4]) // Min/max zoom levels
+                        .on("zoom", (event) => {
+                            g.attr("transform", event.transform); // Apply zoom/pan transform to the main group
+                        });
+
+                    svg.call(zoom);
+
+                    // --- Drag Functionality ---
+                    function drag(simulation) {
+                        function dragstarted(event, d) {
+                            if (!event.active) simulation.alphaTarget(0.3).restart(); // Heat up simulation on drag start
+                            d.fx = d.x; // Fix node's x position
+                            d.fy = d.y; // Fix node's y position
+                        }
+                        function dragged(event, d) {
+                            d.fx = event.x; // Update fixed x position
+                            d.fy = event.y; // Update fixed y position
+                        }
+                        function dragended(event, d) {
+                            if (!event.active) simulation.alphaTarget(0); // Cool down simulation
+                            d.fx = null; // Unfix node position
+                            d.fy = null;
+                        }
+                        return d3.drag()
+                            .on("start", dragstarted)
+                            .on("drag", dragged)
+                            .on("end", dragended);
+                    }
+
+                     // --- Initial Zoom --- (Optional: Fit graph to view)
+                    // This requires calculating the bounds of the initial layout, which can be tricky
+                    // For now, rely on the center force and manual zoom/pan
+
+                })
+                .catch(error => {
+                    console.error('Error fetching or processing tree data:', error);
+                     treeContainer.innerHTML += `<p class="text-red-500 text-center mt-4">Error loading tree data: ${error.message}</p>`;
+                });
+        });
+    </script>
+    {% endif %}
+
+</body>
 </html>
