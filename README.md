@@ -1,97 +1,132 @@
-# Dzinza - Family Tree Application
+# Family Tree API
 
-Dzinza is a web application for building and managing family trees, featuring a **Python Flask backend API** and an interactive **React frontend** with graph visualization. It allows users to register, log in, add individuals, define relationships, and explore the family structure visually.
+Family Tree API is a web application for building and managing family trees, featuring a **Python Flask backend API**. It allows users to register, log in, add individuals, define relationships, and explore the family structure visually.
 
 **Note:** This project is undergoing a refactoring to separate the backend and frontend codebases and replace the original server-rendered frontend with a modern React-based interface.
 
 ## Features
 
-* User registration and login (Admin/User roles)
-* **Backend:** Flask API for managing data (Python).
-* **Frontend:** React single-page application.
-* **Data Management:** Add, edit, and view people and relationships via API.
-* **Interactive Visualization (React Flow):**
-    * Hierarchical display of the family tree.
-    * Zooming and panning capabilities.
-    * Node selection to view details.
-    * (Planned) Custom nodes displaying more person details (dates, photos).
-    * (Planned) Styling nodes/edges based on properties (gender, relationship type).
-    * (Planned) Inline editing directly on the graph.
-* Search functionality for people (via API).
-* Admin panel for user management (via API).
-* Password reset functionality (via API).
-* Audit logging for key backend actions.
+*   User registration and login (Admin/User roles)
+*   **Backend:** Flask API for managing data (Python).
+*   **Frontend:** React single-page application.
+*   **Data Management:** Add, edit, and view people and relationships via API.
+*   **Interactive Visualization (React Flow):**
+    *   Hierarchical display of the family tree.
+    *   Zooming and panning capabilities.
+    *   Node selection to view details.
+    *   (Planned) Custom nodes displaying more person details (dates, photos).
+    *   (Planned) Styling nodes/edges based on properties (gender, relationship type).
+    *   (Planned) Inline editing directly on the graph.
+*   Search functionality for people (via API).
+*   Admin panel for user management (via API).
+*   Password reset functionality (via API).
+*   Audit logging for key backend actions.
 
-## Project Structure (Post-Refactor)
-
-dzinza-python/├── backend/              # NEW: Contains all Python/Flask code│   ├── src/              # Core logic modules (person, family_tree, etc.)│   ├── tests/            # Backend unit and integration tests│   ├── data/             # Data files (users.json, family_tree.json) - Moved inside backend│   ├── app.py            # Flask app entry point│   └── requirements.txt  # Backend dependencies├── frontend/             # NEW: React frontend code│   ├── public/│   ├── src/│   ├── package.json│   └── ... (other React project files)├── logs/                 # Log files│   ├── backend/          # Backend logs (app.log, audit.log)│   └── frontend/         # Frontend logs (if any)├── .gitignore├── README.md             # This file└── todo.md               # Project TODO list (reflecting refactor plan)*(Note: `src/templates` directory and `devserver.sh` will be removed after refactoring is complete)*
-
+## Project Structure
+```
+family-tree-api/
+├── backend/              # Contains all Python/Flask code
+│   ├── src/              # Core logic modules (person, family_tree, etc.)
+│   ├── tests/            # Backend unit and integration tests
+│   ├── data/             # Data files (users.json, family_tree.json)
+│   ├── app.py            # Flask app entry point
+│   └── requirements.txt  # Backend dependencies
+├── frontend/             # React frontend code
+│   ├── public/
+│   ├── src/
+│   ├── package.json
+│   └── ... (other React project files)
+├── logs/                 # Log files
+│   ├── backend/          # Backend logs (app.log, audit.log)
+│   └── frontend/         # Frontend logs (if any)
+├── .gitignore
+├── README.md             # This file
+└── todo.md               # Project TODO list (reflecting refactor plan)
+```
 ## Prerequisites
 
-* **Python:** 3.11+
-* **Pip:** Python package installer
-* **Node.js:** 23.x or later (for the React frontend)
-* **npm** or **yarn:** Node package manager (comes with Node.js)
+*   **Python:** 3.11+
+*   **Pip:** Python package installer
+*   **Node.js:** 23.x or later (for the React frontend)
+*   **npm** or **yarn:** Node package manager (comes with Node.js)
 
 ## Setup and Installation
 
 1.  **Clone the repository:**
-    ```bash
+```
+bash
     git clone <repository-url>
-    cd dzinza-python
-    ```
-
+    cd family-tree-api
+    
+```
 2.  **Backend Setup (Python/Flask API):**
-    * Navigate to the backend directory:
-        ```bash
+    *   Navigate to the backend directory:
+```
+bash
         cd backend
-        ```
-    * Create and activate a virtual environment (recommended):
-        ```bash
+        
+```
+*   Create and activate a virtual environment (recommended):
+```
+bash
         python -m venv venv
         source venv/bin/activate  # On Windows use `venv\Scripts\activate`
-        ```
-    * Install backend dependencies:
-        ```bash
+        
+```
+*   Install backend dependencies:
+```
+bash
         pip install -r requirements.txt
-        ```
-    * Navigate back to the project root:
-        ```bash
+        
+```
+* Navigate back to the project root:
+```
+bash
         cd ..
-        ```
-
+        
+```
 3.  **Frontend Setup (React):**
-    * Navigate to the frontend directory:
-        ```bash
+    *   Navigate to the frontend directory:
+```
+bash
         cd frontend
-        ```
-    * Install frontend dependencies:
-        ```bash
+        
+```
+*   Install frontend dependencies:
+```
+bash
         npm install
         # or if using yarn:
         # yarn install
-        ```
-    * Navigate back to the project root:
-        ```bash
+        
+```
+* Navigate back to the project root:
+```
+bash
         cd ..
-        ```
-
+        
+```
 ## Running the Application (Development)
 
 You need to run both the backend API server and the frontend development server concurrently.
 
 1.  **Run the Backend (Flask API):**
-    * Open a terminal in the project root (`dzinza-python`).
-    * Navigate to the backend directory:
-        ```bash
+    *   Open a terminal in the project root (`family-tree-api`).
+    *   Navigate to the backend directory:
+```
+bash
         cd backend
-        ```
-    * Make sure your Python virtual environment is activated:
-        ```bash
+        
+```
+*   Make sure your Python virtual environment is activated:
+```
+bash
         source venv/bin/activate # Or venv\Scripts\activate on Windows
-        ```
-    * Run the Flask development server:
-        ```bash
+        
+```
+*   Run the Flask development server:
+```
+bash
         # Set environment variables (Bash/Zsh)
         export FLASK_APP=app.py
         export FLASK_DEBUG=1
@@ -106,22 +141,27 @@ You need to run both the backend API server and the frontend development server 
 
         # Run Flask on the specified port
         flask run --port=8090
-        ```
-    * The backend API will typically be running on `http://127.0.0.1:8090`. Logs will appear in `logs/backend/`.
+        
+```
+*   The backend API will typically be running on `http://127.0.0.1:8090`. Logs will appear in `logs/backend/`.
 
 2.  **Run the Frontend (React Dev Server):**
-    * Open a *second* terminal in the project root (`dzinza-python`).
-    * Navigate to the frontend directory:
-        ```bash
+    *   Open a *second* terminal in the project root (`family-tree-api`).
+    *   Navigate to the frontend directory:
+```
+bash
         cd frontend
-        ```
-    * Start the React development server:
-        ```bash
+        
+```
+*   Start the React development server:
+```
+bash
         npm start
         # or if using yarn:
         # yarn start
-        ```
-    * The React application will typically open automatically in your browser at `http://localhost:8080`.
+        
+```
+*   The React application will typically open automatically in your browser at `http://localhost:8080`.
 
 3.  **Access the Application:** Open your web browser and navigate to `http://localhost:8080` (or the port specified by the React development server).
 
@@ -138,29 +178,36 @@ You need to run both the backend API server and the frontend development server 
 ## Running Tests
 
 1.  **Backend Tests (Python):**
-    * Navigate to the `backend` directory:
-        ```bash
+    *   Navigate to the `backend` directory:
+```
+bash
         cd backend
-        ```
-    * Ensure the Python virtual environment is activated.
-    * Run all tests:
-        ```bash
+        
+```
+*   Ensure the Python virtual environment is activated.
+    *   Run all tests:
+```
+bash
         python -m unittest discover tests
-        ```
-    * Run a specific test file:
-        ```bash
+        
+```
+*   Run a specific test file:
+```
+bash
         python -m unittest tests.test_person # Adjust path relative to backend dir
-        ```
-
+        
+```
 2.  **Frontend Tests (React):**
-    * Navigate to the `frontend` directory.
-    * Run tests using the command specified by your React setup (e.g., Create React App):
-        ```bash
+    *   Navigate to the `frontend` directory.
+    *   Run tests using the command specified by your React setup (e.g., Create React App):
+```
+bash
         npm test
         # or
         # yarn test
-        ```
-    * (Planned) End-to-end tests using Cypress or Playwright will have their own run commands.
+        
+```
+*   (Planned) End-to-end tests using Cypress or Playwright will have their own run commands.
 
 ## Contributing
 
