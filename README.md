@@ -1,77 +1,86 @@
-# Dzinza Family Tree Manager
+# Dzinza - Family Tree Application
 
-Dzinza is a Python application designed to manage family trees, genealogical data, and personal records. It provides a structured way to organize information about individuals, their relationships, and various aspects of their lives. This project aims to create a robust and flexible system for managing family history.
+Dzinza is a simple web application for building and managing family trees. It allows users to register, log in, add individuals, define relationships between them, and view the family structure.
 
-## Getting Started
+## Features
 
-Previews should run automatically when starting a workspace.
+* User registration and login (Admin/User roles)
+* Add, edit, and view people in the family tree.
+* Define relationships (Parent-Child, Marriage, Sibling) between people.
+* Search for individuals.
+* Admin panel for user management.
+* Password reset functionality (Conceptual - requires email setup).
+* Audit logging for key actions.
+* Basic text-based representation of the tree (via data structure).
 
-## Features Implemented
+## Project Structure
 
-*   **Person Records:**
-    *   Store personal information (names, date/place of birth/death, gender, biography).
-    *   Manage multiple name formats for different cultures.
-    *   Romanization/transliteration of names.
-    *   Religious/cultural affiliations.
-    *   Profile photo.
-    *   Media and document management.
-    *   Military, education, occupational, and medical history.
-    *   DNA haplogroups.
-    *   Physical characteristics.
-    *   Languages spoken.
-    *   Immigration/naturalization records.
-*   **Relationship Management:**
-    *   Define extended family relationships (grandparents, aunts/uncles, cousins, in-laws).
-    *   Manage cultural-specific relationship types.
-    *   Godparents/religious relationships.
-    *   Foster and guardian relationships.
-    *   Tribal/clan affiliations.
-    *   Historical context for relationships.
-    *   Relationship timeline visualization.
-    *   Custom relationship types.
-*   **Family Tree Features:**
-    *   Basic family tree display (hierarchical view).
-*   **Data Import/Export:**
-    *   GEDCOM import/export.
-    *   JSON import/export.
-    *   CSV import/export.
-    *   XML import/export.
-*   **Data Validation and Integrity:**
-    *   Duplicate detection and merging.
-    *   Data validation rules.
-    *   Relationship consistency checks.
-*   **User Interface and Reporting:**
-    *   User profile view.
-    *   Family group view.
-    *   Person detail view.
-    *   Relationship view.
-    *   Family tree report.
-    *   Person summary report.
-    *   Custom reports.
-    *   Search and filtering.
-*   **Security and Privacy:**
-    *   Privacy settings.
-    *   Access control.
-    *   Data encryption.
-*   **Audit Log:**
-    * Not implemented yet.
+dzinza-python/├── data/                 # Default data storage (JSON files)│   ├── audit.log│   ├── family_tree.json│   └── users.json├── docs/                 # Project documentation│   └── index.md├── logs/                 # Application logs (e.g., Flask logs)│   └── app.log├── src/                  # Source code│   ├── templates/        # HTML templates (Flask/Jinja2)│   │   ├── errors/       # Error page templates (403, 404, 500)│   │   └── ... (other templates: index, login, edit_person etc.)│   ├── audit_log.py      # Handles audit logging│   ├── db_utils.py       # Utility functions for loading/saving JSON data│   ├── encryption.py     # Password hashing and verification│   ├── family_tree.py    # Core FamilyTree class and logic│   ├── person.py         # Person data model│   ├── relationship.py   # Relationship data model│   ├── user.py           # User data model and roles│   ├── user_management.py # User management logic│   └── user_interface.py # (Potentially legacy) CLI interface parts├── tests/                # Unit and integration tests│   ├── test_data/        # Temporary data for integration tests│   └── ... (test files: test_app.py, test_person.py etc.)├── .gitignore├── app.py                # Main Flask application file (routes, app setup)├── devserver.sh          # Script to run the development server├── input.md              # (Potentially input requirements/notes)├── main.py               # (Potentially alternative entry point or script)├── README.md             # This file├── requirements.txt      # Python dependencies└── todo.md               # Project TODO list
+## Setup and Installation
 
-## Modules and Classes
+1.  **Clone the repository:**
+    ```bash
+    git clone <repository-url>
+    cd dzinza-python
+    ```
 
-*   **person.py:** Defines the `Person` class, which represents an individual in the family tree.
-*   **relationship.py:** Defines the `Relationship` class, which represents a relationship between two `Person` objects.
-*   **family_tree.py:** Defines the `FamilyTree` class, which manages the family tree structure and operations.
-*   **user_management.py:** Defines the `User` and `UserManager` classes for user management.
-*   **user_interface.py:** Defines classes for displaying data in different views (`UserProfileView`, `FamilyGroupView`, `PersonDetailView`, `RelationshipView`).
-*   **encryption.py:** Defines the `DataEncryptor` class for data encryption and decryption.
+2.  **Create a virtual environment (recommended):**
+    ```bash
+    python -m venv venv
+    source venv/bin/activate  # On Windows use `venv\Scripts\activate`
+    ```
 
-## Data Encryption
+3.  **Install dependencies:**
+    ```bash
+    pip install -r requirements.txt
+    ```
 
-The application uses AES symmetric encryption to protect sensitive data. The `DataEncryptor` class in `encryption.py` handles the encryption and decryption. The `Person` class uses it to encrypt `biography`, `medical_history`, `physical_characteristics`, `dna_haplogroups`, `immigration_naturalization_records`, `documents`, and `media`. The `FamilyTree` class uses it to encrypt and decrypt the entire JSON representation of the tree.
-To use encryption, pass an `encryption_key` (string) when creating `Person` and `FamilyTree` objects.
+## Running the Application
 
-## How to Run
+1.  **Run the development server:**
+    Use the provided script:
+    ```bash
+    bash devserver.sh
+    ```
+    Or run Flask directly:
+    ```bash
+    flask run
+    ```
+    The application will typically be available at `http://127.0.0.1:5000`.
 
-1.  Clone the repository.
-2.  Install the required dependencies.
-3.  Run the `main.py` file.
+2.  **Initial Setup:**
+    * The application uses JSON files in the `data/` directory for storage by default. These files will be created automatically if they don't exist.
+    * There is no default admin user. You may need to register the first user and potentially modify the `data/users.json` file manually to grant the first user ADMIN privileges if required for initial setup, or implement a command-line script to create an admin user. (See `UserRole` in `src/user.py`).
+
+## Usage
+
+1.  **Register/Login:** Access the web interface and register a new user or log in with existing credentials.
+2.  **Add Person:** Once logged in, navigate to the "Add Person" section (usually linked from the main page or navigation bar) and fill in the details.
+3.  **Edit Person:** View a person's details (e.g., by clicking their name on the main list) and look for an "Edit" button/link.
+4.  **Add Relationship:** Navigate to the "Add Relationship" section. Select two individuals from the dropdown lists and specify the relationship type (e.g., MARRIED, PARENT_OF, SIBLING_OF).
+5.  **Edit Relationship:** Similar to editing a person, view relationship details (if available) and look for an "Edit" option.
+6.  **Search:** Use the search bar (if available on the main page) to find people by name or notes.
+7.  **Admin Panel:** If logged in as an ADMIN user, access the "/admin/users" URL to view and delete existing users.
+8.  **Logout:** Use the "Logout" link.
+
+## Running Tests
+
+Tests are located in the `tests/` directory and use Python's `unittest` framework.
+
+1.  **Navigate to the project root directory (`dzinza-python`).**
+2.  **Run all tests:**
+    ```bash
+    python -m unittest discover tests
+    ```
+    Or run a specific test file:
+    ```bash
+    python -m unittest tests/test_person.py
+    ```
+
+## Contributing
+
+Please refer to the `todo.md` file for planned features and improvements. Contributions are welcome!
+
+## License
+
+MIT License
