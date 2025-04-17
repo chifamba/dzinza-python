@@ -28,31 +28,31 @@
 
 ### Phase 1: Backend API Preparation
 - [x] Review and potentially modify `/api/tree_data` endpoint for optimal React Flow format (check node/edge structure, add photo URLs if needed).
-- [ ] Review and improve password reset flow (email, etc)
+- [ ] Review and improve password reset flow (email, etc).
 - [x] Create RESTful API endpoint: `POST /api/register` (return JSON).
-- [ ] Create RESTful API endpoint: `POST /api/login` (return JSON, handle session/token).
-- [ ] Create RESTful API endpoint: `GET /api/people`.
-- [ ] Create RESTful API endpoint: `GET /api/people/{id}`.
-- [ ] Create RESTful API endpoint: `POST /api/people`.
-- [ ] Create RESTful API endpoint: `PUT /api/people/{id}`.
-- [ ] Create RESTful API endpoint: `DELETE /api/people/{id}`.
-- [ ] Create RESTful API endpoint: `GET /api/relationships`.
-- [ ] Create RESTful API endpoint: `POST /api/relationships`.
-- [ ] Create RESTful API endpoint: `PUT /api/relationships/{id}`.
-- [ ] Create RESTful API endpoint: `DELETE /api/relationships/{id}`.
+- [x] Create RESTful API endpoint: `POST /api/login` (return JSON, handle session/token).
+- [x] Create RESTful API endpoint: `GET /api/people`.
+- [x] Create RESTful API endpoint: `GET /api/people/{id}`.
+- [x] Create RESTful API endpoint: `POST /api/people`.
+- [x] Create RESTful API endpoint: `PUT /api/people/{id}`.
+- [x] Create RESTful API endpoint: `DELETE /api/people/{id}`.
+- [x] Create RESTful API endpoint: `GET /api/relationships`.
+- [x] Create RESTful API endpoint: `POST /api/relationships`.
+- [x] Create RESTful API endpoint: `PUT /api/relationships/{id}`.
+- [x] Create RESTful API endpoint: `DELETE /api/relationships/{id}`.
 - [ ] Define and implement API authentication strategy (e.g., session/JWT, CORS).
-- [ ] Implement consistent JSON error handling for all API endpoints.
+- [ ] Implement consistent JSON error handling for all API endpoints. 
 
 ### Phase 2: Frontend Setup & Basic Interaction (React)
-- [ ] Create `frontend/` directory in project root.
-- [ ] Initialize React project inside `frontend/` (using Vite or CRA).
-- [ ] Install core dependencies: `react`, `react-dom`, `react-router-dom`, `axios`, `reactflow`.
-- [ ] Set up basic frontend routing (Login, Register, Dashboard, Edit Forms).
-- [ ] Create core React components (App, LoginPage, RegisterPage, DashboardPage, PersonDetailsForm, RelationshipForm).
-- [ ] Create API service module (`api.js`) for frontend-backend communication.
-- [ ] Implement basic frontend state management (e.g., Context API) for auth state.
-- [ ] Implement frontend login/registration forms and API calls.
-- [ ] Implement protected routes based on authentication state.
+- [x] Create `frontend/` directory in project root.
+- [x] Initialize React project inside `frontend/` (using Vite or CRA).
+- [x] Install core dependencies: `react-router-dom`, `axios`, `reactflow`.
+- [x] Set up basic frontend routing (Login, Register, Dashboard, Edit Forms).
+- [x] Create core React components (App, LoginPage, RegisterPage, DashboardPage, PersonDetailsForm, RelationshipForm).
+- [x] Create API service module (`api.js`) for frontend-backend communication. 
+- [x] Implement basic frontend state management (e.g., Context API) for auth state.
+- [x] Implement frontend login/registration forms and API calls.
+- [x] Implement protected routes based on authentication state.
 
 ### Phase 3: Visualization Integration (React Flow)
 - [ ] Create `FamilyTreeVisualization` React component.

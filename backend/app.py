@@ -192,50 +192,77 @@ def register():
     # GET request
     return render_template('index.html', show_register=True, reg_form={}, reg_errors={})
 
+@app.route('/api/login', methods=['POST'])
+def api_login():
+    """
+    RESTful API endpoint for user login.
+    Expects a JSON payload with 'username' and 'password'.
+    Returns a JSON response with username on successful login, 
+    or an error message on failure.
+    """
+    try:
+        data = request.get_json()
+        if not data or 'username' not in data or 'password' not in data:
+            app.logger.warning("API Login: Invalid JSON payload received.")
+            return jsonify({"error": "Invalid JSON payload. 'username' and 'password' are required."}), 400
 
-@app.route('/api/register', methods=['POST'])
-def api_register():
+        username = data.get('username','').strip()
+        password = data.get('password')
+
+        user = user_manager.login_user(username, password)
+        if user:
+            session['user_id'] = user.user_id; session['username'] = user.username; session['user_role'] = user.role
+            log_audit(AUDIT_LOG_FILE, username, 'api_login', 'success')
+            app.logger.info(f"API Login: User '{username}' logged in successfully.")
+            return jsonify({"message": "Login successful!", "username": user.username}), 200
+        else:
+            log_audit(AUDIT_LOG_FILE, username, 'api_login', 'failure - invalid credentials or user not found')
+            app.logger.warning(f"API Login: Failed login attempt for username: {username}")
+            return jsonify({"error": "Invalid username or password."}), 401
+
+    except Exception as e:
+        app.logger.exception("API Login: An unexpected error occurred.")
+        log_audit(AUDIT_LOG_FILE, "unknown", 'api_login', f'error: {e}')
+        return jsonify({"error": "An unexpected error occurred."}), 500
+
+
     """
     RESTful API endpoint for user registration.
     Expects a JSON payload with 'username' and 'password'.
     Returns a JSON response.
     """
     try:
-        data = request.get_json()
-        if not data or 'username' not in data or 'password' not in data:
-            app.logger.warning("API Registration: Invalid JSON payload received.")
-            return jsonify({"error": "Invalid JSON payload. 'username' and 'password' are required."}), 400
-
-        username = data.get('username').strip()
-        password = data.get('password')
-
-        if not username:
-            app.logger.warning("API Registration: Username is required.")
-            return jsonify({"error": "Username is required."}), 400
-        if not password:
-            app.logger.warning("API Registration: Password is required.")
-            return jsonify({"error": "Password is required."}), 400
-
-        if user_manager.find_user_by_username(username):
-            app.logger.warning(f"API Registration: Username '{username}' already exists.")
-            log_audit(AUDIT_LOG_FILE, username, 'api_register_attempt', 'failure - username exists')
-            return jsonify({"error": f"Username '{username}' is already taken."}), 409  # 409 Conflict
-
-        user = user_manager.register_user(username, password)
-        if user:
-            log_audit(AUDIT_LOG_FILE, username, 'api_register', f'success - role: {user.role}')
-            app.logger.info(f"API Registration: User '{username}' registered successfully.")
-            return jsonify({"message": "Registration successful!", "user_id": user.user_id, "username": user.username}), 201  # 201 Created
+        data = request.get_json() 
+        if not data or 'username' not in data or 'password' not in data: 
+            app.logger.warning("API Registration: Invalid JSON payload received.") 
+            return jsonify({"error": "Invalid JSON payload. 'username' and 'password' are required."}), 400 
+ 
+        username = data.get('username').strip() 
+        password = data.get('password') 
+ 
+        if not username: 
+            app.logger.warning("API Registration: Username is required.") 
+            return jsonify({"error": "Username is required."}), 400 
+        if not password: 
+            app.logger.warning("API Registration: Password is required.") 
+            return jsonify({"error": "Password is required."}), 400 
+ 
+        if user_manager.find_user_by_username(username): 
+            app.logger.warning(f"API Registration: Username '{username}' already exists.") 
+            log_audit(AUDIT_LOG_FILE, username, 'api_register_attempt', 'failure - username exists') 
+            return jsonify({"error": f"Username '{username}' is already taken."}), 409  # 409 Conflict 
+ 
+        user = user_manager.register_user(username, password) 
+        if user: 
+            log_audit(AUDIT_LOG_FILE, username, 'api_register', f'success - role: {user.role}') 
+            app.logger.info(f"API Registration: User '{username}' registered successfully.") 
+            return jsonify({"message": "Registration successful!", "username": user.username}), 201  # 201 Created
         else:
             app.logger.error(f"API Registration: User registration failed unexpectedly for username: {username}")
             log_audit(AUDIT_LOG_FILE, username, 'api_register', 'failure - unexpected error in user_manager')
             return jsonify({"error": "Registration failed due to an unexpected error. Please try again later."}), 500
 
-    except Exception as e:
-        app.logger.exception("API Registration: An unexpected error occurred.")
-        log_audit(AUDIT_LOG_FILE, "unknown", 'api_register', f'error: {e}')
-        return jsonify({"error": "An unexpected error occurred."}), 500
-
+    
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -278,6 +305,197 @@ def login():
     return render_template('index.html', show_login=True, login_form={}, login_errors={}, next=next_url)
 
 # Logout route (Keep existing)
+@app.route('/api/people', methods=['POST'])
+def api_add_person():
+    """
+    RESTful API endpoint for adding a new person to the family tree.
+    Expects a JSON payload with person details.
+    Returns a JSON response with the new person's ID if successful,
+    or an error message on failure.
+    """
+    try:
+        data = request.get_json()
+        if not data or 'first_name' not in data:
+            app.logger.warning("API Add Person: Invalid JSON payload received.")
+            return jsonify({"error": "Invalid JSON payload. 'first_name' is required."}), 400
+
+        person = family_tree.add_person(
+                first_name=data.get('first_name'),
+                last_name=data.get('last_name'),
+                nickname=data.get('nickname'),
+                dob=data.get('dob'),
+                dod=data.get('dod'),
+                gender=data.get('gender'),
+                pob=data.get('pob'),
+                pod=data.get('pod'))
+        return jsonify({"person_id": person.person_id}), 201
+
+    except Exception as e:
+        app.logger.exception(f"API Add Person: An unexpected error occurred.")
+        return jsonify({"error": "An unexpected error occurred."}), 500
+
+
+@app.route('/api/people/<person_id>', methods=['PUT'])
+def api_edit_person(person_id):
+    """
+    RESTful API endpoint for updating a person's details.
+    Expects a JSON payload with the updated person details.
+    Returns a JSON response with the person's ID if successful,
+    or an error message if the person doesn't exist or an error occurred.
+    """
+    try:
+        data = request.get_json()
+        person = family_tree.find_person(person_id=person_id)
+        if not person:
+            app.logger.warning(f"API Edit Person: Person with ID {person_id} not found.")
+            return jsonify({"error": f"Person with ID {person_id} not found."}), 404
+
+        updated_data = {
+                'first_name': data.get('first_name'),
+                'last_name': data.get('last_name'),
+                'nickname': data.get('nickname'),
+                'birth_date': data.get('dob'),
+                'death_date': data.get('dod'),
+                'gender': data.get('gender'),
+                'place_of_birth': data.get('pob'),
+                'place_of_death': data.get('pod')
+            }
+        
+        success = family_tree.edit_person(person_id, updated_data, edited_by='api_call')
+        if success:
+            return jsonify({"person_id": person_id}), 200
+        else:
+            app.logger.warning(f"API Edit Person: No changes made or an error occurred for ID {person_id}.")
+            return jsonify({"error": "No changes made or an error occurred."}), 500
+    
+    except Exception as e:
+        app.logger.exception(f"API Edit Person: An unexpected error occurred for ID {person_id}.")
+        return jsonify({"error": "An unexpected error occurred."}), 500
+
+@app.route('/api/people/<person_id>', methods=['DELETE'])
+def api_delete_person(person_id):
+    """
+    RESTful API endpoint for deleting a person from the family tree.
+    Deletes the person based on the provided person_id.
+    Returns a JSON response with the deleted person's ID if successful,
+    or an error message if the person doesn't exist or an error occurred.
+    """
+    try:
+        person = family_tree.find_person(person_id=person_id)
+        if not person:
+            app.logger.warning(f"API Delete Person: Person with ID {person_id} not found.")
+            return jsonify({"error": f"Person with ID {person_id} not found."}), 404
+        
+        success = family_tree.delete_person(person_id, deleted_by='api_call')
+        if success:
+            return jsonify({"person_id": person_id}), 200
+        else:
+            return jsonify({"error": "An error occurred while deleting the person."}), 500
+    except Exception as e:
+        app.logger.exception(f"API Delete Person: An unexpected error occurred for ID {person_id}.")
+        return jsonify({"error": "An unexpected error occurred."}), 500
+
+@app.route('/api/relationships', methods=['POST'])
+def api_add_relationship():
+    """
+    RESTful API endpoint for adding a new relationship to the family tree.
+    Expects a JSON payload with the IDs of the two people and the relationship type.
+    Returns a JSON response with the relationship details if successful,
+    or an error message if the relationship couldn't be added.
+    """
+    try:
+        data = request.get_json()
+        if not data or 'person1_id' not in data or 'person2_id' not in data or 'relationship_type' not in data:
+            app.logger.warning("API Add Relationship: Invalid JSON payload received.")
+            return jsonify({"error": "Invalid JSON payload. 'person1_id', 'person2_id', and 'relationship_type' are required."}), 400
+
+        person1_id = data.get('person1_id')
+        person2_id = data.get('person2_id')
+        rel_type = data.get('relationship_type')
+
+        if person1_id == person2_id:
+            app.logger.warning(f"API Add Relationship: Cannot create relationship between the same person ({person1_id}).")
+            return jsonify({"error": "Cannot create a relationship between the same person."}), 400
+        
+        if family_tree.find_relationship(person1_id, person2_id, rel_type):
+            app.logger.warning(f"API Add Relationship: Relationship of type '{rel_type}' already exists between {person1_id} and {person2_id}.")
+            return jsonify({"error": f"A '{rel_type}' relationship already exists between these two people."}), 409
+
+        relationship = family_tree.add_relationship(
+            person1_id=person1_id,
+            person2_id=person2_id,
+            relationship_type=rel_type,
+            added_by="api_call"
+        )
+        return jsonify(relationship.to_dict()), 201
+
+    except Exception as e:
+        app.logger.exception(f"API Add Relationship: An unexpected error occurred.")
+        return jsonify({"error": "An unexpected error occurred."}), 500
+
+@app.route('/api/relationships/<relationship_id>', methods=['PUT'])
+def api_edit_relationship(relationship_id):
+    """
+    RESTful API endpoint for updating a relationship in the family tree.
+    Expects a JSON payload with the IDs of the two people and the relationship type to update.
+    Returns a JSON response with the updated relationship details if successful,
+    or an error message if the relationship couldn't be updated.
+    """
+    try:
+        data = request.get_json()
+        if not data or 'person1_id' not in data or 'person2_id' not in data or 'relationship_type' not in data:
+            app.logger.warning("API Edit Relationship: Invalid JSON payload received.")
+            return jsonify({"error": "Invalid JSON payload. 'person1_id', 'person2_id', and 'relationship_type' are required."}), 400
+
+        person1_id = data.get('person1_id')
+        person2_id = data.get('person2_id')
+        rel_type = data.get('relationship_type')
+
+        relationship = family_tree.find_relationship_by_id(relationship_id)
+        if not relationship:
+            app.logger.warning(f"API Edit Relationship: Relationship with ID {relationship_id} not found.")
+            return jsonify({"error": f"Relationship with ID {relationship_id} not found."}), 404
+        
+        updated_data = {
+            'rel_type': rel_type
+        }
+        success = family_tree.edit_relationship(relationship_id, updated_data, edited_by="api_call")
+        if success:
+            return jsonify(family_tree.find_relationship_by_id(relationship_id).to_dict()), 200
+        else:
+            app.logger.warning(f"API Edit Relationship: No changes made or an error occurred for ID {relationship_id}.")
+            return jsonify({"error": "No changes made or an error occurred."}), 500
+
+    except Exception as e:
+        app.logger.exception(f"API Edit Relationship: An unexpected error occurred for ID {relationship_id}.")
+        return jsonify({"error": "An unexpected error occurred."}), 500
+
+@app.route('/api/relationships/<relationship_id>', methods=['DELETE'])
+def api_delete_relationship(relationship_id):
+    """
+    RESTful API endpoint for deleting a relationship from the family tree.
+    Deletes the relationship based on the provided relationship_id.
+    Returns a JSON response with the deleted relationship's ID if successful,
+    or an error message if the relationship doesn't exist or an error occurred.
+    """
+    try:
+        relationship = family_tree.find_relationship_by_id(relationship_id)
+        if not relationship:
+            app.logger.warning(f"API Delete Relationship: Relationship with ID {relationship_id} not found.")
+            return jsonify({"error": f"Relationship with ID {relationship_id} not found."}), 404
+
+        success = family_tree.delete_relationship(relationship_id, deleted_by='api_call')
+        if success:
+            return jsonify({"relationship_id": relationship_id}), 200
+        else:
+            return jsonify({"error": "An error occurred while deleting the relationship."}), 500
+    except Exception as e:
+        app.logger.exception(f"API Delete Relationship: An unexpected error occurred for ID {relationship_id}.")
+        return jsonify({"error": "An unexpected error occurred."}), 500
+
+
+
+
 @app.route('/logout')
 @login_required
 def logout():
@@ -553,6 +771,37 @@ def search():
         try: results = family_tree.search_people(query=query, dob_start=dob_start, dob_end=dob_end, location=location); log_audit(AUDIT_LOG_FILE, session.get('username', 'unknown'), 'search_people', f'query: "{query}", dob_start: "{dob_start}", dob_end: "{dob_end}", location: "{location}", results: {len(results)}')
         except Exception as e: app.logger.exception("Error during search"); flash("An error occurred during the search.", "danger"); log_audit(AUDIT_LOG_FILE, session.get('username', 'unknown'), 'search_people', f'error: {e}')
     return render_template('search_results.html', query=query, dob_start=dob_start, dob_end=dob_end, location=location, results=results, search_performed=search_performed)
+
+@app.route('/api/people', methods=['GET'])
+def get_all_people():
+    try:
+        people = [person.to_dict() for person in family_tree.get_all_people()]
+        return jsonify(people)
+    except Exception as e:
+        app.logger.exception("Error getting all people data for API")
+        return jsonify({"error": "Failed to get people data"}), 500
+
+@app.route('/api/relationships', methods=['GET'])
+def get_all_relationships():
+    try:
+        relationships = [rel.to_dict() for rel in family_tree.get_all_relationships()]
+        return jsonify(relationships)
+    except Exception as e:
+        app.logger.exception("Error getting all relationships data for API")
+        return jsonify({"error": "Failed to get relationships data"}), 500
+
+@app.route('/api/people/<person_id>', methods=['GET'])
+def get_person(person_id):
+    try:
+        person = family_tree.find_person(person_id=person_id)
+        if person:
+            return jsonify(person.to_dict())
+        else:
+            return jsonify({"error": "Person not found"}), 404
+    except Exception as e:
+        app.logger.exception(f"Error getting person data for API with id: {person_id}")
+        return jsonify({"error": "Failed to get person data"}), 500
+
 
 # API Endpoint (Keep existing)
 @app.route('/api/tree_data')
