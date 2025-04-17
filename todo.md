@@ -11,23 +11,25 @@
 - [x] Search functionality for people
 - [x] Password reset functionality
 - [x] Audit logging for important actions
+- [x] User deletion logic
 
 ## Refactoring: React Frontend & Visualization
 
-### Phase 0: Project Structure Cleanup (Do First)
-- [ ] Create `backend/` directory in project root.
-- [ ] Move `src/`, `tests/`, `app.py`, `requirements.txt` into `backend/`.
-- [ ] Move `data/` directory into `backend/`.
-- [ ] Create `logs/backend/` and `logs/frontend/` directories.
-- [ ] Update paths in `app.py` for data files (`USERS_FILE`, `FAMILY_TREE_FILE`), audit log (`AUDIT_LOG_FILE`), and app log (`APP_LOG_FILE`) to reflect new locations (e.g., relative to `app.py` inside `backend/` or using absolute paths).
-- [ ] Update paths in test files (`tests/*`) if they rely on specific relative paths to data or source files.
-- [ ] Update or remove `devserver.sh` (README now uses direct `flask run` commands).
-- [ ] Ensure `.gitignore` correctly ignores `venv`, `logs`, potentially `backend/data` if desired, etc.
-- [ ] Verify backend tests still run correctly from within the `backend/` directory.
+### Phase 0: Project Structure Cleanup (Completed)
+- [x] Create `backend/` directory in project root.
+- [x] Move `src/`, `tests/`, `app.py`, `requirements.txt` into `backend/`.
+- [x] Move `data/` directory into `backend/`.
+- [x] Create `logs/backend/` and `logs/frontend/` directories.
+- [x] Update paths in `app.py` for data files (`USERS_FILE`, `FAMILY_TREE_FILE`), audit log (`AUDIT_LOG_FILE`), and app log (`APP_LOG_FILE`) to reflect new locations (e.g., relative to `app.py` inside `backend/` or using absolute paths).
+- [x] Update paths in test files (`tests/*`) if they rely on specific relative paths to data or source files.
+- [x] Update or remove `devserver.sh` (README now uses direct `flask run` commands).
+- [x] Ensure `.gitignore` correctly ignores `venv`, `logs`, potentially `backend/data` if desired, etc.
+- [x] Verify backend tests still run correctly from within the `backend/` directory.
 
 ### Phase 1: Backend API Preparation
-- [ ] Review and potentially modify `/api/tree_data` endpoint for optimal React Flow format (check node/edge structure, add photo URLs if needed).
-- [ ] Create RESTful API endpoint: `POST /api/register` (return JSON).
+- [x] Review and potentially modify `/api/tree_data` endpoint for optimal React Flow format (check node/edge structure, add photo URLs if needed).
+- [ ] Review and improve password reset flow (email, etc)
+- [x] Create RESTful API endpoint: `POST /api/register` (return JSON).
 - [ ] Create RESTful API endpoint: `POST /api/login` (return JSON, handle session/token).
 - [ ] Create RESTful API endpoint: `GET /api/people`.
 - [ ] Create RESTful API endpoint: `GET /api/people/{id}`.
@@ -85,7 +87,8 @@
 
 ## General Improvements (Ongoing)
 - [x] Improve general backend error handling and logging.
-- [ ] Refactor database interactions (potentially use a simple ORM or dedicated data layer) - *Lower priority during frontend refactor*.
+- [ ] Refactor database interactions (potentially use a simple ORM or dedicated data layer) - *this has lower priority during the frontend refactor*.
+- [x] Refactor the database layer to use `load_data` and `save_data` properly.
 - [ ] Add input validation for all API endpoints.
 - [ ] Secure sensitive data (e.g., encryption for stored data beyond passwords).
 

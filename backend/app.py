@@ -5,6 +5,7 @@ from functools import wraps
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, abort
 # Removed CSRF imports
 from src.user_management import UserManagement, VALID_ROLES
+from src.photo_utils import generate_default_person_photo
 from src.family_tree import FamilyTree
 from src.relationship import VALID_RELATIONSHIP_TYPES as VALID_REL_TYPES
 from src.db_utils import load_data, save_data
@@ -190,6 +191,50 @@ def register():
 
     # GET request
     return render_template('index.html', show_register=True, reg_form={}, reg_errors={})
+
+
+@app.route('/api/register', methods=['POST'])
+def api_register():
+    """
+    RESTful API endpoint for user registration.
+    Expects a JSON payload with 'username' and 'password'.
+    Returns a JSON response.
+    """
+    try:
+        data = request.get_json()
+        if not data or 'username' not in data or 'password' not in data:
+            app.logger.warning("API Registration: Invalid JSON payload received.")
+            return jsonify({"error": "Invalid JSON payload. 'username' and 'password' are required."}), 400
+
+        username = data.get('username').strip()
+        password = data.get('password')
+
+        if not username:
+            app.logger.warning("API Registration: Username is required.")
+            return jsonify({"error": "Username is required."}), 400
+        if not password:
+            app.logger.warning("API Registration: Password is required.")
+            return jsonify({"error": "Password is required."}), 400
+
+        if user_manager.find_user_by_username(username):
+            app.logger.warning(f"API Registration: Username '{username}' already exists.")
+            log_audit(AUDIT_LOG_FILE, username, 'api_register_attempt', 'failure - username exists')
+            return jsonify({"error": f"Username '{username}' is already taken."}), 409  # 409 Conflict
+
+        user = user_manager.register_user(username, password)
+        if user:
+            log_audit(AUDIT_LOG_FILE, username, 'api_register', f'success - role: {user.role}')
+            app.logger.info(f"API Registration: User '{username}' registered successfully.")
+            return jsonify({"message": "Registration successful!", "user_id": user.user_id, "username": user.username}), 201  # 201 Created
+        else:
+            app.logger.error(f"API Registration: User registration failed unexpectedly for username: {username}")
+            log_audit(AUDIT_LOG_FILE, username, 'api_register', 'failure - unexpected error in user_manager')
+            return jsonify({"error": "Registration failed due to an unexpected error. Please try again later."}), 500
+
+    except Exception as e:
+        app.logger.exception("API Registration: An unexpected error occurred.")
+        log_audit(AUDIT_LOG_FILE, "unknown", 'api_register', f'error: {e}')
+        return jsonify({"error": "An unexpected error occurred."}), 500
 
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -513,8 +558,22 @@ def search():
 @app.route('/api/tree_data')
 @login_required
 def tree_data():
-    # (Keep existing implementation)
-    try: data = family_tree.get_nodes_links_data(); return jsonify(data)
+    try:
+        data = family_tree.get_nodes_links_data()
+
+        # Adjust node data to match the required format
+        for node in data['nodes']:
+            person_id = node.get('id')
+            person = family_tree.find_person(person_id=person_id)
+            # Keep only required fields
+            node['name'] = person.get_display_name()
+            node['birth_date'] = person.birth_date
+            node['birth_place'] = person.place_of_birth
+            node['photoUrl'] = person.photoUrl if person.photoUrl else generate_default_person_photo(person_id)
+            # Remove fields no longer needed
+            node.pop('full_name', None); node.pop('gender', None); node.pop('pob', None)
+        return jsonify(data)
+
     except Exception as e: app.logger.exception("Error generating tree data for API"); log_audit(AUDIT_LOG_FILE, session.get('username', 'unknown'), 'get_tree_data', f'error: {e}'); return jsonify({"error": "Failed to generate tree data"}), 500
 
 # Admin User Management Routes (Keep existing manage_users, set_user_role, delete_user_admin)
