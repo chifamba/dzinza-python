@@ -28,7 +28,7 @@
 
 ### Phase 1: Backend API Preparation
 - [x] Review and potentially modify `/api/tree_data` endpoint for optimal React Flow format (check node/edge structure, add photo URLs if needed).
-- [ ] Review and improve password reset flow (email, etc).
+- [ ] Review and improve password reset flow (email, etc)
 - [x] Create RESTful API endpoint: `POST /api/register` (return JSON).
 - [x] Create RESTful API endpoint: `POST /api/login` (return JSON, handle session/token).
 - [x] Create RESTful API endpoint: `GET /api/people`.
@@ -41,36 +41,34 @@
 - [x] Create RESTful API endpoint: `PUT /api/relationships/{id}`.
 - [x] Create RESTful API endpoint: `DELETE /api/relationships/{id}`.
 - [ ] Define and implement API authentication strategy (e.g., session/JWT, CORS).
-- [ ] Implement consistent JSON error handling for all API endpoints. 
+- [ ] Implement consistent JSON error handling for all API endpoints.
 
 ### Phase 2: Frontend Setup & Basic Interaction (React)
 - [x] Create `frontend/` directory in project root.
 - [x] Initialize React project inside `frontend/` (using Vite or CRA).
 - [x] Install core dependencies: `react-router-dom`, `axios`, `reactflow`.
-- [x] Set up basic frontend routing (Login, Register, Dashboard, Edit Forms).
+- [x] Set up basic frontend routing (Login, Register, Dashboard, Edit Forms). 
 - [x] Create core React components (App, LoginPage, RegisterPage, DashboardPage, PersonDetailsForm, RelationshipForm).
 - [x] Create API service module (`api.js`) for frontend-backend communication. 
-- [x] Implement basic frontend state management (e.g., Context API) for auth state.
+- [x] Implement basic frontend state management (e.g., Context API) for auth state. 
 - [x] Implement frontend login/registration forms and API calls.
 - [x] Implement protected routes based on authentication state.
 
 ### Phase 3: Visualization Integration (React Flow)
-- [ ] Create `FamilyTreeVisualization` React component.
-- [ ] Integrate `<ReactFlow>`, `<Background>`, `<Controls>`, `<MiniMap>`.
-- [ ] Fetch data from `/api/tree_data` endpoint in the component.
-- [ ] Implement layout strategy (Backend pre-computed or Frontend library like Dagre/ELKjs).
-- [ ] Configure hierarchical layout algorithm (e.g., `rankdir: 'TB'`).
-- [ ] Implement basic node/edge rendering using fetched data.
+- [x] Create `FamilyTreeVisualization` React component.
+- [x] Integrate `<ReactFlow>`, `<Background>`, `<Controls>`, `<MiniMap>`.
+- [x] Fetch data from `/api/people` and `/api/relationships` endpoint in the component. 
+- [x] Implement layout strategy (Backend pre-computed or Frontend library like Dagre).
+- [x] Configure hierarchical layout algorithm (e.g., `rankdir: 'TB'`).
+- [x] Implement basic node/edge rendering using fetched data.
 - [ ] Ensure basic zoom/pan functionality works via `<Controls>` and default behavior.
-
-### Phase 4: Enhanced Visualization & Interaction
-- [ ] Implement `onNodeClick` handler for node selection in React Flow.
-- [ ] Fetch detailed person data on node click (`GET /api/people/{id}`).
-- [ ] Display person details in a separate sidebar/modal component.
-- [ ] Define and implement custom React Flow nodes (`PersonNode.js`) to show more details (name, dates, photo placeholder).
+### Phase 4: Enhanced Visualization & Interaction (Completed)
+- [x] Implement `onNodeClick` handler for node selection in React Flow.
+- [x] Fetch detailed person data on node click (`GET /api/people/{id}`). 
+- [x] Display person details in a separate sidebar/modal component.
+- [x] Define and implement custom React Flow nodes (`PersonNode.js`) to show more details (name, dates, photo placeholder).
 - [ ] Implement conditional styling for nodes (e.g., based on gender using `className` or `style`).
 - [ ] Implement conditional styling for edges (e.g., based on relationship type using `className` or `style`).
-
 ### Phase 5: Editing & Performance
 - [ ] Connect node click/action (e.g., double-click or button in custom node) to open `PersonDetailsForm` (e.g., in a modal).
 - [ ] Pre-fill form with selected person data.

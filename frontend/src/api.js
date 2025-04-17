@@ -13,11 +13,6 @@ const api = {
     return response.data;
   },
 
-  getAllPeople: async () => {
-    const response = await axios.get(`${BASE_URL}/people`);
-    return response.data;
-  },
-
   getPersonById: async (id) => {
     const response = await axios.get(`${BASE_URL}/people/${id}`);
     return response.data;
@@ -38,6 +33,11 @@ const api = {
     return response.data;
   },
 
+  getAllPeople: async () => {
+    const response = await axios.get(`${BASE_URL}/people`);
+    return response.data;
+  },
+  
   getAllRelationships: async () => {
     const response = await axios.get(`${BASE_URL}/relationships`);
     return response.data;
