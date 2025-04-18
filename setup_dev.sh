@@ -29,7 +29,7 @@ fi
 echo "Installing Python dependencies (requires virtual environment to be activated manually later)..."
 # Attempt to install within the venv context if possible, otherwise install globally if venv activation fails/is complex in script
 source venv/bin/activate # Try activating (might not work depending on shell)
-pip install -r requirements.txt || { echo "ERROR: Failed to install Python dependencies."; exit 1; }
+pip3 install -r requirements.txt || { echo "ERROR: Failed to install Python dependencies."; exit 1; }
 # Deactivate after install (if activation worked)
 deactivate &> /dev/null
 

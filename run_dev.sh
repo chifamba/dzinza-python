@@ -56,11 +56,20 @@ echo "Frontend server started with PID: $FRONTEND_PID"
 
 cd .. # Go back to project root
 
-echo "--------------------------------------------------"
-echo "Backend API running at http://127.0.0.1:8090"
-echo "Frontend running at http://localhost:8080 (or as indicated above)"
-echo "Press Ctrl+C to stop both servers."
-echo "--------------------------------------------------"
+YELLOW='\033[1;33m'
+CYAN='\033[1;36m'
+GREEN='\033[1;32m'
+NC='\033[0m' # No Color
+
+echo -e "${YELLOW}======================================================================================${NC}"
+echo -e "|                                                                                    |"
+echo -e "|   ${CYAN}Backend API running at http://127.0.0.1:8090${NC}                                     |"
+echo -e "|   ${CYAN}Frontend running at http://localhost:8080 (or as indicated above)${NC}                |"
+echo -e "|                                                                                    |"
+echo -e "|   ${GREEN}Press Ctrl+C to stop both servers.${NC}                                               |"
+echo -e "|                                                                                    |"
+echo -e "${YELLOW}======================================================================================${NC}"
+
 
 # Wait for background processes to finish (or be interrupted by trap)
 wait $BACKEND_PID
