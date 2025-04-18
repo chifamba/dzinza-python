@@ -238,7 +238,7 @@ class FamilyTree:
         for person_id in person_ids:
             person = self.people[person_id]
             nodes.append({"id": person.person_id, "name": person.get_display_name(), "full_name": person.get_full_name(), "gender": person.gender, "dob": person.birth_date, "pob": person.place_of_birth}) # Add pob to node data
-             nodes.append({
+            nodes.append({
                 "id": person.person_id,
                 "name": person.get_display_name(),
                 "full_name": person.get_full_name(),
@@ -246,7 +246,8 @@ class FamilyTree:
                 "dob": person.birth_date,
                 "birth_place": person.place_of_birth,  # Changed from 'pob' to 'birth_place'
                 "photoUrl": person.photo_url if hasattr(person, 'photo_url') and person.photo_url else "https://via.placeholder.com/150"  # Add photoUrl
-            })        processed_rel_ids = set()
+            })        
+            processed_rel_ids = set()
         for rel_id, rel in self.relationships.items():
             if rel_id in processed_rel_ids: continue
             source_id = rel.person1_id; target_id = rel.person2_id; rel_type = rel.rel_type.lower()

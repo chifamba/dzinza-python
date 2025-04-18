@@ -6,7 +6,7 @@ from flask import Flask, render_template, request, redirect, url_for, flash, ses
 # Import CORS
 from flask_cors import CORS
 from src.user_management import UserManagement, VALID_ROLES
-from src.photo_utils import generate_default_person_photo
+from src.photo_utils import generate_default_person_photo # Ensure this file exists now
 from src.family_tree import FamilyTree
 # Import VALID_REL_TYPES for validation
 from src.relationship import VALID_RELATIONSHIP_TYPES
@@ -38,11 +38,14 @@ app = Flask(__name__, template_folder=TEMPLATE_FOLDER)
 app.secret_key = SECRET_KEY
 
 # --- Configure CORS ---
-CORS(app, supports_credentials=True, origins=["http://localhost:8080", "http://127.0.0.1:8080"])
-app.logger.info("CORS configured for origin: http://localhost:8080")
+# Allow requests from the typical Vite development server origin (port 5173)
+# Add other origins if needed (e.g., production frontend URL)
+CORS(app, supports_credentials=True, origins=["http://localhost:5173", "http://127.0.0.1:5173"])
+app.logger.info("CORS configured for origin: http://localhost:5173")
 
 
 # --- Configure Logging ---
+# (Logging setup remains the same)
 os.makedirs(LOG_DIR, exist_ok=True)
 log_formatter = logging.Formatter('%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]')
 file_handler = RotatingFileHandler(APP_LOG_FILE, maxBytes=1024*1024*5, backupCount=5)
@@ -64,6 +67,7 @@ def inject_now():
     return {'now': datetime.utcnow}
 
 # --- Initialize Core Components ---
+# (Initialization remains the same)
 os.makedirs(DATA_DIR, exist_ok=True)
 user_manager = UserManagement(USERS_FILE, AUDIT_LOG_FILE)
 family_tree = FamilyTree(FAMILY_TREE_FILE, AUDIT_LOG_FILE)
@@ -76,18 +80,15 @@ except Exception as e:
 
 
 # --- Validation Helper ---
+# (Validation helper remains the same)
 def validate_person_data(data, is_edit=False):
-    """Validates incoming person data for POST/PUT requests."""
     errors = {}
-    # Required fields check (only for POST, PUT can update partial data)
     if not is_edit and (not data.get('first_name') or not str(data.get('first_name')).strip()):
         errors['first_name'] = 'First name is required and cannot be empty.'
-
-    # Field specific checks (apply if field is present in data)
     if 'first_name' in data and (not data.get('first_name') or not str(data.get('first_name')).strip()):
          errors['first_name'] = 'First name cannot be empty.'
-    if 'last_name' in data and data.get('last_name') is None: # Allow empty string but not None if key exists
-         data['last_name'] = '' # Normalize None to empty string if key provided
+    if 'last_name' in data and data.get('last_name') is None:
+         data['last_name'] = ''
 
     dob = data.get('birth_date')
     dod = data.get('death_date')
@@ -97,22 +98,20 @@ def validate_person_data(data, is_edit=False):
     if dod and not family_tree._is_valid_date(dod):
         errors['death_date'] = 'Invalid date format (YYYY-MM-DD).'
 
-    # Date comparison check (only if both dates are valid)
     if dob and dod and 'birth_date' not in errors and 'death_date' not in errors:
         try:
             if datetime.strptime(dod, '%Y-%m-%d').date() < datetime.strptime(dob, '%Y-%m-%d').date():
                 errors['death_date'] = 'Date of Death cannot be before Date of Birth.'
-        except ValueError: pass # Should have been caught by format check
+        except ValueError: pass
 
-    # Optional: Validate Gender if provided
     if 'gender' in data and data.get('gender') and data['gender'] not in ['Male', 'Female', 'Other']:
          errors['gender'] = 'Invalid gender value. Use Male, Female, or Other.'
 
     return errors
 
 # --- Decorators ---
+# (Decorators remain the same)
 def login_required(f):
-    """Decorator for routes requiring web session login."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user_id' not in session:
@@ -124,7 +123,6 @@ def login_required(f):
     return decorated_function
 
 def api_login_required(f):
-    """Decorator for API routes requiring session login. Returns JSON error."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user_id' not in session:
@@ -135,31 +133,30 @@ def api_login_required(f):
     return decorated_function
 
 def admin_required(f):
-    """Decorator for routes requiring admin role (web session)."""
     @wraps(f)
-    @login_required # Ensures user is logged in first
+    @login_required
     def decorated_function(*args, **kwargs):
         if session.get('user_role') != 'admin':
             flash('You do not have permission to access this page.', 'danger')
             log_audit(AUDIT_LOG_FILE, session.get('username', 'unknown'), 'access_denied', f'admin required (role: {session.get("user_role")}) for {request.endpoint}')
             app.logger.warning(f"Admin required attempt (role: {session.get('user_role')}) for endpoint '{request.endpoint}' by user '{session.get('username')}'")
-            abort(403) # Forbidden
+            abort(403)
         return f(*args, **kwargs)
     return decorated_function
 
 def api_admin_required(f):
-    """Decorator for API routes requiring admin role. Returns JSON error."""
     @wraps(f)
-    @api_login_required # Ensures user is logged in first via API check
+    @api_login_required
     def decorated_function(*args, **kwargs):
         if session.get('user_role') != 'admin':
             log_audit(AUDIT_LOG_FILE, session.get('username', 'unknown'), 'api_access_denied', f'admin required (role: {session.get("user_role")}) for API endpoint {request.endpoint}')
             app.logger.warning(f"API admin required attempt (role: {session.get('user_role')}) for endpoint '{request.endpoint}' by user '{session.get('username')}'")
-            return jsonify({"error": "Administrator privileges required"}), 403 # Forbidden
+            return jsonify({"error": "Administrator privileges required"}), 403
         return f(*args, **kwargs)
     return decorated_function
 
 # --- Custom Error Handlers ---
+# (Error handlers remain the same)
 @app.errorhandler(404)
 def not_found_error(error):
     app.logger.warning(f"404 Not Found error: {request.path} (Referrer: {request.referrer})")
@@ -191,16 +188,19 @@ def unauthorized_error(error):
 
 @app.errorhandler(400)
 def bad_request_error(error):
-    # Use description from abort(400, description=...) if available
     description = error.description if hasattr(error, 'description') else "Bad Request"
     app.logger.warning(f"400 Bad Request error: {description}")
-    return jsonify({"error": description}), 400
+    # Ensure the response includes the details if available
+    response_data = {"error": description}
+    if isinstance(description, dict): # Handle cases where description might be validation errors
+        response_data = {"error": "Validation failed", "details": description}
+    return jsonify(response_data), 400
 
 
 # --- Main Routes (Web Interface - Mostly Deprecated) ---
+# (Web routes remain the same - mostly deprecated)
 @app.route('/')
 def index():
-    # This route might be deprecated or simplified if the React frontend handles the main view
     people = []; relationships = []
     is_admin = session.get('user_role') == 'admin'
     if 'user_id' in session:
@@ -244,35 +244,26 @@ def logout():
 
 
 # --- API Authentication Routes ---
+# (API Auth routes remain the same)
 @app.route('/api/login', methods=['POST'])
 def api_login():
-    """ API endpoint for user login. """
     try:
         data = request.get_json()
-        # Basic payload validation
         if not data or not data.get('username') or not data.get('password'):
             app.logger.warning("API Login: Missing username or password in payload.")
             return jsonify({"error": "Username and password are required."}), 400
-
         username = data['username'].strip()
-        password = data['password'] # Don't strip password
-
+        password = data['password']
         user = user_manager.login_user(username, password)
         if user:
-            session['user_id'] = user.user_id
-            session['username'] = user.username
-            session['user_role'] = user.role
+            session['user_id'] = user.user_id; session['username'] = user.username; session['user_role'] = user.role
             log_audit(AUDIT_LOG_FILE, username, 'api_login', 'success')
             app.logger.info(f"API Login: User '{username}' logged in successfully.")
-            return jsonify({
-                "message": "Login successful!",
-                "user": {"id": user.user_id, "username": user.username, "role": user.role}
-                }), 200
+            return jsonify({"message": "Login successful!", "user": {"id": user.user_id, "username": user.username, "role": user.role}}), 200
         else:
             log_audit(AUDIT_LOG_FILE, username, 'api_login', 'failure - invalid credentials or user not found')
             app.logger.warning(f"API Login: Failed login attempt for username: {username}")
             return jsonify({"error": "Invalid username or password."}), 401
-
     except Exception as e:
         app.logger.exception("API Login: An unexpected error occurred.")
         log_audit(AUDIT_LOG_FILE, "unknown", 'api_login', f'error: {e}')
@@ -280,39 +271,27 @@ def api_login():
 
 @app.route('/api/register', methods=['POST'])
 def api_register():
-    """ API endpoint for user registration. """
     try:
         data = request.get_json()
-        # Basic payload validation
         if not data or not data.get('username') or not data.get('password'):
             app.logger.warning("API Register: Missing username or password in payload.")
             return jsonify({"error": "Username and password are required."}), 400
-
         username = data['username'].strip()
         password = data['password']
-
-        # Additional validation
         if not username: return jsonify({"error": "Username cannot be empty."}), 400
         if not password: return jsonify({"error": "Password cannot be empty."}), 400
-        # Consider adding password complexity requirements here
-
         if user_manager.find_user_by_username(username):
             log_audit(AUDIT_LOG_FILE, username, 'api_register_attempt', 'failure - username exists')
-            return jsonify({"error": f"Username '{username}' is already taken."}), 409 # Conflict
-
+            return jsonify({"error": f"Username '{username}' is already taken."}), 409
         user = user_manager.register_user(username, password)
         if user:
             log_audit(AUDIT_LOG_FILE, username, 'api_register', f'success - role: {user.role}')
             app.logger.info(f"API Registration: User '{username}' registered successfully.")
-            return jsonify({
-                "message": "Registration successful!",
-                "user": {"id": user.user_id, "username": user.username, "role": user.role}
-                }), 201 # Created
+            return jsonify({"message": "Registration successful!", "user": {"id": user.user_id, "username": user.username, "role": user.role}}), 201
         else:
             app.logger.error(f"API Registration: User registration failed unexpectedly for username: {username}")
             log_audit(AUDIT_LOG_FILE, username, 'api_register', 'failure - unexpected error in user_manager')
             return jsonify({"error": "Registration failed due to an unexpected error."}), 500
-
     except Exception as e:
         app.logger.exception("API Register: An unexpected error occurred.")
         log_audit(AUDIT_LOG_FILE, "unknown", 'api_register', f'error: {e}')
@@ -321,9 +300,7 @@ def api_register():
 @app.route('/api/logout', methods=['POST'])
 @api_login_required
 def api_logout():
-    """ API endpoint for user logout. """
-    username = session.get('username', 'unknown')
-    role = session.get('user_role', 'unknown')
+    username = session.get('username', 'unknown'); role = session.get('user_role', 'unknown')
     try:
         session.clear()
         log_audit(AUDIT_LOG_FILE, username, 'api_logout', f'success - role: {role}')
@@ -336,22 +313,17 @@ def api_logout():
 
 @app.route('/api/session', methods=['GET'])
 def api_get_session():
-    """ API endpoint to check current session status. """
     if 'user_id' in session:
-        return jsonify({
-            "isAuthenticated": True,
-            "user": {"id": session['user_id'], "username": session['username'], "role": session['user_role']}
-        }), 200
+        return jsonify({"isAuthenticated": True, "user": {"id": session['user_id'], "username": session['username'], "role": session['user_role']}}), 200
     else:
         return jsonify({"isAuthenticated": False, "user": None}), 200
 
 
 # --- API Family Tree Data Routes ---
-
+# (API Tree routes remain the same, validation added within)
 @app.route('/api/people', methods=['GET'])
 @api_login_required
 def get_all_people():
-    """ API endpoint to get all people. """
     try:
         people = [person.to_dict() for person in family_tree.people.values()]
         return jsonify(people)
@@ -362,7 +334,6 @@ def get_all_people():
 @app.route('/api/people/<person_id>', methods=['GET'])
 @api_login_required
 def get_person(person_id):
-    """ API endpoint to get a specific person by ID. """
     try:
         person = family_tree.find_person(person_id=person_id)
         if person:
@@ -377,20 +348,13 @@ def get_person(person_id):
 @app.route('/api/people', methods=['POST'])
 @api_login_required
 def api_add_person():
-    """ API endpoint for adding a new person with validation. """
     try:
         data = request.get_json()
-        if not data:
-            return jsonify({"error": "Request body cannot be empty."}), 400
-
-        # Validate incoming data
+        if not data: return jsonify({"error": "Request body cannot be empty."}), 400
         validation_errors = validate_person_data(data, is_edit=False)
         if validation_errors:
             app.logger.warning(f"API Add Person validation failed: {validation_errors}")
-            # Return specific validation errors
             return jsonify({"error": "Validation failed", "details": validation_errors}), 400
-
-        # Extract validated/cleaned data
         first_name = str(data.get('first_name')).strip()
         last_name = str(data.get('last_name', '')).strip()
         nickname = str(data.get('nickname', '')).strip() or None
@@ -399,22 +363,13 @@ def api_add_person():
         gender = data.get('gender') or None
         pob = str(data.get('place_of_birth', '')).strip() or None
         pod = str(data.get('place_of_death', '')).strip() or None
-        # attributes = data.get('attributes', {}) # If handling custom attributes
-
-        person = family_tree.add_person(
-                first_name=first_name, last_name=last_name, nickname=nickname,
-                dob=dob, dod=dod, gender=gender, pob=pob, pod=pod,
-                added_by=session.get('username', 'api_user')
-                # **attributes # Pass custom attributes if needed
-            )
-
+        person = family_tree.add_person(first_name=first_name, last_name=last_name, nickname=nickname, dob=dob, dod=dod, gender=gender, pob=pob, pod=pod, added_by=session.get('username', 'api_user'))
         if person:
             app.logger.info(f"API Add Person: Person '{person.get_display_name()}' added by '{session.get('username')}'")
             return jsonify(person.to_dict()), 201
         else:
             app.logger.error(f"API Add Person: family_tree.add_person failed unexpectedly after validation for user '{session.get('username')}'")
             return jsonify({"error": "Failed to add person after validation. Check server logs."}), 500
-
     except Exception as e:
         app.logger.exception("API Add Person: An unexpected error occurred.")
         return jsonify({"error": "An unexpected error occurred while adding person."}), 500
@@ -422,51 +377,31 @@ def api_add_person():
 @app.route('/api/people/<person_id>', methods=['PUT'])
 @api_login_required
 def api_edit_person(person_id):
-    """ API endpoint for updating a person's details with validation. """
     try:
         data = request.get_json()
-        if not data:
-            return jsonify({"error": "Request body cannot be empty."}), 400
-
+        if not data: return jsonify({"error": "Request body cannot be empty."}), 400
         person = family_tree.find_person(person_id=person_id)
-        if not person:
-            return jsonify({"error": f"Person with ID {person_id} not found."}), 404
-
-        # Validate only the fields provided in the request data
+        if not person: return jsonify({"error": f"Person with ID {person_id} not found."}), 404
         validation_errors = validate_person_data(data, is_edit=True)
         if validation_errors:
             app.logger.warning(f"API Edit Person validation failed for {person_id}: {validation_errors}")
             return jsonify({"error": "Validation failed", "details": validation_errors}), 400
-
-        # Prepare data for update (only include fields present in the request)
         updated_data = {}
         for key in ['first_name', 'last_name', 'nickname', 'birth_date', 'death_date', 'gender', 'place_of_birth', 'place_of_death', 'notes']:
             if key in data:
                 value = data[key]
-                # Normalize empty strings/None for optional fields
-                if key in ['nickname', 'birth_date', 'death_date', 'gender', 'notes', 'place_of_birth', 'place_of_death']:
-                    updated_data[key] = str(value).strip() if value is not None and str(value).strip() else None
-                elif key == 'last_name':
-                    updated_data[key] = str(value).strip() if value is not None else ''
-                elif key == 'first_name': # First name cannot be empty even on edit
-                     updated_data[key] = str(value).strip()
-                else:
-                    updated_data[key] = value # Should not happen with current keys
-
-        if not updated_data:
-             return jsonify({"message": "No update data provided."}), 200 # Or 400? 200 seems ok if no change intended.
-
+                if key in ['nickname', 'birth_date', 'death_date', 'gender', 'notes', 'place_of_birth', 'place_of_death']: updated_data[key] = str(value).strip() if value is not None and str(value).strip() else None
+                elif key == 'last_name': updated_data[key] = str(value).strip() if value is not None else ''
+                elif key == 'first_name': updated_data[key] = str(value).strip()
+        if not updated_data: return jsonify({"message": "No update data provided."}), 200
         success = family_tree.edit_person(person_id, updated_data, edited_by=session.get('username', 'api_user'))
-
         if success:
             updated_person = family_tree.find_person(person_id=person_id)
             app.logger.info(f"API Edit Person: Person '{person_id}' updated by '{session.get('username')}'")
             return jsonify(updated_person.to_dict()), 200
         else:
-            # edit_person logs reasons for failure (e.g., no change)
             app.logger.warning(f"API Edit Person: edit_person failed or made no changes for ID {person_id} by user '{session.get('username')}'")
-            return jsonify({"message": "No changes detected or update failed."}), 200 # Return 200 if no change, maybe 400 if internal fail?
-
+            return jsonify({"message": "No changes detected or update failed."}), 200
     except Exception as e:
         app.logger.exception(f"API Edit Person: An unexpected error occurred for ID {person_id}.")
         return jsonify({"error": "An unexpected error occurred while editing person."}), 500
@@ -474,20 +409,13 @@ def api_edit_person(person_id):
 @app.route('/api/people/<person_id>', methods=['DELETE'])
 @api_login_required
 def api_delete_person(person_id):
-    """ API endpoint for deleting a person. """
     try:
         person = family_tree.find_person(person_id=person_id)
-        if not person:
-            return jsonify({"error": f"Person with ID {person_id} not found."}), 404
-
+        if not person: return jsonify({"error": f"Person with ID {person_id} not found."}), 404
         success = family_tree.delete_person(person_id, deleted_by=session.get('username', 'api_user'))
-
         if success:
             app.logger.info(f"API Delete Person: Person '{person_id}' deleted by '{session.get('username')}'")
-            # Return 204 No Content is often standard for successful DELETE with no body
             return '', 204
-            # Or return confirmation:
-            # return jsonify({"message": f"Person {person_id} deleted successfully"}), 200
         else:
             app.logger.error(f"API Delete Person: delete_person failed for ID {person_id} by user '{session.get('username')}'")
             return jsonify({"error": "Failed to delete person."}), 500
@@ -498,7 +426,6 @@ def api_delete_person(person_id):
 @app.route('/api/relationships', methods=['GET'])
 @api_login_required
 def get_all_relationships():
-    """ API endpoint to get all relationships. """
     try:
         relationships = [rel.to_dict() for rel in family_tree.relationships.values()]
         return jsonify(relationships)
@@ -509,24 +436,19 @@ def get_all_relationships():
 @app.route('/api/relationships', methods=['POST'])
 @api_login_required
 def api_add_relationship():
-    """ API endpoint for adding a new relationship with validation. """
     try:
         data = request.get_json()
-        # --- Validation ---
         if not data: return jsonify({"error": "Request body cannot be empty."}), 400
         person1_id = data.get('person1_id')
         person2_id = data.get('person2_id')
         rel_type = data.get('rel_type')
-        attributes = data.get('attributes', {}) # Optional attributes
-
+        attributes = data.get('attributes', {})
         errors = {}
         if not person1_id: errors['person1_id'] = 'Person 1 ID is required.'
         if not person2_id: errors['person2_id'] = 'Person 2 ID is required.'
         if not rel_type: errors['rel_type'] = 'Relationship type is required.'
         if person1_id and person1_id == person2_id: errors['person2_id'] = 'Cannot add relationship to the same person.'
         if rel_type and rel_type not in VALID_RELATIONSHIP_TYPES: errors['rel_type'] = f"Invalid relationship type '{rel_type}'. Valid types: {', '.join(VALID_RELATIONSHIP_TYPES)}"
-
-        # Check if persons exist (only if IDs are provided)
         person1, person2 = None, None
         if person1_id and 'person1_id' not in errors:
             person1 = family_tree.find_person(person_id=person1_id)
@@ -534,39 +456,16 @@ def api_add_relationship():
         if person2_id and 'person2_id' not in errors:
             person2 = family_tree.find_person(person_id=person2_id)
             if not person2: errors['person2_id'] = f"Person with ID {person2_id} not found."
-
-        # Check for duplicate relationship (only if all required fields are valid so far)
-        if person1_id and person2_id and rel_type and not errors:
-             # Note: family_tree.add_relationship already checks for duplicates,
-             # but checking here provides earlier feedback if desired.
-             # existing_rel = family_tree.find_relationship(person1_id, person2_id, rel_type)
-             # if existing_rel: errors['general'] = f"A '{rel_type}' relationship already exists between these two people."
-             pass # Rely on family_tree's check for now
-
         if errors:
             app.logger.warning(f"API Add Relationship validation failed: {errors}")
             return jsonify({"error": "Validation failed", "details": errors}), 400
-        # --- End Validation ---
-
-        # Call business logic
-        relationship = family_tree.add_relationship(
-            person1_id=person1_id,
-            person2_id=person2_id,
-            relationship_type=rel_type,
-            added_by=session.get('username', 'api_user'),
-            # attributes=attributes # Pass attributes if add_relationship supports them
-        )
-
+        relationship = family_tree.add_relationship(person1_id=person1_id, person2_id=person2_id, relationship_type=rel_type, added_by=session.get('username', 'api_user'))
         if relationship:
              app.logger.info(f"API Add Relationship: Relationship '{rel_type}' added between '{person1_id}' and '{person2_id}' by '{session.get('username')}'")
              return jsonify(relationship.to_dict()), 201
         else:
-            # Failure likely due to duplicate check or person not found within add_relationship
             app.logger.error(f"API Add Relationship: family_tree.add_relationship failed for user '{session.get('username')}'")
-            # Try to provide a more specific error based on what might have failed
-            # This requires add_relationship to potentially return error codes/messages or raise specific exceptions
-            return jsonify({"error": "Failed to add relationship. It might already exist or persons may not be valid."}), 400 # Or 409 Conflict
-
+            return jsonify({"error": "Failed to add relationship. It might already exist or persons may not be valid."}), 400
     except Exception as e:
         app.logger.exception("API Add Relationship: An unexpected error occurred.")
         return jsonify({"error": "An unexpected error occurred while adding relationship."}), 500
@@ -574,43 +473,23 @@ def api_add_relationship():
 @app.route('/api/relationships/<relationship_id>', methods=['PUT'])
 @api_login_required
 def api_edit_relationship(relationship_id):
-    """ API endpoint for updating a relationship with validation. """
     try:
         data = request.get_json()
         if not data: return jsonify({"error": "Request body cannot be empty."}), 400
-
         rel = family_tree.relationships.get(relationship_id)
-        if not rel:
-            return jsonify({"error": f"Relationship with ID {relationship_id} not found."}), 404
-
-        # --- Validation ---
+        if not rel: return jsonify({"error": f"Relationship with ID {relationship_id} not found."}), 404
         errors = {}
         new_type = data.get('rel_type')
-        # attributes = data.get('attributes') # If editing attributes
-
-        if 'rel_type' in data: # Only validate if provided
-            if not new_type or not str(new_type).strip():
-                errors['rel_type'] = 'Relationship type cannot be empty.'
-            elif new_type not in VALID_RELATIONSHIP_TYPES:
-                errors['rel_type'] = f"Invalid relationship type '{new_type}'. Valid types: {', '.join(VALID_RELATIONSHIP_TYPES)}"
-
-        # Add validation for attributes if needed
-
+        if 'rel_type' in data:
+            if not new_type or not str(new_type).strip(): errors['rel_type'] = 'Relationship type cannot be empty.'
+            elif new_type not in VALID_RELATIONSHIP_TYPES: errors['rel_type'] = f"Invalid relationship type '{new_type}'. Valid types: {', '.join(VALID_RELATIONSHIP_TYPES)}"
         if errors:
             app.logger.warning(f"API Edit Relationship validation failed for {relationship_id}: {errors}")
             return jsonify({"error": "Validation failed", "details": errors}), 400
-        # --- End Validation ---
-
-        # Prepare data for update (only include fields present in request)
         updated_data = {}
         if 'rel_type' in data: updated_data['rel_type'] = str(new_type).strip()
-        # if 'attributes' in data: updated_data['attributes'] = attributes # Add if editing attributes
-
-        if not updated_data:
-             return jsonify({"message": "No update data provided."}), 200
-
+        if not updated_data: return jsonify({"message": "No update data provided."}), 200
         success = family_tree.edit_relationship(relationship_id, updated_data, edited_by=session.get('username', 'api_user'))
-
         if success:
             updated_rel = family_tree.relationships.get(relationship_id)
             app.logger.info(f"API Edit Relationship: Relationship '{relationship_id}' updated by '{session.get('username')}'")
@@ -618,7 +497,6 @@ def api_edit_relationship(relationship_id):
         else:
             app.logger.warning(f"API Edit Relationship: edit_relationship failed or made no changes for ID {relationship_id} by user '{session.get('username')}'")
             return jsonify({"message": "No changes detected or update failed."}), 200
-
     except Exception as e:
         app.logger.exception(f"API Edit Relationship: An unexpected error occurred for ID {relationship_id}.")
         return jsonify({"error": "An unexpected error occurred while editing relationship."}), 500
@@ -626,17 +504,13 @@ def api_edit_relationship(relationship_id):
 @app.route('/api/relationships/<relationship_id>', methods=['DELETE'])
 @api_login_required
 def api_delete_relationship(relationship_id):
-    """ API endpoint for deleting a relationship. """
     try:
         rel = family_tree.relationships.get(relationship_id)
-        if not rel:
-            return jsonify({"error": f"Relationship with ID {relationship_id} not found."}), 404
-
+        if not rel: return jsonify({"error": f"Relationship with ID {relationship_id} not found."}), 404
         success = family_tree.delete_relationship(relationship_id, deleted_by=session.get('username', 'api_user'))
-
         if success:
             app.logger.info(f"API Delete Relationship: Relationship '{relationship_id}' deleted by '{session.get('username')}'")
-            return '', 204 # No Content
+            return '', 204
         else:
             app.logger.error(f"API Delete Relationship: delete_relationship failed for ID {relationship_id} by user '{session.get('username')}'")
             return jsonify({"error": "Failed to delete relationship."}), 500
@@ -648,7 +522,6 @@ def api_delete_relationship(relationship_id):
 @app.route('/api/tree_data')
 @api_login_required
 def tree_data():
-    """ API endpoint to get data formatted for visualization (e.g., React Flow). """
     try:
         data = family_tree.get_nodes_links_data()
         return jsonify(data)
@@ -659,6 +532,7 @@ def tree_data():
 
 
 # --- Admin Routes (Web Interface - Mostly Deprecated) ---
+# (Admin routes remain the same - mostly deprecated)
 @app.route('/admin/users')
 @admin_required
 def manage_users():
@@ -666,18 +540,17 @@ def manage_users():
     except Exception as e: app.logger.exception("Error retrieving users for admin page"); log_audit(AUDIT_LOG_FILE, session.get('username', 'unknown'), 'view_admin_users', f'error: {e}'); flash("Error loading user list.", "danger"); return redirect(url_for('index'))
 
 # --- Password Reset Routes (Web Interface - Mostly Deprecated) ---
+# (Password reset routes remain the same - mostly deprecated)
 @app.route('/request_password_reset', methods=['GET', 'POST'])
 def request_password_reset():
-    flash("Password reset should be initiated via the API or dedicated frontend.", "info")
-    return redirect(url_for('login'))
-
+    flash("Password reset should be initiated via the API or dedicated frontend.", "info"); return redirect(url_for('login'))
 @app.route('/reset_password/<token>', methods=['GET', 'POST'])
 def reset_password_with_token(token):
-    flash("Password reset confirmation should be handled via the API or dedicated frontend.", "info")
-    return redirect(url_for('login'))
+    flash("Password reset confirmation should be handled via the API or dedicated frontend.", "info"); return redirect(url_for('login'))
 
 
 # --- Deprecated Web Form Routes ---
+# (Deprecated routes remain the same)
 @app.route('/add_person', methods=['POST'])
 @login_required
 def add_person_web():
@@ -709,6 +582,7 @@ def search_web():
 
 
 # --- Main Execution ---
+# (Main execution remains the same)
 if __name__ == '__main__':
     if user_manager.users and not any(user.role == 'admin' for user in user_manager.users.values()):
          first_user_id = next(iter(user_manager.users))
@@ -716,8 +590,6 @@ if __name__ == '__main__':
          user_manager.set_user_role(first_user_id, 'admin', actor_username='system_startup')
     elif not user_manager.users:
          app.logger.info("No users found in user file.")
-
     port = int(os.environ.get('PORT', 8090))
     app.logger.info(f"Starting Flask server on host 0.0.0.0, port {port}")
     app.run(debug=os.environ.get('FLASK_DEBUG', '1') == '1', host='0.0.0.0', port=port)
-
