@@ -2,6 +2,7 @@
 
 # Web Framework
 Flask
+Flask-Cors # Added for API Cross-Origin Resource Sharing
 
 # Database (If you were using TinyDB, keep it, otherwise remove if not used)
 # tinydb
@@ -14,4 +15,3 @@ bcrypt
 
 # For real encryption (Optional - requires implementing DataEncryptor)
 # pycryptodome
-

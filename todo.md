@@ -40,35 +40,37 @@
 - [x] Create RESTful API endpoint: `POST /api/relationships`.
 - [x] Create RESTful API endpoint: `PUT /api/relationships/{id}`.
 - [x] Create RESTful API endpoint: `DELETE /api/relationships/{id}`.
-- [ ] Define and implement API authentication strategy (e.g., session/JWT, CORS).
-- [ ] Implement consistent JSON error handling for all API endpoints.
+- [x] Define and implement API authentication strategy (e.g., session/JWT, CORS).
+- [x] Implement consistent JSON error handling for all API endpoints.
 
 ### Phase 2: Frontend Setup & Basic Interaction (React)
 - [x] Create `frontend/` directory in project root.
 - [x] Initialize React project inside `frontend/` (using Vite or CRA).
 - [x] Install core dependencies: `react-router-dom`, `axios`, `reactflow`.
-- [x] Set up basic frontend routing (Login, Register, Dashboard, Edit Forms). 
+- [x] Set up basic frontend routing (Login, Register, Dashboard, Edit Forms).
 - [x] Create core React components (App, LoginPage, RegisterPage, DashboardPage, PersonDetailsForm, RelationshipForm).
-- [x] Create API service module (`api.js`) for frontend-backend communication. 
-- [x] Implement basic frontend state management (e.g., Context API) for auth state. 
+- [x] Create API service module (`api.js`) for frontend-backend communication.
+- [x] Implement basic frontend state management (e.g., Context API) for auth state.
 - [x] Implement frontend login/registration forms and API calls.
 - [x] Implement protected routes based on authentication state.
 
 ### Phase 3: Visualization Integration (React Flow)
 - [x] Create `FamilyTreeVisualization` React component.
 - [x] Integrate `<ReactFlow>`, `<Background>`, `<Controls>`, `<MiniMap>`.
-- [x] Fetch data from `/api/people` and `/api/relationships` endpoint in the component. 
+- [x] Fetch data from `/api/people` and `/api/relationships` endpoint in the component.
 - [x] Implement layout strategy (Backend pre-computed or Frontend library like Dagre).
 - [x] Configure hierarchical layout algorithm (e.g., `rankdir: 'TB'`).
 - [x] Implement basic node/edge rendering using fetched data.
 - [ ] Ensure basic zoom/pan functionality works via `<Controls>` and default behavior.
+
 ### Phase 4: Enhanced Visualization & Interaction (Completed)
 - [x] Implement `onNodeClick` handler for node selection in React Flow.
-- [x] Fetch detailed person data on node click (`GET /api/people/{id}`). 
+- [x] Fetch detailed person data on node click (`GET /api/people/{id}`).
 - [x] Display person details in a separate sidebar/modal component.
 - [x] Define and implement custom React Flow nodes (`PersonNode.js`) to show more details (name, dates, photo placeholder).
 - [ ] Implement conditional styling for nodes (e.g., based on gender using `className` or `style`).
 - [ ] Implement conditional styling for edges (e.g., based on relationship type using `className` or `style`).
+
 ### Phase 5: Editing & Performance
 - [ ] Connect node click/action (e.g., double-click or button in custom node) to open `PersonDetailsForm` (e.g., in a modal).
 - [ ] Pre-fill form with selected person data.
@@ -84,11 +86,10 @@
 - [ ] Remove Flask routes in `backend/app.py` used only for old server-side rendering and forms.
 
 ## General Improvements (Ongoing)
-- [x] Improve general backend error handling and logging.
+- [ ] Improve general backend error handling and logging.
 - [ ] Refactor database interactions (potentially use a simple ORM or dedicated data layer) - *this has lower priority during the frontend refactor*.
-- [x] Refactor the database layer to use `load_data` and `save_data` properly.
-- [ ] Add input validation for all API endpoints.
-- [ ] Secure sensitive data (e.g., encryption for stored data beyond passwords).
+- [ ] Refactor the database layer to use `load_data` and `save_data` properly.
+- [x] Add input validation for all API endpoints. - [ ] Secure sensitive data (e.g., encryption for stored data beyond passwords).
 
 ## Testing (Updated Focus)
 - [x] Unit tests for `Person` class (`test_person.py`)
