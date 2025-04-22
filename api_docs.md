@@ -2,6 +2,7 @@
 
 This document describes the API endpoints for the Dzinza Family Tree Application.
 
+
 ## Authentication
 
 ### `/api/login` (POST)

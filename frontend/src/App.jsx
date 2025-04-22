@@ -4,6 +4,8 @@ import LoginPage from './components/LoginPage';
 import RegisterPage from './components/RegisterPage';
 import EditPersonPage from './components/EditPersonPage';
 import EditRelationshipPage from './components/EditRelationshipPage';
+import AddPersonPage from './components/AddPersonPage';
+import AddRelationshipPage from './components/AddRelationshipPage';
 import PrivateRoute from './components/PrivateRoute';
 
 function DashboardPage() {
@@ -48,6 +50,12 @@ function App() {
                         <li>
                             <Link to="/edit_relationship">Edit Relationship</Link>
                         </li>
+                        <li>
+                            <Link to="/add-person">Add Person</Link>
+                        </li>
+                        <li>
+                            <Link to="/add-relationship">Add Relationship</Link>
+                        </li>
                     </ul>
                 </nav>
                 <Routes>
@@ -62,6 +70,8 @@ function App() {
                         <EditPersonPage />
                     </PrivateRoute>} />
                     <Route path="/edit_relationship" element={<PrivateRoute><EditRelationshipPage /></PrivateRoute>} />
+                    <Route path="/add-person" element={<PrivateRoute><AddPersonPage /></PrivateRoute>} />
+                    <Route path="/add-relationship" element={<PrivateRoute><AddRelationshipPage /></PrivateRoute>} />
                 </Routes>
             </Router>
         </AuthProvider>

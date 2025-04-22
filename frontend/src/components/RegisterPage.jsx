@@ -5,25 +5,55 @@ import * as api from '../api';
 function RegisterPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState(null);
+  const [successMessage, setSuccessMessage] = useState(null);
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
+    setLoading(true);
+    setError(null);
+    setSuccessMessage(null);
 
     try {
-      await api.register(username, password);
-      navigate('/login');
+      await api.register({username, password});
+      setSuccessMessage("Registration successful! You can now login.");
+      setUsername('');
+      setPassword('');
+      setTimeout(() => {
+        setSuccessMessage(null);
+        navigate('/login');
+      }, 3000)
     } catch (err) {
-      setError(err.response?.data?.error || 'Registration failed');
+      setError({
+        type: "error",
+        message: err.response?.data?.error || 'Registration failed',
+      });
+    } finally {
+        setLoading(false);
+    }
+  };
+
+  const getErrorMessage = () => {
+    if (!error) return null;
+  
+    switch (error.type) {
+      case 'network':
+        return "Network error. Please check your connection.";
+      case 'validation':
+        return "Invalid input. Please check the fields.";
+      default:
+        return error.message || "An unexpected error occurred.";
     }
   };
 
   return (
     <div>
       <h1>Register Page</h1>
-      {error && <p style={{ color: 'red' }}>{error}</p>}
+      {loading && <div className="loading-message">Loading...</div>}
+      {successMessage && <div className="success-message">{successMessage}</div>}
+      {error && <div className="error-message">{getErrorMessage()}</div>}
       <form onSubmit={handleSubmit}>
         <div>
           <label htmlFor="username">Username:</label>
@@ -39,7 +69,7 @@ function RegisterPage() {
           <input type="password" id="password" value={password} onChange={(e) => setPassword(e.target.value)} />
         </div>
 
-        <button type="submit">Register</button>
+        <button type="submit" disabled={loading}>Register</button>
       </form>
     </div>
   );

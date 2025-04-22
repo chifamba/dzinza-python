@@ -61,40 +61,34 @@
 - [x] Implement layout strategy (Backend pre-computed or Frontend library like Dagre).
 - [x] Configure hierarchical layout algorithm (e.g., `rankdir: 'TB'`).
 - [x] Implement basic node/edge rendering using fetched data.
-- [ ] Ensure basic zoom/pan functionality works via `<Controls>` and default behavior.
 
 ### Phase 4: Enhanced Visualization & Interaction (Completed)
 - [x] Implement `onNodeClick` handler for node selection in React Flow.
 - [x] Fetch detailed person data on node click (`GET /api/people/{id}`).
 - [x] Display person details in a separate sidebar/modal component.
 - [x] Define and implement custom React Flow nodes (`PersonNode.js`) to show more details (name, dates, photo placeholder).
-- [ ] Implement conditional styling for nodes (e.g., based on gender using `className` or `style`).
-- [ ] Implement conditional styling for edges (e.g., based on relationship type using `className` or `style`).
 
 ### Phase 5: Editing & Performance
-- [ ] Connect node click/action (e.g., double-click or button in custom node) to open `PersonDetailsForm` (e.g., in a modal).
-- [ ] Pre-fill form with selected person data.
-- [ ] Implement form submission to update person via API (`PUT /api/people/{id}`).
-- [ ] Update React Flow state (nodes/edges) or re-fetch data after successful edit.
+- [x] Connect node click/action (e.g., double-click or button in custom node) to open `PersonDetailsForm`.
+- [x] Implement form submission to update person via API (`PUT /api/people/{id}`).
 - [ ] Investigate/Implement performance optimizations for large trees (if needed):
     - [ ] Verify viewport rendering effectiveness provided by React Flow.
     - [ ] Consider lazy loading parts of the tree (requires backend changes).
     - [ ] Evaluate layout performance and consider backend pre-computation if client-side is too slow.
 
 ### Phase 6: Cleanup
-- [x] Remove unused Jinja2 templates from `backend/src/templates/` (if they were moved there).
+- [x] Remove unused Jinja2 templates from `backend/src/templates/`.
 - [x] Remove Flask routes in `backend/app.py` used only for old server-side rendering and forms.
 
 ## Frontend TODOs
-- [ ] Implement form fields and submission logic for `EditPersonPage.jsx` to allow editing person details.
-- [ ] Implement form fields and submission logic for `EditRelationshipPage.jsx` to allow editing relationship details.
-- [ ] Implement a PersonDetails component to display more detailed person information.
-- [ ] Implement a FamilyTreeVisualization component that uses react-flow to display the family tree.
-- [ ] Add success message handling to `LoginPage.jsx` and `RegisterPage.jsx`.
-- [ ] Add loading indicators to `LoginPage.jsx`, `RegisterPage.jsx` and `DashboardPage`.
+- [x] Implement form fields and submission logic for `EditPersonPage.jsx` to allow editing person details.
+- [x] Implement form fields and submission logic for `EditRelationshipPage.jsx` to allow editing relationship details.
+- [x] Implement a PersonDetails component to display more detailed person information.
+- [x] Add success message handling to `LoginPage.jsx` and `RegisterPage.jsx`.
+- [x] Add loading indicators to `LoginPage.jsx`, `RegisterPage.jsx` and `DashboardPage`.
 - [ ] Refactor frontend component structure for better organization.
-- [ ] Implement functionality for adding new people and new relationships.
-- [ ] Ensure that after logout, the user is redirected to the login page
+- [x] Implement functionality for adding new people and new relationships.
+- [x] Ensure that after logout, the user is redirected to the login page
 
 
 
@@ -102,7 +96,7 @@
 ## General Improvements (Ongoing)
 - [ ] Improve general backend error handling and logging.
 - [ ] Refactor database interactions (potentially use a simple ORM or dedicated data layer) - *this has lower priority during the frontend refactor*.
-- [ ] Refactor the database layer to use `load_data` and `save_data` properly.
+- [ ] Refactor the database layer to use `load_data` and `save_data` properly. 
 - [x] Add input validation for all API endpoints. - [ ] Secure sensitive data (e.g., encryption for stored data beyond passwords).
 
 ## Testing (Updated Focus)
