@@ -1,39 +1,54 @@
 import json
 import os
+import logging
+from .encryption import Encryption 
 
-def load_data(file_path):
+def load_data(file_path, is_encrypted=False):
     """
     Loads JSON data from a file.
 
     Args:
         file_path (str): The path to the JSON file.
+        is_encrypted (bool): Indicates if the data needs to be decrypted.
 
     Returns:
         dict or list: The loaded data, or None if the file doesn't exist or is empty/invalid.
     """
+    encryption = Encryption() if is_encrypted else None
     if not os.path.exists(file_path):
-        print(f"Data file not found: {file_path}")
-        return None  # Return None if file doesn't exist
-
-    # Check if file is empty before trying to load
+        logging.warning(f"Data file not found: {file_path}")
+        return None
     if os.path.getsize(file_path) == 0:
-        print(f"Data file is empty: {file_path}")
-        return None # Return None for empty file
-
+        logging.warning(f"Data file is empty: {file_path}")
+        return None
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-            return data
-    except json.JSONDecodeError as e:
-        print(f"Error decoding JSON from {file_path}: {e}")
-        # Decide how to handle invalid JSON: return None, raise error, or return default
-        return None # Return None for invalid JSON
-    except Exception as e:
-        print(f"An error occurred loading data from {file_path}: {e}")
-        # Log this error appropriately in a real application
-        return None # Return None on other errors
+            if is_encrypted:
+                encrypted_data = f.read()
+                if not encrypted_data:
+                    logging.warning(f"Encrypted data file is empty: {file_path}")
+                    return None  
+                decrypted_data = encryption.decrypt(encrypted_data)
+                data = json.loads(decrypted_data)
+            else:
+                data = json.load(f)
+        return data
 
-def save_data(file_path, data):
+    except json.decoder.JSONDecodeError as e:
+      logging.error(f"Error decoding JSON: {e}")
+      return None
+
+    except json.JSONDecodeError as e:
+        logging.error(f"Error decoding JSON from {file_path}: {e}")
+        return None  # Return None for invalid JSON
+    except OSError as e:
+        logging.error(f"OSError while loading data from {file_path}: {e}")
+        return None
+    except Exception as e: #Catching other exceptions
+        logging.error(f"An error occurred while loading data from {file_path}: {e}")
+        return None
+    
+def save_data(file_path, data, is_encrypted=False):
     """
     Saves data to a JSON file.
 
@@ -41,12 +56,21 @@ def save_data(file_path, data):
         file_path (str): The path to the JSON file.
         data (dict or list): The data to save.
     """
+
+    encryption = Encryption() if is_encrypted else None
     try:
         # Ensure the directory exists before writing
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
         with open(file_path, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=4) # Use indent for readability
+            if is_encrypted:
+              json_data = json.dumps(data)
+              encrypted_data = encryption.encrypt(json_data)
+                f.write(encrypted_data)
+            else:
+              json.dump(data, f, indent=4)
+
     except Exception as e:
-        print(f"An error occurred saving data to {file_path}: {e}")
-        # Log this error appropriately
-        # Consider raising the exception depending on desired behavior
+        logging.error(f"An error occurred saving data to {file_path}: {e}")
+
+    
+

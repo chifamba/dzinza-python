@@ -197,42 +197,6 @@ def bad_request_error(error):
     return jsonify(response_data), 400
 
 
-# --- Main Routes (Web Interface - Mostly Deprecated) ---
-# (Web routes remain the same - mostly deprecated)
-@app.route('/')
-def index():
-    people = []; relationships = []
-    is_admin = session.get('user_role') == 'admin'
-    if 'user_id' in session:
-        try:
-            people = family_tree.get_people_summary()
-            relationships = family_tree.get_relationships_summary()
-        except Exception as e:
-            app.logger.exception("Error getting tree summary data for index page")
-            flash("Error loading family tree data.", "danger")
-            log_audit(AUDIT_LOG_FILE, session.get('username', 'unknown'), 'index_load_error', f'Error: {e}')
-    return render_template('index.html',
-                           people=people,
-                           relationships=relationships,
-                           is_admin=is_admin,
-                           add_person_form={},
-                           add_rel_form={})
-
-# --- Auth Routes (Web Interface - Mostly Deprecated) ---
-@app.route('/register', methods=['GET', 'POST'])
-def register():
-    if 'user_id' in session: flash("You are already logged in.", "info"); return redirect(url_for('index'))
-    flash("Please use the API or the dedicated frontend to register.", "info")
-    return redirect(url_for('login'))
-
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if 'user_id' in session: flash("You are already logged in.", "info"); return redirect(url_for('index'))
-    if request.method == 'POST':
-         flash("Login via the API or dedicated frontend.", "warning")
-         return render_template('index.html', show_login=True)
-    return render_template('index.html', show_login=True)
-
 @app.route('/logout')
 @login_required
 def logout():
@@ -240,7 +204,7 @@ def logout():
     session.clear()
     flash('You have been logged out.', 'info'); log_audit(AUDIT_LOG_FILE, username, 'logout', f'success - role: {role}')
     app.logger.info(f"User '{username}' logged out.")
-    return redirect(url_for('index'))
+    return redirect(url_for('api_get_session'))
 
 
 # --- API Authentication Routes ---
@@ -542,43 +506,10 @@ def manage_users():
 # --- Password Reset Routes (Web Interface - Mostly Deprecated) ---
 # (Password reset routes remain the same - mostly deprecated)
 @app.route('/request_password_reset', methods=['GET', 'POST'])
-def request_password_reset():
-    flash("Password reset should be initiated via the API or dedicated frontend.", "info"); return redirect(url_for('login'))
+def request_password_reset(): flash("Password reset should be initiated via the API or dedicated frontend.", "info"); return redirect(url_for('api_get_session'))
 @app.route('/reset_password/<token>', methods=['GET', 'POST'])
-def reset_password_with_token(token):
-    flash("Password reset confirmation should be handled via the API or dedicated frontend.", "info"); return redirect(url_for('login'))
+def reset_password_with_token(token): flash("Password reset confirmation should be handled via the API or dedicated frontend.", "info"); return redirect(url_for('api_get_session'))
 
-
-# --- Deprecated Web Form Routes ---
-# (Deprecated routes remain the same)
-@app.route('/add_person', methods=['POST'])
-@login_required
-def add_person_web():
-    flash("This action is deprecated. Please use the API.", "warning"); return redirect(url_for('index'))
-@app.route('/edit_person/<person_id>', methods=['GET', 'POST'])
-@login_required
-def edit_person_web(person_id):
-    flash("This action is deprecated. Please use the API.", "warning"); return redirect(url_for('index'))
-@app.route('/delete_person/<person_id>', methods=['POST'])
-@login_required
-def delete_person_web(person_id):
-    flash("This action is deprecated. Please use the API.", "warning"); return redirect(url_for('index'))
-@app.route('/add_relationship', methods=['POST'])
-@login_required
-def add_relationship_web():
-    flash("This action is deprecated. Please use the API.", "warning"); return redirect(url_for('index'))
-@app.route('/edit_relationship/<relationship_id>', methods=['GET', 'POST'])
-@login_required
-def edit_relationship_web(relationship_id):
-    flash("This action is deprecated. Please use the API.", "warning"); return redirect(url_for('index'))
-@app.route('/delete_relationship/<relationship_id>', methods=['POST'])
-@login_required
-def delete_relationship_web(relationship_id):
-    flash("This action is deprecated. Please use the API.", "warning"); return redirect(url_for('index'))
-@app.route('/search')
-@login_required
-def search_web():
-    flash("Search via the API or dedicated frontend.", "warning"); return redirect(url_for('index'))
 
 
 # --- Main Execution ---

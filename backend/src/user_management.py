@@ -1,13 +1,14 @@
 # Modify src/user_management.py to add deletion and password reset logic
-import uuid
-import os
+import os, uuid
 import logging
 import secrets # For generating secure tokens
+from itsdangerous import URLSafeTimedSerializer, BadSignature
 from datetime import datetime, timedelta, timezone # Ensure timezone is imported
+import bcrypt
 # Import User and password functions from their respective modules
 from .user import User, VALID_ROLES
-from .encryption import hash_password, verify_password
 # Use load_data and save_data from db_utils
+from .user import User, VALID_ROLES
 from .db_utils import load_data, save_data
 # Import the audit log function
 from .audit_log import log_audit
@@ -16,11 +17,33 @@ from .audit_log import log_audit
 RESET_TOKEN_EXPIRY_MINUTES = 60
 
 class UserManagement:
+
+    def _hash_password(self, password):
+        """
+        Hashes the given password using bcrypt.
+
+        Args:
+            password (str): The password to hash.
+
+        Returns:
+            bytes: The hashed password.
+        """
+        password_bytes = password.encode('utf-8')
+        return bcrypt.hashpw(password_bytes, bcrypt.gensalt())
+
+    def _verify_password(self, password, hashed_password):
+        """
+        Verifies if the given password matches the hashed password.
+        """
+        password_bytes = password.encode('utf-8')
+        return bcrypt.checkpw(password_bytes, hashed_password)
+
     """
     Handles user registration, login, roles, deletion, password reset, and data persistence.
     """
     def __init__(self, users_file_path='data/users.json', audit_log_path='data/audit.log'):
         self.users_file_path = users_file_path
+        self.serializer = URLSafeTimedSerializer(os.environ.get('FLASK_SECRET_KEY'), salt='password-reset-salt')
         self.audit_log_path = audit_log_path
         users_dir = os.path.dirname(users_file_path)
         if users_dir:
@@ -30,20 +53,16 @@ class UserManagement:
     def _load_users(self):
         # (Keep existing _load_users implementation from previous step)
         # It now handles the 'role', 'reset_token', 'reset_token_expiry' fields via User.from_dict
-        users_data = load_data(self.users_file_path)
+        users_data = load_data(self.users_file_path, is_encrypted=True)
         loaded_users = {}
         if users_data:
             for uid, udata in users_data.items():
                  try:
                      if 'user_id' not in udata: udata['user_id'] = uid
-                     user_obj = User.from_dict(udata)
-                     loaded_users[uid] = user_obj
+                     loaded_users[uid] = User.from_dict(udata)
                  except (KeyError, ValueError) as e:
                      logging.error(f"Error loading user data for ID {uid}: {e}. Skipping this user.")
                      log_audit(self.audit_log_path, "system", "load_users", f"error - invalid user data for ID {uid}: {e}")
-                 except Exception as e:
-                     logging.error(f"Error creating User object for ID {uid}: {e}. Skipping this user.")
-                     log_audit(self.audit_log_path, "system", "load_users", f"error - creating user object failed for ID {uid}: {e}")
             count = len(loaded_users)
             logging.info(f"Loaded {count} users from {self.users_file_path}")
             # Removed redundant audit log here, covered by save/load actions
@@ -58,9 +77,9 @@ class UserManagement:
         # It now saves the 'role', 'reset_token', 'reset_token_expiry' fields via User.to_dict
         try:
             users_data_to_save = {uid: user.to_dict() for uid, user in self.users.items()}
-            save_data(self.users_file_path, users_data_to_save)
-            # Keep audit log minimal unless debugging save issues
-            # log_audit(self.audit_log_path, "system", "save_users", f"success - saved {len(self.users)} users")
+            save_data(self.users_file_path, users_data_to_save, is_encrypted=True)
+            # Removed audit log here as saving the users data is an expected behavior
+            # and it is already logged during the loading/registering/deleting/updating
         except Exception as e:
              logging.error(f"Error saving user data to {self.users_file_path}: {e}")
              log_audit(self.audit_log_path, "system", "save_users", f"failure: {e}")
@@ -87,10 +106,10 @@ class UserManagement:
             log_audit(self.audit_log_path, username, 'register', 'failure - username exists')
             return None
 
-        password_hash = hash_password(password)
-        if not password_hash:
+        password_hash = self._hash_password(password)
+        if password_hash is None:
             logging.error(f"Error hashing password during registration for '{username}'.")
-            log_audit(self.audit_log_path, username, 'register', 'failure - password hash error')
+            log_audit(self.audit_log_path, username, 'register', f'failure - password hash error: {e}')
             return None
 
         try:
@@ -114,10 +133,10 @@ class UserManagement:
         for user in self.users.values():
             if user.username and user.username.lower() == username_lower: user_to_check = user; break
         if user_to_check:
-            if isinstance(user_to_check.password_hash, bytes):
+            if user_to_check.password_hash:
                 if verify_password(password, user_to_check.password_hash):
                     logging.info(f"User '{username}' logged in successfully.")
-                    # Clear any lingering reset token on successful login
+                    # Clear any lingering reset token on successsful login
                     if user_to_check.reset_token:
                         user_to_check.reset_token = None
                         user_to_check.reset_token_expiry = None
@@ -185,40 +204,39 @@ class UserManagement:
         log_audit(self.audit_log_path, actor_username, 'delete_user', f"success - deleted user {user_id} ({deleted_username}), role: {deleted_role}")
         return True
 
-    # --- NEW: Password Reset Methods ---
-
-    def generate_reset_token(self, username):
+    def generate_password_reset_token(self, user_id):
         """
-        Generates a password reset token for a user and sets its expiry.
+        Generates a password reset token for a given user ID.
 
         Args:
-            username (str): The username of the user requesting the reset.
+            user_id (str): The ID of the user for whom to generate the token.
 
         Returns:
-            str | None: The generated reset token if the user exists, otherwise None.
-                         Returns None on error.
+            tuple: A tuple containing the token and its expiration time, or None, None if user not found or error.
         """
-        user = self.find_user_by_username(username)
+        user = self.find_user_by_id(user_id)
         if not user:
-            logging.warning(f"Password reset requested for non-existent user: {username}")
-            # Don't log specific failure type here to avoid user enumeration
-            return None
-
+            logging.warning(f"generate_password_reset_token requested for non-existent user ID: {user_id}")
+            return None, None
         try:
-            token = secrets.token_urlsafe(32) # Generate a secure random token
-            expiry_time = datetime.now(timezone.utc) + timedelta(minutes=RESET_TOKEN_EXPIRY_MINUTES)
-
+            token = self.serializer.dumps(user_id)
+            expiration_time = datetime.now(timezone.utc) + timedelta(minutes=RESET_TOKEN_EXPIRY_MINUTES)
             user.reset_token = token
-            user.reset_token_expiry = expiry_time
+            user.reset_token_expiry = expiration_time
             self._save_users()
 
-            logging.info(f"Generated password reset token for user: {username}")
-            log_audit(self.audit_log_path, username, 'generate_reset_token', 'success')
+            return token, expiration_time
+        except Exception as e:
+            logging.error(f"Error generating password reset token for user ID {user_id}: {e}")
+            return None, None
 
-            # In a real application, you would email this token to the user here.
-            # Since we can't email, we just return it.
-            # WARNING: Returning the token directly like this is insecure for production.
-            return token
+
+    def validate_password_reset_token(self, token):
+        try:
+            user_id = self.serializer.loads(token, max_age=RESET_TOKEN_EXPIRY_MINUTES * 60)
+            return user_id
+        except BadSignature:
+            return None
         except Exception as e:
             logging.error(f"Error generating reset token for {username}: {e}")
             log_audit(self.audit_log_path, username, 'generate_reset_token', f'failure: {e}')
@@ -226,47 +244,27 @@ class UserManagement:
 
 
     def verify_reset_token(self, token):
-        """
-        Verifies if a password reset token is valid and not expired.
-
-        Args:
-            token (str): The password reset token to verify.
-
-        Returns:
-            User | None: The User object associated with the token if valid, otherwise None.
-        """
-        if not token:
-            return None
-
-        user_found = None
-        for user in self.users.values():
-            if user.reset_token == token:
-                user_found = user
-                break
-
-        if not user_found:
-            logging.warning(f"Invalid password reset token provided: {token[:8]}...")
-            # Don't log specific failure type here
-            return None
-
-        # Check expiry
-        if user_found.reset_token_expiry and user_found.reset_token_expiry >= datetime.now(timezone.utc):
-             # Token is valid and not expired
-             return user_found
-        else:
-            # Token expired or expiry not set correctly
-            logging.warning(f"Expired or invalid expiry for reset token for user {user_found.username}")
-            # Clear the expired token
-            user_found.reset_token = None
-            user_found.reset_token_expiry = None
-            self._save_users()
-            log_audit(self.audit_log_path, user_found.username, 'verify_reset_token', 'failure - token expired')
-            return None
-
-
+        return self.validate_password_reset_token(token)
+    
     def reset_password(self, token, new_password):
         """
         Resets the password for a user using a valid reset token.
+
+        Args:
+            token (str): The password reset token.
+            new_password (str): The new password to set.
+
+        Returns:
+            bool: True if the password was reset successfully, False otherwise.
+        """
+
+        user_id = self.validate_password_reset_token(token)
+
+        if not user_id:
+            logging.warning(f"Invalid or expired reset token provided: {token[:8]}...")
+            return False
+
+        user = self.find_user_by_id(user_id)
 
         Args:
             token (str): The valid password reset token.
@@ -275,8 +273,7 @@ class UserManagement:
         Returns:
             bool: True if the password was reset successfully, False otherwise.
         """
-        user = self.verify_reset_token(token) # verify_reset_token checks validity and expiry
-
+        user_id = self.validate_password_reset_token(token)
         if not user:
             # Verification failed (invalid token or expired) - error logged in verify_reset_token
             return False
@@ -287,10 +284,10 @@ class UserManagement:
             return False
 
         # Hash the new password
-        new_password_hash = hash_password(new_password)
-        if not new_password_hash:
+        new_password_hash = self._hash_password(new_password)
+        if new_password_hash is None:
             logging.error(f"Password reset failed for user {user.username}: Error hashing new password.")
-            log_audit(self.audit_log_path, user.username, 'reset_password', 'failure - password hash error')
+            log_audit(self.audit_log_path, user.username, 'reset_password', f'failure - password hash error: {e}')
             return False
 
         # Update password and clear token
