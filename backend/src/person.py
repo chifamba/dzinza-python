@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Any, TYPE_CHECKING
 import logging
 from datetime import date
-
 # Prevent circular import for type hinting
 if TYPE_CHECKING:
     from .relationship import Relationship
@@ -102,7 +101,7 @@ class Person:
             if self.death_date:
                 try: end_date = date.fromisoformat(self.death_date)
                 except (ValueError, TypeError): logging.warning(f"Invalid death date format for {self.person_id}: {self.death_date}")
-            age = end_date.year - birth_dt.year - ((end_date.month, end_date.day) < (birth_dt.month, birth_dt.day))
+            age = end_date.year - birth_dt.year - ((end_date.month, end_date.day) < (birth_dt.month, birth_dt.day))            
             return age
         except (ValueError, TypeError): logging.warning(f"Invalid birth date format for {self.person_id}: {self.birth_date}"); return None
 

@@ -1,6 +1,5 @@
 # Modify src/user_management.py to add deletion and password reset logic
 import os, uuid
-import logging
 import secrets # For generating secure tokens
 from itsdangerous import URLSafeTimedSerializer, BadSignature
 from datetime import datetime, timedelta, timezone # Ensure timezone is imported
@@ -13,6 +12,7 @@ from .user import User, VALID_ROLES
 from .db_utils import load_data, save_data
 # Import the audit log function
 from .audit_log import log_audit
+import logging
 
 # Constants for password reset
 RESET_TOKEN_EXPIRY_MINUTES = 60
@@ -42,7 +42,7 @@ class UserManagement:
                      if 'user_id' not in udata: udata['user_id'] = uid
                      loaded_users[uid] = User.from_dict(udata)
                  except (KeyError, ValueError) as e:
-                     logging.error(f"Error loading user data for ID {uid}: {e}. Skipping this user.")
+                     logging.error(f"Error loading user data for ID {uid}: {e}. Skipping this user.", exc_info=True)
                      log_audit(self.audit_log_path, "system", "load_users", f"error - invalid user data for ID {uid}: {e}")
             count = len(loaded_users)
             logging.info(f"Loaded {count} users from {self.users_file_path}")
@@ -62,35 +62,35 @@ class UserManagement:
             # Removed audit log here as saving the users data is an expected behavior
             # and it is already logged during the loading/registering/deleting/updating
         except Exception as e:
-             logging.error(f"Error saving user data to {self.users_file_path}: {e}")
+             logging.error(f"Error saving user data to {self.users_file_path}: {e}", exc_info=True)
              log_audit(self.audit_log_path, "system", "save_users", f"failure: {e}")
 
 
     def register_user(self, username, password, role="basic"):
         # (Keep existing register_user implementation from previous step)
         if not username or not username.strip():
-            logging.error("Registration failed: Username cannot be empty.")
+            logging.error("Registration failed: Username cannot be empty.", exc_info=True)
             log_audit(self.audit_log_path, "(registration attempt)", 'register', 'failure - empty username')
             return None
         if not password:
-            logging.error("Registration failed: Password cannot be empty.")
+            logging.error("Registration failed: Password cannot be empty.", exc_info=True)
             log_audit(self.audit_log_path, username, 'register', 'failure - empty password')
             return None
         if role not in VALID_ROLES:
-            logging.error(f"Registration failed: Invalid role '{role}'. Valid roles: {VALID_ROLES}")
+            logging.error(f"Registration failed: Invalid role '{role}'. Valid roles: {VALID_ROLES}", exc_info=True)
             log_audit(self.audit_log_path, username, 'register', f'failure - invalid role: {role}')
             return None
 
         username = username.strip()
         if any(user.username and user.username.lower() == username.lower() for user in self.users.values()):
-            logging.warning(f"Registration failed: Username '{username}' already exists.")
+            logging.warning(f"Registration failed: Username '{username}' already exists.", exc_info=True)
             log_audit(self.audit_log_path, username, 'register', 'failure - username exists')
             return None
 
         password_hash = hash_password(password)
         if password_hash is None:
-            logging.error(f"Error hashing password during registration for '{username}'.")
-            log_audit(self.audit_log_path, username, 'register', f'failure - password hash error: {e}')
+            logging.error(f"Error hashing password during registration for '{username}'.", exc_info=True)
+            log_audit(self.audit_log_path, username, 'register', f'failure - password hash error')
             return None
 
         try:
@@ -101,7 +101,7 @@ class UserManagement:
             logging.info(f"User '{username}' registered successfully with role '{role}'.")
             return new_user
         except Exception as e:
-             logging.error(f"An error occurred during the final steps of registration for '{username}': {e}")
+             logging.error(f"An error occurred during the final steps of registration for '{username}': {e}", exc_info=True)
              log_audit(self.audit_log_path, username, 'register', f'failure - internal error: {e}')
              if 'user_id' in locals() and user_id in self.users: del self.users[user_id]
              return None    
@@ -123,11 +123,11 @@ class UserManagement:
                         user_to_check.reset_token_expiry = None
                         self._save_users()
                     return user_to_check
-                else: logging.warning(f"Invalid password for user '{username}'."); return None
-            else: logging.error(f"Login failed for '{username}': Stored password hash is not in the correct bytes format."); log_audit(self.audit_log_path, username, 'login', 'failure - invalid stored hash format'); return None
-        else: logging.warning(f"Username '{username}' not found during login attempt."); return None
+                else: logging.warning(f"Invalid password for user '{username}'.", exc_info=True); return None
+            else: logging.error(f"Login failed for '{username}': Stored password hash is not in the correct bytes format.", exc_info=True); log_audit(self.audit_log_path, username, 'login', 'failure - invalid stored hash format'); return None
+        else: logging.warning(f"Username '{username}' not found during login attempt.", exc_info=True); return None
 
-
+    
     def find_user_by_id(self, user_id):
         # (Keep existing implementation)
         return self.users.get(user_id)
@@ -143,9 +143,9 @@ class UserManagement:
     def set_user_role(self, user_id, new_role, actor_username="system"):
         # (Keep existing implementation from previous step)
         user_to_modify = self.find_user_by_id(user_id)
-        if not user_to_modify: logging.error(f"Cannot set role: User with ID '{user_id}' not found."); log_audit(self.audit_log_path, actor_username, 'set_user_role', f"failure - user not found: {user_id}"); return False
-        if new_role not in VALID_ROLES: logging.error(f"Cannot set role for user '{user_to_modify.username}': Invalid role '{new_role}'. Valid roles: {VALID_ROLES}"); log_audit(self.audit_log_path, actor_username, 'set_user_role', f"failure - invalid role '{new_role}' for user {user_id}"); return False
-        if user_to_modify.role == new_role: logging.info(f"User '{user_to_modify.username}' already has role '{new_role}'. No change needed."); log_audit(self.audit_log_path, actor_username, 'set_user_role', f"no change - user {user_id} already has role '{new_role}'"); return True
+        if not user_to_modify: logging.error(f"Cannot set role: User with ID '{user_id}' not found.", exc_info=True); log_audit(self.audit_log_path, actor_username, 'set_user_role', f"failure - user not found: {user_id}"); return False
+        if new_role not in VALID_ROLES: logging.error(f"Cannot set role for user '{user_to_modify.username}': Invalid role '{new_role}'. Valid roles: {VALID_ROLES}", exc_info=True); log_audit(self.audit_log_path, actor_username, 'set_user_role', f"failure - invalid role '{new_role}' for user {user_id}"); return False
+        if user_to_modify.role == new_role: logging.info(f"User '{user_to_modify.username}' already has role '{new_role}'. No change needed.", exc_info=True); log_audit(self.audit_log_path, actor_username, 'set_user_role', f"no change - user {user_id} already has role '{new_role}'"); return True
         original_role = user_to_modify.role
         user_to_modify.role = new_role
         self._save_users()
@@ -167,7 +167,7 @@ class UserManagement:
         """
         user_to_delete = self.find_user_by_id(user_id)
         if not user_to_delete:
-            logging.error(f"Cannot delete user: User with ID '{user_id}' not found.")
+            logging.error(f"Cannot delete user: User with ID '{user_id}' not found.", exc_info=True)
             log_audit(self.audit_log_path, actor_username, 'delete_user', f"failure - user not found: {user_id}")
             return False
 
@@ -197,7 +197,7 @@ class UserManagement:
         """
         user = self.find_user_by_id(user_id)
         if not user:
-            logging.warning(f"generate_password_reset_token requested for non-existent user ID: {user_id}")
+            logging.warning(f"generate_password_reset_token requested for non-existent user ID: {user_id}", exc_info=True)
             return None, None
         try:
             token = self.serializer.dumps(user_id)
@@ -208,7 +208,7 @@ class UserManagement:
 
             return token, expiration_time
         except Exception as e:
-            logging.error(f"Error generating password reset token for user ID {user_id}: {e}")
+            logging.error(f"Error generating password reset token for user ID {user_id}: {e}", exc_info=True)
             return None, None
 
 
@@ -219,7 +219,7 @@ class UserManagement:
         except BadSignature:
             return None
         except Exception as e:
-            logging.error(f"Error generating reset token for {username}: {e}")
+            logging.error(f"Error generating reset token for {username}: {e}", exc_info=True)
             log_audit(self.audit_log_path, username, 'generate_reset_token', f'failure: {e}')
             return None
 
@@ -239,7 +239,7 @@ class UserManagement:
         user_id = self.validate_password_reset_token(token)
 
         if not user_id:
-            logging.warning(f"Invalid or expired reset token provided: {token[:8]}...")
+            logging.warning(f"Invalid or expired reset token provided: {token[:8]}...", exc_info=True)
             return False
 
         user = self.find_user_by_id(user_id)
@@ -254,7 +254,7 @@ class UserManagement:
             return False
 
         if not new_password:
-            logging.error(f"Password reset failed for user {user.username}: New password cannot be empty.")
+            logging.error(f"Password reset failed for user {user.username}: New password cannot be empty.", exc_info=True)
             log_audit(self.audit_log_path, user.username, 'reset_password', 'failure - empty password')
             return False
 
@@ -262,8 +262,8 @@ class UserManagement:
         new_password_hash = hash_password(new_password)
         if new_password_hash is None:
             logging.error(f"Password reset failed for user {user.username}: Error hashing new password.")
-            log_audit(self.audit_log_path, user.username, 'reset_password', f'failure - password hash error: {e}')
-            return False
+            log_audit(self.audit_log_path, user.username, 'reset_password', f'failure - password hash error')
+            return False    
 
         # Update password and clear token
         user.password_hash = new_password_hash

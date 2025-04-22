@@ -33,16 +33,14 @@ def load_data(file_path, is_encrypted=False):
             else:
                 data = json.load(f)
         return data
-
-    except json.decoder.JSONDecodeError as e:
-      logging.error(f"Error decoding JSON: {e}")
-      return None
-
     except json.JSONDecodeError as e:
-        logging.error(f"Error decoding JSON from {file_path}: {e}")
+        logging.error(f"Error decoding JSON from {file_path}: {e}", exc_info=True)
         return None  # Return None for invalid JSON
     except OSError as e:
-        logging.error(f"OSError while loading data from {file_path}: {e}")
+        logging.error(f"OSError while loading data from {file_path}: {e}", exc_info=True)
+        return None
+    except TypeError as e:
+         logging.error(f"Type error while loading data from {file_path}: {e}", exc_info=True)
         return None
     except Exception as e: #Catching other exceptions
         logging.error(f"An error occurred while loading data from {file_path}: {e}")
@@ -70,7 +68,7 @@ def save_data(file_path, data, is_encrypted=False):
               json.dump(data, f, indent=4)
 
     except Exception as e:
-        logging.error(f"An error occurred saving data to {file_path}: {e}")
+        logging.error(f"An error occurred saving data to {file_path}: {e}", exc_info=True)
 
     
 

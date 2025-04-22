@@ -1,6 +1,7 @@
 # backend/src/photo_utils.py
 import hashlib
-
+import logging
+logging.basicConfig(level=logging.INFO)
 def generate_default_person_photo(person_id: str, size: int = 150) -> str:
     """
     Generates a placeholder image URL based on the person's ID.
@@ -26,7 +27,8 @@ def generate_default_person_photo(person_id: str, size: int = 150) -> str:
         text_color = hash_obj[6:12]
         # Extract first initial (or first two letters) for the placeholder text
         initials = person_id[:2].upper() # Use first 2 chars of ID as placeholder text
-    except Exception:
+    except Exception as e:
+        logging.error(f"Error generating default photo for {person_id}: {e}", exc_info=True)
         # Fallback if hashing fails
         bg_color = "EFEFEF"
         text_color = "AAAAAA"
@@ -42,6 +44,6 @@ def generate_default_person_photo(person_id: str, size: int = 150) -> str:
 if __name__ == '__main__':
     test_id_1 = "82f28529-6b5d-4c30-a2d7-a18349c12564"
     test_id_2 = "2a7b5741-4e34-468d-85da-ec3343718d37"
-    print(f"Photo URL for {test_id_1[:8]}...: {generate_default_person_photo(test_id_1)}")
-    print(f"Photo URL for {test_id_2[:8]}...: {generate_default_person_photo(test_id_2)}")
-    print(f"Photo URL for empty ID: {generate_default_person_photo('')}")
+    logging.info(f"Photo URL for {test_id_1[:8]}...: {generate_default_person_photo(test_id_1)}")
+    logging.info(f"Photo URL for {test_id_2[:8]}...: {generate_default_person_photo(test_id_2)}")
+    logging.info(f"Photo URL for empty ID: {generate_default_person_photo('')}")

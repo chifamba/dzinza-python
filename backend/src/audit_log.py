@@ -1,4 +1,5 @@
 import os
+import logging
 from datetime import datetime
 
 # Default log directory (can be overridden by path passed to log_audit)
@@ -32,10 +33,10 @@ def log_audit(log_file_path, user, action, status_details=""):
 
     except Exception as e:
         # Print error to console if logging fails (avoid infinite loop if logging itself fails)
-        print(f"!!! FAILED TO WRITE AUDIT LOG to {log_file_path} !!!")
-        print(f"!!! Error: {e} !!!")
-        print(f"!!! Log details: User={user}, Action={action}, Details={status_details} !!!")
-
+        logging.error(f"!!! FAILED TO WRITE AUDIT LOG to {log_file_path} !!!")
+        logging.error(f"!!! Error: {e} !!!", exc_info=True)
+        logging.error(f"!!! Log details: User={user}, Action={action}, Details={status_details} !!!")
+        
 
 # Example usage (can be removed or kept for testing this module directly)
 if __name__ == '__main__':
@@ -52,13 +53,13 @@ if __name__ == '__main__':
     log_audit(test_log_file, 'testuser_2', 'add_person', 'failure - missing name')
     log_audit(test_log_file, 'admin', 'delete_user', 'success - user_id: abc-123')
 
-    print(f"Test log entries written. Check the content of {test_log_file}")
+    logging.info(f"Test log entries written. Check the content of {test_log_file}")
 
     try:
         with open(test_log_file, 'r', encoding='utf-8') as f:
-            print("\n--- Content of test_audit.log ---")
-            print(f.read())
-            print("---------------------------------")
+            logging.info("\n--- Content of test_audit.log ---")
+            logging.info(f.read())
+            logging.info("---------------------------------")
     except FileNotFoundError:
-        print("Test log file not found after writing attempts.")
+        logging.warning("Test log file not found after writing attempts.")
 

@@ -1,6 +1,6 @@
 # Modify src/user.py to add reset token fields
 import base64
-import logging
+import logging # Import logging
 from datetime import datetime, timedelta # Import datetime and timedelta
 
 # Define valid roles
@@ -56,7 +56,7 @@ class User:
         Stores datetime as ISO format string.
         """
         hash_str = base64.b64encode(self.password_hash).decode('utf-8') if isinstance(self.password_hash, bytes) else None
-        if not hash_str and self.password_hash is not None:
+        if not hash_str and self.password_hash is not None: 
              logging.warning(f"Password hash for user {self.username} is not bytes, cannot serialize properly.")
              hash_str = None
 
@@ -90,14 +90,14 @@ class User:
             try:
                 password_hash_bytes = base64.b64decode(password_hash_b64.encode('utf-8'))
             except (base64.binascii.Error, TypeError, ValueError) as e:
-                 logging.warning(f"Could not decode password hash for user {username} from base64: {e}")
+                 logging.warning(f"Could not decode password hash for user {username} from base64: {e}", exc_info=True)
                  password_hash_bytes = None
         else:
              old_hash_str = data.get("password_hash")
              if isinstance(old_hash_str, str):
                  logging.warning(f"Found old string hash format for user {username}. Attempting to encode.")
                  try:
-                     password_hash_bytes = old_hash_str.encode('utf-8')
+                    password_hash_bytes = old_hash_str.encode('utf-8')
                  except Exception as enc_e:
                       logging.error(f"Could not encode old string hash for user {username}: {enc_e}")
                       password_hash_bytes = None
@@ -111,8 +111,8 @@ class User:
                  reset_token_expiry = None
 
 
-        if not user_id:
-             raise ValueError("User ID is missing in user data.")
+        if not user_id: 
+            raise ValueError("User ID is missing in user data.")
 
         try:
             return cls(
@@ -124,8 +124,8 @@ class User:
                 reset_token_expiry=reset_token_expiry # Pass expiry datetime
             )
         except ValueError as e:
-            logging.error(f"Failed to create User object from dict for user ID {user_id}: {e}")
-            raise
+            logging.error(f"Failed to create User object from dict for user ID {user_id}: {e}", exc_info=True)
+            raise 
 
     def __repr__(self):
          return f"User(user_id='{self.user_id}', username='{self.username}', role='{self.role}')"
