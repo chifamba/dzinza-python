@@ -1,9 +1,9 @@
-# Dzinza Family Tree API
+# Dzinza Family Tree Application
 
-Dzinza Family Tree is a web application for building and managing family trees, featuring a **Python Flask backend API** and a **React frontend**. It allows users to register, log in, add individuals, define relationships, and explore the family structure visually using React Flow.
+Dzinza Family Tree is a web application for building and managing family trees, featuring a **Python Flask backend API** and a **React frontend**. It allows users to register, log in, add individuals, define relationships, and explore the family structure visually using React Flow. The backend uses a flask API to manage the family tree data. The frontend is a react application which provides a clean interface to manage the family tree.
 
 ## Features
-
+* **Backend:** Flask API for managing data (Python).
 * User registration and login (Admin/User roles) via API.
 * **Backend:** Flask API for managing data (Python).
 * **Frontend:** React single-page application (Vite).
@@ -11,14 +11,15 @@ Dzinza Family Tree is a web application for building and managing family trees, 
 * **Interactive Visualization (React Flow):**
     * Hierarchical display of the family tree.
     * Zooming and panning capabilities.
-    * Node selection to view details.
-    * (Planned) Custom nodes displaying more person details (dates, photos).
-    * (Planned) Styling nodes/edges based on properties (gender, relationship type).
-    * (Planned) Inline editing directly on the graph.
+    * View details for the selected node.
+    * Custom nodes displaying more person details (dates, photos).
+    * Styling nodes/edges based on properties (gender, relationship type).
+    * Editing of people and relationships.
 * Search functionality for people (via API).
-* Admin panel for user management (via API or basic web interface).
-* Password reset functionality (via API/web).
+* Admin panel for user management (via API).
 * Audit logging for key backend actions.
+* Consistent Json responses for errors.
+* Input validation for the API endpoints.
 * API Authentication (Session-based) and CORS support.
 * API Input Validation.
 
@@ -31,6 +32,17 @@ dzinza-python/├── backend/              # Contains all Python/Flask code�
 * **npm:** Node package manager (comes with Node.js, verify with `npm --version`)
 * **Git:** For cloning the repository.
 * **Bash-compatible shell:** For running the setup and run scripts (e.g., Git Bash on Windows, Terminal on macOS/Linux).
+
+## Current state of the Application
+The application currently allows users to:
+*   Register and Login to the application.
+*   Add, edit and delete people.
+*   Add, edit and delete relationships between people.
+* View the family tree structure in the frontend.
+* The API provides endpoints for all the functionality above and more.
+* Admin user management is available via the API.
+* Audit logs are kept for important actions.
+
 
 ## Setup and Installation (Using Scripts)
 

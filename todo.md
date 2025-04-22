@@ -121,9 +121,9 @@
 - [ ] Implement End-to-End tests for UI interactions (e.g., using Cypress or Playwright).
 
 ## Documentation
-- [x] Basic README.md (updated for new structure).
+- [x] Basic README.md (updated for new structure)
 - [ ] Add detailed usage instructions for the new React frontend.
-- [ ] Document API endpoints (e.g., using Swagger/OpenAPI in backend).
+- [x] Document API endpoints using swagger doument format.
 - [ ] Document code modules and functions (docstrings in backend).
 - [ ] Set up project documentation website (e.g., using Sphinx for backend, Storybook/Styleguidist for frontend).
 
