@@ -20,6 +20,7 @@ class FamilyTree:
         if tree_dir: os.makedirs(tree_dir, exist_ok=True)
 
     # --- Validation Helper ---
+    @staticmethod
     def _is_valid_date(self, date_str):
         if not date_str: return True
         try: datetime.strptime(date_str, '%Y-%m-%d'); return True
@@ -80,7 +81,7 @@ class FamilyTree:
                 if key in ['nickname', 'birth_date', 'death_date', 'gender', 'notes', 'place_of_birth', 'place_of_death'] and not new_value: new_value = None
                 elif key == 'last_name' and not new_value: new_value = ""
                 if current_value != new_value: setattr(person, key, new_value); changes_made = True;                
-            else: print(f"Warning: Attempted to update non-existent attribute '{key}' for person {person_id}")
+            else: logging.warning(f"Warning in edit_person: Attempted to update non-existent attribute '{key}' for person {person_id}")
         
         if changes_made: log_audit(self.audit_log_path, edited_by, 'edit_person', f'success - id: {person_id}, name: {original_display_name} -> {person.get_display_name()}'); self.save_tree(edited_by); return True
         else: log_audit(self.audit_log_path, edited_by, 'edit_person', f'no changes made for id: {person_id}'); return False
@@ -165,9 +166,9 @@ class FamilyTree:
         start_date_obj, end_date_obj = None, None
         try:
             if dob_start and self._is_valid_date(dob_start): start_date_obj = date.fromisoformat(dob_start)
-            elif dob_start: print(f"Warning: Invalid start date format '{dob_start}' ignored.")
+            elif dob_start: logging.error(f"Error in search_people: Invalid start date format '{dob_start}' ignored.")
             if dob_end and self._is_valid_date(dob_end): end_date_obj = date.fromisoformat(dob_end);
-            elif dob_end: logging.warning(f"Warning in search_people: Invalid end date format '{dob_end}' ignored.")
+            elif dob_end: logging.error(f"Error in search_people: Invalid end date format '{dob_end}' ignored.")
         except ValueError as e: logging.error(f"Error parsing search dates: {e}", exc_info=True); return []
 
         for person in self.people.values():
@@ -244,7 +245,7 @@ class FamilyTree:
         for rel_id, rel in self.relationships.items():
             if rel_id in processed_rel_ids: continue
             source_id = rel.person1_id; target_id = rel.person2_id; rel_type = rel.rel_type.lower()
-            if source_id not in self.people or target_id not in self.people: logging.warning(f"Warning: Skipping relationship {rel_id} because person {source_id} or {target_id} not found."); continue
+            if source_id not in self.people or target_id not in self.people: logging.warning(f"Warning in get_nodes_links_data: Skipping relationship {rel_id} because person {source_id} or {target_id} not found."); continue
             link_data = None;
             if rel_type == 'parent': link_data = {"source": source_id, "target": target_id, "type": "parent_child"}
             elif rel_type == 'child': link_data = {"source": target_id, "target": source_id, "type": "parent_child"}
@@ -264,10 +265,10 @@ class FamilyTree:
         tree = cls(tree_file_path, audit_log_path); tree.people = {}; tree.relationships = {}
         for pid, pdata in data.get("people", {}).items():
              try: tree.people[pid] = Person.from_dict(pdata)
-             except Exception as e: logging.warning(f"Warning: Skipping invalid person data for ID {pid} during load: {e}", exc_info=True)
+             except Exception as e: logging.warning(f"Warning in _from_dict: Skipping invalid person data for ID {pid} during load: {e}", exc_info=True)
         for rid, rdata in data.get("relationships", {}).items(): # Add pob to node data.
              try: tree.relationships[rid] = Relationship.from_dict(rdata)
-             except Exception as e: logging.warning(f"Warning: Skipping invalid relationship data for ID {rid} during load: {e}", exc_info=True)
+             except Exception as e: logging.warning(f"Warning in _from_dict: Skipping invalid relationship data for ID {rid} during load: {e}", exc_info=True)
         return tree  # Add photoUrl
     def save_tree(self, saved_by="system"):
         try: data_to_save = self._to_dict(); save_data(self.tree_file_path, data_to_save)

@@ -1,21 +1,22 @@
 # Modify src/user_management.py to add deletion and password reset logic
-import os, uuid
-import secrets # For generating secure tokens
-from itsdangerous import URLSafeTimedSerializer, BadSignature
-from datetime import datetime, timedelta, timezone # Ensure timezone is imported
-import bcrypt
-# Import User and password functions from their respective modules
-from .encryption import hash_password, verify_password
-from .user import User, VALID_ROLES
-# Use load_data and save_data from db_utils
-from .user import User, VALID_ROLES
-from .db_utils import load_data, save_data
-# Import the audit log function
-from .audit_log import log_audit
+import os
+import uuid
 import logging
+from datetime import datetime, timedelta, timezone
+from itsdangerous import BadSignature, URLSafeTimedSerializer
+
+import yagmail
+
+from .audit_log import log_audit
+from .encryption import hash_password, verify_password
+from .db_utils import load_data, save_data
+from .user import User, VALID_ROLES
 
 # Constants for password reset
 RESET_TOKEN_EXPIRY_MINUTES = 60
+
+def send_email(to_email, subject, body):
+    try: yag = yagmail.SMTP(os.environ.get("EMAIL_USER"), os.environ.get("EMAIL_PASSWORD")); yag.send(to=to_email, subject=subject, contents=body); return True; except Exception as e: logging.error(f"Error in send_email: Error sending email to {to_email}: {e}", exc_info=True); return False
 
 class UserManagement:
 
@@ -23,13 +24,11 @@ class UserManagement:
     Handles user registration, login, roles, deletion, password reset, and data persistence.
     """
     def __init__(self, users_file_path='data/users.json', audit_log_path='data/audit.log'):
-        self.users_file_path = users_file_path
+        self.users_file_path = users_file_path; users_dir = os.path.dirname(users_file_path); if users_dir: os.makedirs(users_dir, exist_ok=True)
         self.serializer = URLSafeTimedSerializer(os.environ.get('FLASK_SECRET_KEY'), salt='password-reset-salt')
         self.audit_log_path = audit_log_path
         users_dir = os.path.dirname(users_file_path)
-        if users_dir:
-             os.makedirs(users_dir, exist_ok=True)
-        self.users = self._load_users()
+        if users_dir: os.makedirs(users_dir, exist_ok=True); self.users = self._load_users()
 
     def _load_users(self):
         # (Keep existing _load_users implementation from previous step)
@@ -65,8 +64,8 @@ class UserManagement:
              logging.error(f"Error saving user data in _save_users to {self.users_file_path}: {e}", exc_info=True)
              log_audit(self.audit_log_path, "system", "save_users", f"failure: {e}")
 
-
     def register_user(self, username, password, role="basic"):
+
         # (Keep existing register_user implementation from previous step)
         if not username or not username.strip():
             logging.error("register_user failed: Username cannot be empty.", exc_info=True)
@@ -106,7 +105,6 @@ class UserManagement:
              if 'user_id' in locals() and user_id in self.users: del self.users[user_id]
              return None    
 
-
     def login_user(self, username, password):
         # (Keep existing login_user implementation from previous step)
         if not username or not password: return None
@@ -128,7 +126,6 @@ class UserManagement:
         else: logging.warning(f"login_user - Username '{username}' not found during login attempt.", exc_info=True); return None
 
     
-    def find_user_by_id(self, user_id):
         # (Keep existing implementation)
         return self.users.get(user_id)
 
@@ -140,6 +137,7 @@ class UserManagement:
             if user.username and user.username.lower() == username_lower: return user
         return None
 
+    def find_user_by_id(self, user_id):
     def set_user_role(self, user_id, new_role, actor_username="system"):
         # (Keep existing implementation from previous step)
         user_to_modify = self.find_user_by_id(user_id)
@@ -186,31 +184,31 @@ class UserManagement:
         return True
 
     def generate_password_reset_token(self, user_id):
-        """
-        Generates a password reset token for a given user ID.
-
-        Args:
-            user_id (str): The ID of the user for whom to generate the token.
-
-        Returns:
-            tuple: A tuple containing the token and its expiration time, or None, None if user not found or error.
-        """
-        user = self.find_user_by_id(user_id)
-        if not user:
-            logging.warning(f"generate_password_reset_token - requested for non-existent user ID: {user_id}", exc_info=True)
-            return None, None
+        user = self.find_user_by_id(user_id);        if not user: logging.warning(f"generate_password_reset_token - requested for non-existent user ID: {user_id}", exc_info=True); return None, None
         try:
-            token = self.serializer.dumps(user_id)
-            expiration_time = datetime.now(timezone.utc) + timedelta(minutes=RESET_TOKEN_EXPIRY_MINUTES)
-            user.reset_token = token
-            user.reset_token_expiry = expiration_time
-            self._save_users() 
+            token = self.serializer.dumps(user_id); expiration_time = datetime.now(timezone.utc) + timedelta(minutes=RESET_TOKEN_EXPIRY_MINUTES)
+            user.reset_token = token; user.reset_token_expiry = expiration_time; self._save_users(); return token, expiration_time
+        except Exception as e: logging.error(f"Error generating password reset token for user ID {user_id}: {e}", exc_info=True); return None, None
 
-            return token, expiration_time
-        except Exception as e:
-            logging.error(f"Error generating password reset token for user ID {user_id}: {e}", exc_info=True)
-            return None, None
+    def request_password_reset(self, email):
+        user = self.find_user_by_username(email);        if not user: logging.warning(f"request_password_reset: No user found with email: {email}"); return False
+        token, expiry = self.generate_password_reset_token(user.user_id);        if not token: logging.error(f"request_password_reset: Error generating token for user: {email}"); return False
+        reset_link = f"{os.environ.get('APP_URL')}/reset_password/{token}"
+        body = f"Please click the following link to reset your password: {reset_link} \n This link will expire at: {expiry.strftime('%Y-%m-%d %H:%M:%S %Z')}"
+        if not send_email(email, "Password Reset Request", body): logging.error(f"request_password_reset: Error sending email to {email}"); return False
+        logging.info(f"request_password_reset: Password reset email sent to {email}"); return True
 
+    def reset_password(self, token, new_password):
+        user_id = self.validate_password_reset_token(token);        if not user_id: logging.warning(f"Invalid or expired reset token provided: {token[:8]}...", exc_info=True); return False
+        user = self.find_user_by_id(user_id);        if not user: logging.error(f"reset_password - User not found for user_id: {user_id}"); return False
+        if not new_password: logging.error(f"Password reset failed for user {user.username}: New password cannot be empty.", exc_info=True); return False
+        new_password_hash = hash_password(new_password)
+        if new_password_hash is None: logging.error(f"reset_password failed for user {user.username}: Error hashing new password."); log_audit(self.audit_log_path, user.username, 'reset_password', f'failure - password hash error'); return False
+        user.password_hash = new_password_hash; user.reset_token = None; user.reset_token_expiry = None; self._save_users(); logging.info(f"Password successfully reset for user: {user.username}")
+        log_audit(self.audit_log_path, user.username, 'reset_password', 'success'); return True
+
+        
+    
 
     def validate_password_reset_token(self, token):
         try:
@@ -219,57 +217,5 @@ class UserManagement:
         except BadSignature:
             return None 
         except Exception as e:
-            logging.error(f"Error generating reset token for {username}: {e}", exc_info=True)
-            log_audit(self.audit_log_path, username, 'generate_reset_token', f'failure: {e}')
+            logging.error(f"Error validating reset token for: {e}", exc_info=True)
             return None
-
-
-    def reset_password(self, token, new_password):
-        """
-        Resets the password for a user using a valid reset token.
-
-        Args:
-            token (str): The password reset token.
-            new_password (str): The new password to set.
-
-        Returns:
-            bool: True if the password was reset successfully, False otherwise.
-        """
-
-        user_id = self.validate_password_reset_token(token)
-        if not user_id:
-            logging.warning(f"Invalid or expired reset token provided: {token[:8]}...", exc_info=True)
-            return False
-        user = self.find_user_by_id(user_id)
-        
-        if not user:
-            logging.error(f"reset_password - User not found for user_id: {user_id}")
-            return False
-        """
-        user_id = self.validate_password_reset_token(token)
-        user = self.find_user_by_id(user_id)
-        if not user:
-            # Verification failed (invalid token or expired) - error logged in verify_reset_token
-            return False
-
-        if not new_password: 
-            logging.error(f"Password reset failed for user {user.username}: New password cannot be empty.", exc_info=True)
-            log_audit(self.audit_log_path, user.username, 'reset_password', 'failure - empty password')
-            return False
-
-        # Hash the new password
-        new_password_hash = hash_password(new_password)
-        if new_password_hash is None:
-            logging.error(f"reset_password failed for user {user.username}: Error hashing new password.")
-            log_audit(self.audit_log_path, user.username, 'reset_password', f'failure - password hash error')
-            return False    
-
-        # Update password and clear token
-        user.password_hash = new_password_hash
-        user.reset_token = None
-        user.reset_token_expiry = None
-        self._save_users() # Save the changes
-
-        logging.info(f"Password successfully reset for user: {user.username}")
-        log_audit(self.audit_log_path, user.username, 'reset_password', 'success')
-        return True

@@ -3,24 +3,21 @@
 import os
 from functools import wraps
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, abort
-# Import CORS
 from flask_cors import CORS
-from src.user_management import UserManagement, VALID_ROLES
-from src.photo_utils import generate_default_person_photo # Ensure this file exists now
+from src.user_management import UserManagement, VALID_ROLES, generate_reset_token
 from src.family_tree import FamilyTree
-# Import VALID_REL_TYPES for validation
 from src.relationship import VALID_RELATIONSHIP_TYPES
-from src.db_utils import load_data, save_data
 from src.audit_log import log_audit
-import json
 import logging
-from logging.handlers import RotatingFileHandler # For file logging
+from logging.handlers import RotatingFileHandler
 from datetime import datetime
+
+
 
 # --- Configuration ---
 SECRET_KEY = os.environ.get('FLASK_SECRET_KEY', 'a_very_strong_dev_secret_key_39$@5_v2')
 if SECRET_KEY == 'a_very_strong_dev_secret_key_39$@5_v2':
-    print("WARNING: Using default Flask secret key. Set FLASK_SECRET_KEY environment variable for production.")
+    logging.warning("WARNING: Using default Flask secret key. Set FLASK_SECRET_KEY environment variable for production.")
 APP_ROOT = os.path.dirname(os.path.abspath(__file__))  # /backend
 PROJECT_ROOT = os.path.dirname(APP_ROOT)  # /
 DATA_DIR = os.path.join(APP_ROOT, 'data')  # /backend/data
@@ -43,7 +40,6 @@ app.secret_key = SECRET_KEY
 CORS(app, supports_credentials=True, origins=["http://localhost:5173", "http://127.0.0.1:5173"])
 app.logger.info("CORS configured for origin: http://localhost:5173")
 
-
 # --- Configure Logging ---
 # (Logging setup remains the same)
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -59,12 +55,6 @@ app.logger.addHandler(file_handler)
 app.logger.addHandler(console_handler)
 app.logger.setLevel(logging.INFO)
 app.logger.info("Flask application starting up...")
-
-
-# Add datetime to Jinja context
-@app.context_processor
-def inject_now():
-    return {'now': datetime.utcnow}
 
 # --- Initialize Core Components ---
 # (Initialization remains the same)
@@ -90,7 +80,7 @@ def validate_person_data(data, is_edit=False):
     if 'last_name' in data and data.get('last_name') is None:
          data['last_name'] = ''
 
-    dob = data.get('birth_date')
+    dob = data.get('birth_date') 
     dod = data.get('death_date')
 
     if dob and not family_tree._is_valid_date(dob):
@@ -493,12 +483,57 @@ def tree_data():
         app.logger.exception("Error generating tree data for API")
         log_audit(AUDIT_LOG_FILE, session.get('username', 'unknown'), 'get_tree_data', f'error: {e}')
         return jsonify({"error": "Failed to generate tree data"}), 500
+# --- Password Reset Routes (API)---
+@app.route('/request_password_reset', methods=['POST'])
+def request_password_reset():
+    try:
+        data = request.get_json()
+        if not data or 'email' not in data:
+            return jsonify({"error": "Email is required."}), 400
+        email = data['email']
+        user = user_manager.find_user_by_email(email)
+        if user:
+            token = generate_reset_token(user.user_id)
+            user_manager.send_email(email, "Password Reset Request", f"Click the following link to reset your password: http://your-frontend-url/reset_password/{token}")
+            return jsonify({"message": "Password reset email sent if the email is registered."}), 200
+        else:
+            return jsonify({"message": "Password reset email sent if the email is registered."}), 200
+    except Exception as e:
+        logging.exception(f"Error requesting password reset for email: {email}", exc_info=True)
+        return jsonify({"error": "An error occurred while processing the password reset request."}), 500
+
+@app.route('/reset_password/<token>', methods=['POST'])
+def reset_password_with_token(token):
+    try:
+        data = request.get_json()
+        if not data or 'new_password' not in data:
+            app.logger.warning(f"Reset Password: Missing 'new_password' in payload for token: {token}")
+            return jsonify({"error": "New password is required."}), 400
+        
+        new_password = data['new_password']
+        if not new_password:
+            app.logger.warning(f"Reset Password: New password cannot be empty for token: {token}")
+            return jsonify({"error": "New password cannot be empty."}), 400
+
+        success = user_manager.reset_password(token, new_password)
+        
+        if success:
+            app.logger.info(f"Reset Password: Password reset successful for token: {token}")
+            return jsonify({"message": "Password reset successful."}), 200
+        else:
+            app.logger.warning(f"Reset Password: Invalid or expired token: {token}")
+            return jsonify({"error": "Invalid or expired token."}), 400
+
+    except Exception as e:
+        app.logger.exception(f"Reset Password: An unexpected error occurred for token: {token}")
+        log_audit(AUDIT_LOG_FILE, "unknown", 'reset_password', f'error: {e}')
+        return jsonify({"error": "An unexpected error occurred during password reset."}), 500
 
 
-# --- Admin Routes (Web Interface - Mostly Deprecated) ---
-# (Admin routes remain the same - mostly deprecated)
+
+# --- Admin Routes (Web Interface) ---
 @app.route('/admin/users')
-@admin_required
+@admin_required # Will be removed when frontend will be ready
 def manage_users():
     try: all_users = sorted(list(user_manager.users.values()), key=lambda u: u.username.lower() if u.username else ""); log_audit(AUDIT_LOG_FILE, session.get('username', 'unknown'), 'view_admin_users', 'success'); return render_template('admin_users.html', users=all_users, valid_roles=VALID_ROLES)
     except Exception as e: app.logger.exception("Error retrieving users for admin page"); log_audit(AUDIT_LOG_FILE, session.get('username', 'unknown'), 'view_admin_users', f'error: {e}'); flash("Error loading user list.", "danger"); return redirect(url_for('index'))
@@ -506,12 +541,12 @@ def manage_users():
 # --- Password Reset Routes (Web Interface - Mostly Deprecated) ---
 # (Password reset routes remain the same - mostly deprecated)
 @app.route('/request_password_reset', methods=['GET', 'POST'])
-def request_password_reset(): flash("Password reset should be initiated via the API or dedicated frontend.", "info"); return redirect(url_for('api_get_session'))
+def request_password_reset_deprecated(): flash("Password reset should be initiated via the API or dedicated frontend.", "info"); return redirect(url_for('api_get_session'))
 @app.route('/reset_password/<token>', methods=['GET', 'POST'])
-def reset_password_with_token(token): flash("Password reset confirmation should be handled via the API or dedicated frontend.", "info"); return redirect(url_for('api_get_session'))
+def reset_password_with_token(token): flash("Password reset confirmation should be handled via the API or dedicated frontend.", "info"); return redirect(url_for('api_get_session')) #Will be removed when frontend will be ready
 
 
-
+# --- Start main
 # --- Main Execution ---
 # (Main execution remains the same)
 if __name__ == '__main__':
