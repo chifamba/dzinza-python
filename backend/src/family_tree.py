@@ -11,11 +11,13 @@ from .audit_log import log_audit
 
 class FamilyTree:
     # --- Keep __init__ ---
-    def __init__(self, tree_file_path='data/family_tree.json', audit_log_path='data/audit.log'):
+    def __init__(self, tree_file_path=None, audit_log_path=None):
         self.people = {}
         self.relationships = {}
-        self.tree_file_path = tree_file_path
-        self.audit_log_path = audit_log_path
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        self.tree_file_path = tree_file_path if tree_file_path else os.path.join(base_dir, 'family_tree.json')
+        self.audit_log_path = audit_log_path if audit_log_path else os.path.join(base_dir, 'audit.log')
+
         tree_dir = os.path.dirname(tree_file_path)
         if tree_dir: os.makedirs(tree_dir, exist_ok=True)
 

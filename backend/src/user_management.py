@@ -23,11 +23,13 @@ class UserManagement:
     """
     Handles user registration, login, roles, deletion, password reset, and data persistence.
     """
-    def __init__(self, users_file_path='data/users.json', audit_log_path='data/audit.log'):
-        self.users_file_path = users_file_path; users_dir = os.path.dirname(users_file_path); if users_dir: os.makedirs(users_dir, exist_ok=True)
+    def __init__(self, users_file_path=None, audit_log_path=None):
+        backend_dir = os.path.dirname(os.path.dirname(__file__)) # Go up two directories to reach 'backend'
+        self.users_file_path = users_file_path or os.path.join(backend_dir, 'users.json')
+        self.audit_log_path = audit_log_path or os.path.join(backend_dir, 'audit.log')
+        users_dir = os.path.dirname(self.users_file_path)
+        if users_dir: os.makedirs(users_dir, exist_ok=True)
         self.serializer = URLSafeTimedSerializer(os.environ.get('FLASK_SECRET_KEY'), salt='password-reset-salt')
-        self.audit_log_path = audit_log_path
-        users_dir = os.path.dirname(users_file_path)
         if users_dir: os.makedirs(users_dir, exist_ok=True); self.users = self._load_users()
 
     def _load_users(self):

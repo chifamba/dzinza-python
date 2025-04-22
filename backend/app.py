@@ -20,11 +20,12 @@ if SECRET_KEY == 'a_very_strong_dev_secret_key_39$@5_v2':
     logging.warning("WARNING: Using default Flask secret key. Set FLASK_SECRET_KEY environment variable for production.")
 APP_ROOT = os.path.dirname(os.path.abspath(__file__))  # /backend
 PROJECT_ROOT = os.path.dirname(APP_ROOT)  # /
-DATA_DIR = os.path.join(APP_ROOT, 'data')  # /backend/data
+DATA_DIR = APP_ROOT # /backend
 LOG_DIR = os.path.join(PROJECT_ROOT, 'logs', 'backend')  # /logs/backend
 
-USERS_FILE = os.path.join(DATA_DIR, 'users.json')
-FAMILY_TREE_FILE = os.path.join(DATA_DIR, 'family_tree.json')
+USERS_FILE = os.path.join(DATA_DIR, 'users.json') # /backend/users.json
+FAMILY_TREE_FILE = os.path.join(DATA_DIR, 'family_tree.json') # /backend/family_tree.json
+
 AUDIT_LOG_FILE = os.path.join(LOG_DIR, 'audit.log')
 APP_LOG_FILE = os.path.join(LOG_DIR, 'app.log')
 
@@ -186,15 +187,6 @@ def bad_request_error(error):
         response_data = {"error": "Validation failed", "details": description}
     return jsonify(response_data), 400
 
-
-@app.route('/logout')
-@login_required
-def logout():
-    username = session.get('username', 'unknown'); role = session.get('user_role', 'unknown')
-    session.clear()
-    flash('You have been logged out.', 'info'); log_audit(AUDIT_LOG_FILE, username, 'logout', f'success - role: {role}')
-    app.logger.info(f"User '{username}' logged out.")
-    return redirect(url_for('api_get_session'))
 
 
 # --- API Authentication Routes ---
@@ -529,21 +521,6 @@ def reset_password_with_token(token):
         log_audit(AUDIT_LOG_FILE, "unknown", 'reset_password', f'error: {e}')
         return jsonify({"error": "An unexpected error occurred during password reset."}), 500
 
-
-
-# --- Admin Routes (Web Interface) ---
-@app.route('/admin/users')
-@admin_required # Will be removed when frontend will be ready
-def manage_users():
-    try: all_users = sorted(list(user_manager.users.values()), key=lambda u: u.username.lower() if u.username else ""); log_audit(AUDIT_LOG_FILE, session.get('username', 'unknown'), 'view_admin_users', 'success'); return render_template('admin_users.html', users=all_users, valid_roles=VALID_ROLES)
-    except Exception as e: app.logger.exception("Error retrieving users for admin page"); log_audit(AUDIT_LOG_FILE, session.get('username', 'unknown'), 'view_admin_users', f'error: {e}'); flash("Error loading user list.", "danger"); return redirect(url_for('index'))
-
-# --- Password Reset Routes (Web Interface - Mostly Deprecated) ---
-# (Password reset routes remain the same - mostly deprecated)
-@app.route('/request_password_reset', methods=['GET', 'POST'])
-def request_password_reset_deprecated(): flash("Password reset should be initiated via the API or dedicated frontend.", "info"); return redirect(url_for('api_get_session'))
-@app.route('/reset_password/<token>', methods=['GET', 'POST'])
-def reset_password_with_token(token): flash("Password reset confirmation should be handled via the API or dedicated frontend.", "info"); return redirect(url_for('api_get_session')) #Will be removed when frontend will be ready
 
 
 # --- Start main
