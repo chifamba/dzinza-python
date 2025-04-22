@@ -8,7 +8,6 @@ from src.user_management import UserManagement, VALID_ROLES, generate_reset_toke
 from src.family_tree import FamilyTree
 from src.relationship import VALID_RELATIONSHIP_TYPES
 from src.audit_log import log_audit
-import logging
 from logging.handlers import RotatingFileHandler
 from datetime import datetime
 
@@ -126,7 +125,7 @@ def api_login_required(f):
 def admin_required(f):
     @wraps(f)
     @login_required
-    def decorated_function(*args, **kwargs):
+    def decorated_function(*args, **kwargs):        
         if session.get('user_role') != 'admin':
             flash('You do not have permission to access this page.', 'danger')
             log_audit(AUDIT_LOG_FILE, session.get('username', 'unknown'), 'access_denied', f'admin required (role: {session.get("user_role")}) for {request.endpoint}')
@@ -147,36 +146,7 @@ def api_admin_required(f):
     return decorated_function
 
 # --- Custom Error Handlers ---
-# (Error handlers remain the same)
-@app.errorhandler(404)
-def not_found_error(error):
-    app.logger.warning(f"404 Not Found error: {request.path} (Referrer: {request.referrer})")
-    if request.accept_mimetypes.accept_json and not request.accept_mimetypes.accept_html:
-        return jsonify({"error": "Not Found"}), 404
-    return render_template('errors/404.html'), 404
-
-@app.errorhandler(500)
-def internal_error(error):
-    app.logger.exception("500 Internal Server Error")
-    if request.accept_mimetypes.accept_json and not request.accept_mimetypes.accept_html:
-        return jsonify({"error": "Internal Server Error"}), 500
-    return render_template('errors/500.html'), 500
-
-@app.errorhandler(403)
-def forbidden_error(error):
-    app.logger.warning(f"403 Forbidden error accessing {request.path} by user '{session.get('username', 'anonymous')}'")
-    if request.accept_mimetypes.accept_json and not request.accept_mimetypes.accept_html:
-        return jsonify({"error": "Forbidden"}), 403
-    return render_template('errors/403.html'), 403
-
-@app.errorhandler(401)
-def unauthorized_error(error):
-    app.logger.warning(f"401 Unauthorized error accessing {request.path}")
-    if request.accept_mimetypes.accept_json and not request.accept_mimetypes.accept_html:
-        return jsonify({"error": "Unauthorized"}), 401
-    flash("Authentication required.", "warning")
-    return redirect(url_for('login', next=request.url))
-
+# error handlers for 400 bad requests
 @app.errorhandler(400)
 def bad_request_error(error):
     description = error.description if hasattr(error, 'description') else "Bad Request"
@@ -186,7 +156,20 @@ def bad_request_error(error):
     if isinstance(description, dict): # Handle cases where description might be validation errors
         response_data = {"error": "Validation failed", "details": description}
     return jsonify(response_data), 400
-
+# error handler for 404 pages not found
+@app.errorhandler(404)
+def not_found_error(error):
+    app.logger.warning(f"404 Not Found error: {request.path} (Referrer: {request.referrer})")
+    if request.accept_mimetypes.accept_json and not request.accept_mimetypes.accept_html:
+        return jsonify({"error": "Not Found"}), 404
+    return jsonify({"error": "Not Found"}), 404
+#error handler for 500 internal error
+@app.errorhandler(500)
+def internal_error(error):
+    app.logger.exception("500 Internal Server Error")
+    if request.accept_mimetypes.accept_json and not request.accept_mimetypes.accept_html:
+        return jsonify({"error": "Internal Server Error"}), 500
+    return jsonify({"error": "Internal Server Error"}), 500
 
 
 # --- API Authentication Routes ---
@@ -475,52 +458,6 @@ def tree_data():
         app.logger.exception("Error generating tree data for API")
         log_audit(AUDIT_LOG_FILE, session.get('username', 'unknown'), 'get_tree_data', f'error: {e}')
         return jsonify({"error": "Failed to generate tree data"}), 500
-# --- Password Reset Routes (API)---
-@app.route('/request_password_reset', methods=['POST'])
-def request_password_reset():
-    try:
-        data = request.get_json()
-        if not data or 'email' not in data:
-            return jsonify({"error": "Email is required."}), 400
-        email = data['email']
-        user = user_manager.find_user_by_email(email)
-        if user:
-            token = generate_reset_token(user.user_id)
-            user_manager.send_email(email, "Password Reset Request", f"Click the following link to reset your password: http://your-frontend-url/reset_password/{token}")
-            return jsonify({"message": "Password reset email sent if the email is registered."}), 200
-        else:
-            return jsonify({"message": "Password reset email sent if the email is registered."}), 200
-    except Exception as e:
-        logging.exception(f"Error requesting password reset for email: {email}", exc_info=True)
-        return jsonify({"error": "An error occurred while processing the password reset request."}), 500
-
-@app.route('/reset_password/<token>', methods=['POST'])
-def reset_password_with_token(token):
-    try:
-        data = request.get_json()
-        if not data or 'new_password' not in data:
-            app.logger.warning(f"Reset Password: Missing 'new_password' in payload for token: {token}")
-            return jsonify({"error": "New password is required."}), 400
-        
-        new_password = data['new_password']
-        if not new_password:
-            app.logger.warning(f"Reset Password: New password cannot be empty for token: {token}")
-            return jsonify({"error": "New password cannot be empty."}), 400
-
-        success = user_manager.reset_password(token, new_password)
-        
-        if success:
-            app.logger.info(f"Reset Password: Password reset successful for token: {token}")
-            return jsonify({"message": "Password reset successful."}), 200
-        else:
-            app.logger.warning(f"Reset Password: Invalid or expired token: {token}")
-            return jsonify({"error": "Invalid or expired token."}), 400
-
-    except Exception as e:
-        app.logger.exception(f"Reset Password: An unexpected error occurred for token: {token}")
-        log_audit(AUDIT_LOG_FILE, "unknown", 'reset_password', f'error: {e}')
-        return jsonify({"error": "An unexpected error occurred during password reset."}), 500
-
 
 
 # --- Start main

@@ -82,8 +82,22 @@
     - [ ] Evaluate layout performance and consider backend pre-computation if client-side is too slow.
 
 ### Phase 6: Cleanup
-- [ ] Remove unused Jinja2 templates from `backend/src/templates/` (if they were moved there).
-- [ ] Remove Flask routes in `backend/app.py` used only for old server-side rendering and forms.
+- [x] Remove unused Jinja2 templates from `backend/src/templates/` (if they were moved there).
+- [x] Remove Flask routes in `backend/app.py` used only for old server-side rendering and forms.
+
+## Frontend TODOs
+- [ ] Implement form fields and submission logic for `EditPersonPage.jsx` to allow editing person details.
+- [ ] Implement form fields and submission logic for `EditRelationshipPage.jsx` to allow editing relationship details.
+- [ ] Implement a PersonDetails component to display more detailed person information.
+- [ ] Implement a FamilyTreeVisualization component that uses react-flow to display the family tree.
+- [ ] Add success message handling to `LoginPage.jsx` and `RegisterPage.jsx`.
+- [ ] Add loading indicators to `LoginPage.jsx`, `RegisterPage.jsx` and `DashboardPage`.
+- [ ] Refactor frontend component structure for better organization.
+- [ ] Implement functionality for adding new people and new relationships.
+- [ ] Ensure that after logout, the user is redirected to the login page
+
+
+
 
 ## General Improvements (Ongoing)
 - [ ] Improve general backend error handling and logging.
