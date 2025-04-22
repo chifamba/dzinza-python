@@ -6,6 +6,7 @@ from itsdangerous import URLSafeTimedSerializer, BadSignature
 from datetime import datetime, timedelta, timezone # Ensure timezone is imported
 import bcrypt
 # Import User and password functions from their respective modules
+from .encryption import hash_password, verify_password
 from .user import User, VALID_ROLES
 # Use load_data and save_data from db_utils
 from .user import User, VALID_ROLES
@@ -17,26 +18,6 @@ from .audit_log import log_audit
 RESET_TOKEN_EXPIRY_MINUTES = 60
 
 class UserManagement:
-
-    def _hash_password(self, password):
-        """
-        Hashes the given password using bcrypt.
-
-        Args:
-            password (str): The password to hash.
-
-        Returns:
-            bytes: The hashed password.
-        """
-        password_bytes = password.encode('utf-8')
-        return bcrypt.hashpw(password_bytes, bcrypt.gensalt())
-
-    def _verify_password(self, password, hashed_password):
-        """
-        Verifies if the given password matches the hashed password.
-        """
-        password_bytes = password.encode('utf-8')
-        return bcrypt.checkpw(password_bytes, hashed_password)
 
     """
     Handles user registration, login, roles, deletion, password reset, and data persistence.
@@ -106,7 +87,7 @@ class UserManagement:
             log_audit(self.audit_log_path, username, 'register', 'failure - username exists')
             return None
 
-        password_hash = self._hash_password(password)
+        password_hash = hash_password(password)
         if password_hash is None:
             logging.error(f"Error hashing password during registration for '{username}'.")
             log_audit(self.audit_log_path, username, 'register', f'failure - password hash error: {e}')
@@ -123,7 +104,7 @@ class UserManagement:
              logging.error(f"An error occurred during the final steps of registration for '{username}': {e}")
              log_audit(self.audit_log_path, username, 'register', f'failure - internal error: {e}')
              if 'user_id' in locals() and user_id in self.users: del self.users[user_id]
-             return None
+             return None    
 
 
     def login_user(self, username, password):
@@ -133,7 +114,7 @@ class UserManagement:
         for user in self.users.values():
             if user.username and user.username.lower() == username_lower: user_to_check = user; break
         if user_to_check:
-            if user_to_check.password_hash:
+            if user_to_check.password_hash:           
                 if verify_password(password, user_to_check.password_hash):
                     logging.info(f"User '{username}' logged in successfully.")
                     # Clear any lingering reset token on successsful login
@@ -243,9 +224,6 @@ class UserManagement:
             return None
 
 
-    def verify_reset_token(self, token):
-        return self.validate_password_reset_token(token)
-    
     def reset_password(self, token, new_password):
         """
         Resets the password for a user using a valid reset token.
@@ -265,15 +243,12 @@ class UserManagement:
             return False
 
         user = self.find_user_by_id(user_id)
-
-        Args:
+        
+        if not user:
             token (str): The valid password reset token.
-            new_password (str): The new password to set.
-
-        Returns:
-            bool: True if the password was reset successfully, False otherwise.
         """
         user_id = self.validate_password_reset_token(token)
+        user = self.find_user_by_id(user_id)
         if not user:
             # Verification failed (invalid token or expired) - error logged in verify_reset_token
             return False
@@ -284,7 +259,7 @@ class UserManagement:
             return False
 
         # Hash the new password
-        new_password_hash = self._hash_password(new_password)
+        new_password_hash = hash_password(new_password)
         if new_password_hash is None:
             logging.error(f"Password reset failed for user {user.username}: Error hashing new password.")
             log_audit(self.audit_log_path, user.username, 'reset_password', f'failure - password hash error: {e}')

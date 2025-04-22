@@ -1,5 +1,6 @@
 import bcrypt
 import os # Often needed for salt generation or management, though bcrypt handles salts internally
+import logging
 
 # --- Password Hashing ---
 
@@ -14,7 +15,7 @@ def hash_password(password):
         bytes: The hashed password, or None if hashing fails.
     """
     if not password:
-        print("Error: Password cannot be empty.")
+        logging.error("Error: Password cannot be empty.")
         return None
     try:
         # Encode the password string to bytes (UTF-8 is common)
@@ -25,7 +26,7 @@ def hash_password(password):
         hashed_password = bcrypt.hashpw(password_bytes, salt)
         return hashed_password
     except Exception as e:
-        print(f"Error hashing password: {e}")
+        logging.error(f"Error hashing password: {e}", exc_info=True)
         # Log this error in a real application
         return None
 
@@ -43,7 +44,7 @@ def verify_password(plain_password, hashed_password):
         bool: True if the password matches the hash, False otherwise.
     """
     if not plain_password or not hashed_password:
-        print("Error: Both plain password and hashed password must be provided for verification.")
+        logging.error("Error: Both plain password and hashed password must be provided for verification.")
         return False
     try:
         # Ensure the plaintext password is in bytes
@@ -53,15 +54,15 @@ def verify_password(plain_password, hashed_password):
         return bcrypt.checkpw(plain_password_bytes, hashed_password)
     except TypeError as e:
          # This might happen if hashed_password is not bytes (e.g., loaded incorrectly as string)
-         print(f"Type error during password verification: {e}. Ensure hashed_password is bytes.")
+         logging.error(f"Type error during password verification: {e}. Ensure hashed_password is bytes.", exc_info=True)
          return False
     except ValueError as e:
         # This can happen if the hash format is invalid
-        print(f"Value error during password verification: {e}. Ensure the hash format is correct.")
+        logging.error(f"Value error during password verification: {e}. Ensure the hash format is correct.", exc_info=True)
         return False
     except Exception as e:
-        print(f"An unexpected error occurred during password verification: {e}")
-        # Log this error
+        logging.error(f"An unexpected error occurred during password verification: {e}", exc_info=True)
+
         return False
 
 # --- Example Usage (Optional) ---
