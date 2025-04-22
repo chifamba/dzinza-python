@@ -1,4 +1,4 @@
-# requirements.txt
+# backend/requirements.txt
 
 # Web Framework
 Flask
@@ -13,5 +13,6 @@ bcrypt
 # For GEDCOM import/export (Optional - Keep if needed for future API endpoints)
 # gedcom-py
 
-# For real encryption (Optional - requires implementing DataEncryptor)
-# pycryptodome
+# For data encryption
+pycryptodome
+
