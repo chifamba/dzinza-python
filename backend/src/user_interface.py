@@ -41,21 +41,21 @@ class UserProfileView:
 
     def display_profile(self):
         """Prints the user's profile details to the console."""
-        logging.info(f"\n--- User Profile: {self.target_user.user_id} ---")
+        logging.info(f"display_profile: \n--- User Profile: {self.target_user.user_id} ---")
         # Display fields based on permissions
         if self._can_view_field("user_id"):
-            logging.info(f"  User ID: {self.target_user.user_id}")
+            logging.info(f"display_profile: User ID: {self.target_user.user_id}")
         if self._can_view_field("email"):
-            logging.info(f"  Email: {self.target_user.email}")
+            logging.info(f"display_profile: Email: {self.target_user.email}")
         if self._can_view_field("role"):
-            logging.info(f"  Role: {self.target_user.role}")
+            logging.info(f"display_profile: Role: {self.target_user.role}")
         if self._can_view_field("trust_points"):
-             logging.info(f"  Trust Points: {self.target_user.trust_points}")
-             logging.info(f"  Trust Level: {self.target_user.get_trust_level()}") # Display calculated level
+             logging.info(f"display_profile: Trust Points: {self.target_user.trust_points}")
+             logging.info(f"display_profile: Trust Level: {self.target_user.get_trust_level()}") # Display calculated level
         if self._can_view_field("last_login"):
-             logging.info(f"  Last Login: {self.target_user.last_login.strftime('%Y-%m-%d %H:%M:%S') if self.target_user.last_login else 'Never'}")
+             logging.info(f"display_profile: Last Login: {self.target_user.last_login.strftime('%Y-%m-%d %H:%M:%S') if self.target_user.last_login else 'Never'}")
         if self._can_view_field("created_at"):
-             logging.info(f"  Member Since: {self.target_user.created_at.strftime('%Y-%m-%d') if self.target_user.created_at else 'Unknown'}")
+             logging.info(f"display_profile: Member Since: {self.target_user.created_at.strftime('%Y-%m-%d') if self.target_user.created_at else 'Unknown'}")
         if self._can_view_field("family_group_spaces"):
              groups = ', '.join(self.target_user.family_group_spaces) if self.target_user.family_group_spaces else "None"
              logging.info(f"  Family Groups: {groups}")
@@ -82,7 +82,7 @@ class FamilyGroupView:
         Raises:
             ValueError: If any person ID in the list is not found in the tree.
         """
-        logging.info("\n--- Family Group View ---")
+        logging.info("display_family_group: \n--- Family Group View ---")
         persons_in_group: List[Person] = []
         group_id_set = set(person_ids) # For quick lookups
 
@@ -90,28 +90,28 @@ class FamilyGroupView:
         for person_id in person_ids:
             person = self.family_tree.get_person_by_id(person_id)
             if person is None:
-                logging.error(f"Person with ID {person_id} not found in the family tree.")
-                raise ValueError(f"Person with ID {person_id} not found in the family tree.")            
+                logging.error(f"display_family_group: Person with ID {person_id} not found in the family tree.", exc_info=True)
+                raise ValueError(f"display_family_group: Person with ID {person_id} not found in the family tree.")
             persons_in_group.append(person)
 
         if not persons_in_group:
-            logging.info("No valid persons found for this group.")
+            logging.warning("display_family_group: No valid persons found for this group.")
             return
 
-        logging.info("Persons in Group:")
+        logging.info("display_family_group: Persons in Group:")
         for person in persons_in_group:
             dob = person.date_of_birth.strftime('%Y-%m-%d') if person.date_of_birth else "?"
-            logging.info(f"  - {person.get_full_name()} (ID: {person.person_id[:6]}..., DOB: {dob})")
+            logging.info(f"display_family_group:   - {person.get_full_name()} (ID: {person.person_id[:6]}..., DOB: {dob})")
 
-        logging.info("\nRelationships within Group:")
+        logging.info("display_family_group: \nRelationships within Group:")
         displayed_rels = set() # Avoid printing relationships twice
         for person in persons_in_group:
             for rel in person.relationships:
                  rel_hash = hash(rel)
                  # Check if the other person is also in the group and relationship not already printed
                  other_person_id = rel.get_other_person(person.person_id)
-                 if other_person_id in group_id_set and rel_hash not in displayed_rels:    
-                    logging.info(f"  - {rel}") # Use Relationship's __str__ method
+                 if other_person_id in group_id_set and rel_hash not in displayed_rels:
+                    logging.info(f"display_family_group:   - {rel}") # Use Relationship's __str__ method
                     displayed_rels.add(rel_hash)
 
         if not displayed_rels:
@@ -131,11 +131,11 @@ class PersonDetailView:
 
     def display_person_details(self):
         """Prints the person's details to the console."""
-        logging.info(f"\n--- Person Details: {self.person.get_full_name()} (ID: {self.person.person_id}) ---")
+        logging.info(f"display_person_details: \n--- Person Details: {self.person.get_full_name()} (ID: {self.person.person_id}) ---")
         # Use the get_person_info method which handles formatting and decryption placeholders
         person_info = self.person.get_person_info()
         for key, value in person_info.items():
-            # Skip empty/null values for cleaner output
+
             if value is None or (isinstance(value, (list, dict)) and not value):
                 continue
 
@@ -152,20 +152,20 @@ class PersonDetailView:
             else:
                  value_str = str(value)
 
-            logging.info(f"  {key_title}: {value_str}")
+            logging.info(f"display_person_details:   {key_title}: {value_str}")
 
         # Explicitly display relationships
-        logging.info("\n  Relationships:")
+        logging.info(f"display_person_details: \n  Relationships:")
         if self.person.relationships:
             for rel in self.person.relationships:
                  other_person_id = rel.get_other_person(self.person.person_id)
                  other_person_name = "Unknown"
                  if self.person.family_tree:
                       other_person = self.person.family_tree.get_person_by_id(other_person_id)
-                      if other_person: other_person_name = other_person.get_full_name()    
-                 logging.info(f"    - {rel.relationship_type.title()} with {other_person_name} ({other_person_id[:6]}...) [{rel.start_date.strftime('%Y-%m-%d') if rel.start_date else '?'}-{rel.end_date.strftime('%Y-%m-%d') if rel.end_date else '?'}]")
+                      if other_person: other_person_name = other_person.get_full_name()
+                 logging.info(f"display_person_details:     - {rel.relationship_type.title()} with {other_person_name} ({other_person_id[:6]}...) [{rel.start_date.strftime('%Y-%m-%d') if rel.start_date else '?'}-{rel.end_date.strftime('%Y-%m-%d') if rel.end_date else '?'}]")
         else:
-            logging.info("    (None recorded)")
+            logging.info("display_person_details:     (None recorded)")
 
         logging.info("-----------------------------------------------------")
 
@@ -192,17 +192,17 @@ class RelationshipView:
 
     def display_relationship(self):
         """Prints the relationship details to the console."""
-        logging.info("\n--- Relationship Details ---")
+        logging.info("display_relationship: \n--- Relationship Details ---")
         p1_name = self._get_person_name(self.relationship.person1_id)
         p2_name = self._get_person_name(self.relationship.person2_id)
 
-        logging.info(f"  Person 1: {p1_name}")
-        logging.info(f"  Person 2: {p2_name}")
-        logging.info(f"  Type: {self.relationship.relationship_type.title()}")
+        logging.info(f"display_relationship:   Person 1: {p1_name}")
+        logging.info(f"display_relationship:   Person 2: {p2_name}")
+        logging.info(f"display_relationship:   Type: {self.relationship.relationship_type.title()}")
         start = self.relationship.start_date.strftime('%Y-%m-%d') if self.relationship.start_date else "Unknown"
         end = self.relationship.end_date.strftime('%Y-%m-%d') if self.relationship.end_date else "Present"
-        logging.info(f"  Duration: {start} - {end}")
+        logging.info(f"display_relationship:   Duration: {start} - {end}")
         if self.relationship.description:
-            logging.info(f"  Description: {self.relationship.description}")
+            logging.info(f"display_relationship:   Description: {self.relationship.description}")
         logging.info("----------------------------")
 

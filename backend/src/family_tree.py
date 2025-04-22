@@ -28,15 +28,14 @@ class FamilyTree:
     # --- Person Methods ---
     def add_person(self, first_name, last_name, nickname=None, dob=None, dod=None, pob=None, pod=None, gender=None, added_by="system", **kwargs):
         """ Adds person, now includes place of birth (pob) and place of death (pod). """
-        if not first_name: logging.error("Validation Error: Person's first name cannot be empty."); log_audit(self.audit_log_path, added_by, 'add_person', f'failure - validation: empty first name'); return None
-        if dob and not self._is_valid_date(dob): logging.error(f"Validation Error: Invalid DOB format '{dob}'."); log_audit(self.audit_log_path, added_by, 'add_person', f'failure - validation: invalid dob format'); return None
-        if dod and not self._is_valid_date(dod): logging.error(f"Validation Error: Invalid DOD format '{dod}'."); log_audit(self.audit_log_path, added_by, 'add_person', f'failure - validation: invalid dod format'); return None
+        if not first_name: logging.error(f"Error in add_person: Validation Error: Person's first name cannot be empty."); log_audit(self.audit_log_path, added_by, 'add_person', f'failure - validation: empty first name'); return None
+        if dob and not self._is_valid_date(dob): logging.error(f"Error in add_person: Validation Error: Invalid DOB format '{dob}'."); log_audit(self.audit_log_path, added_by, 'add_person', f'failure - validation: invalid dob format'); return None
+        if dod and not self._is_valid_date(dod): logging.error(f"Error in add_person: Validation Error: Invalid DOD format '{dod}'."); log_audit(self.audit_log_path, added_by, 'add_person', f'failure - validation: invalid dod format'); return None
         if dob and dod:
             try:
-                if datetime.strptime(dod, '%Y-%m-%d').date() < datetime.strptime(dob, '%Y-%m-%d').date(): logging.error(f"Validation Error: DOD ({dod}) before DOB ({dob})."); log_audit(self.audit_log_path, added_by, 'add_person', f'failure - validation: dod before dob'); return None
+                if datetime.strptime(dod, '%Y-%m-%d').date() < datetime.strptime(dob, '%Y-%m-%d').date(): logging.error(f"Error in add_person: Validation Error: DOD ({dod}) before DOB ({dob})."); log_audit(self.audit_log_path, added_by, 'add_person', f'failure - validation: dod before dob'); return None
             except ValueError: pass
 
-        
         person_id = str(uuid.uuid4())
         try:
             person = Person(
@@ -45,7 +44,7 @@ class FamilyTree:
                 nickname=nickname.strip() if nickname else None,
                 birth_date=dob if dob else None, death_date=dod if dod else None,
                 place_of_birth=pob.strip() if pob else None, # Add pob
-                place_of_death=pod.strip() if pod else None, # Add pod
+                place_of_death=pod.strip() if pod else None,  # Add pod
                 gender=gender if gender else None, attributes=kwargs
             )
         except Exception as e: logging.error(f"Error creating Person object: {e}", exc_info=True); log_audit(self.audit_log_path, added_by, 'add_person', f'failure - error creating person object: {e}'); return None
@@ -57,13 +56,13 @@ class FamilyTree:
 
     def edit_person(self, person_id, updated_data, edited_by="system"):
         """ Edits person, now includes place_of_birth and place_of_death. """
-        person = self.find_person(person_id=person_id);        if not person: logging.error(f"Error: Person {person_id} not found."); log_audit(self.audit_log_path, edited_by, 'edit_person', f'failure - person not found: {person_id}'); return False
+        person = self.find_person(person_id=person_id);        if not person: logging.error(f"Error in edit_person: Person {person_id} not found."); log_audit(self.audit_log_path, edited_by, 'edit_person', f'failure - person not found: {person_id}'); return False
 
         # --- Validation ---
         new_first_name = updated_data.get('first_name', person.first_name)
         new_dob = updated_data.get('birth_date', person.birth_date)
         new_dod = updated_data.get('death_date', person.death_date)
-        # pob/pod don't need specific validation here beyond being strings
+        # pob/pod don't need specific validation here beyond being strings.
         if not new_first_name or not new_first_name.strip(): print(f"Validation Error: First name cannot be empty for {person_id}."); log_audit(self.audit_log_path, edited_by, 'edit_person', f'failure - validation: empty first name for id {person_id}'); return False
         if new_dob and not self._is_valid_date(new_dob): logging.error(f"Validation Error: Invalid DOB format '{new_dob}' for {person_id}."); log_audit(self.audit_log_path, edited_by, 'edit_person', f'failure - validation: invalid dob format for id {person_id}'); return False
         if new_dod and not self._is_valid_date(new_dod): logging.error(f"Validation Error: Invalid DOD format '{new_dod}' for {person_id}."); log_audit(self.audit_log_path, edited_by, 'edit_person', f'failure - validation: invalid dod format for id {person_id}'); return False
@@ -82,7 +81,7 @@ class FamilyTree:
                 elif key == 'last_name' and not new_value: new_value = ""
                 if current_value != new_value: setattr(person, key, new_value); changes_made = True;                
             else: print(f"Warning: Attempted to update non-existent attribute '{key}' for person {person_id}")
-
+        
         if changes_made: log_audit(self.audit_log_path, edited_by, 'edit_person', f'success - id: {person_id}, name: {original_display_name} -> {person.get_display_name()}'); self.save_tree(edited_by); return True
         else: log_audit(self.audit_log_path, edited_by, 'edit_person', f'no changes made for id: {person_id}'); return False
 
@@ -98,30 +97,30 @@ class FamilyTree:
             logging.info(f"Person '{person_display_name}' (ID: {person_id}) and {num_rels_deleted} related relationships deleted.")
             log_audit(self.audit_log_path, deleted_by, 'delete_person', f'success - id: {person_id}, name: {person_display_name}, removed {num_rels_deleted} relationships')
             self.save_tree(deleted_by); return True
-        else: logging.error(f"Error: Person with ID {person_id} not found for deletion."); log_audit(self.audit_log_path, deleted_by, 'delete_person', f'failure - person not found: {person_id}'); return False
+        else: logging.error(f"Error in delete_person: Person with ID {person_id} not found for deletion."); log_audit(self.audit_log_path, deleted_by, 'delete_person', f'failure - person not found: {person_id}'); return False
 
     def add_relationship(self, person1_id, person2_id, relationship_type, added_by="system"):
-        if not person1_id or not person2_id: logging.error("Validation Error: Both Person 1 and Person 2 must be selected."); log_audit(self.audit_log_path, added_by, 'add_relationship', f'failure - validation: missing person id'); return None
-        if person1_id == person2_id: logging.error("Validation Error: Cannot add a relationship between a person and themselves."); log_audit(self.audit_log_path, added_by, 'add_relationship', f'failure - validation: self relationship ({person1_id})'); return None
-        if not relationship_type or relationship_type.strip() == "": logging.error("Validation Error: Relationship type cannot be empty."); log_audit(self.audit_log_path, added_by, 'add_relationship', f'failure - validation: empty relationship type'); return None
+        if not person1_id or not person2_id: logging.error("Error in add_relationship: Validation Error: Both Person 1 and Person 2 must be selected."); log_audit(self.audit_log_path, added_by, 'add_relationship', f'failure - validation: missing person id'); return None
+        if person1_id == person2_id: logging.error("Error in add_relationship: Validation Error: Cannot add a relationship between a person and themselves."); log_audit(self.audit_log_path, added_by, 'add_relationship', f'failure - validation: self relationship ({person1_id})'); return None
+        if not relationship_type or relationship_type.strip() == "": logging.error("Error in add_relationship: Validation Error: Relationship type cannot be empty."); log_audit(self.audit_log_path, added_by, 'add_relationship', f'failure - validation: empty relationship type'); return None
         person1 = self.people.get(person1_id); person2 = self.people.get(person2_id)
         if not person1 or not person2:
             missing_ids = [];
             if not person1: missing_ids.append(person1_id)
             if not person2: missing_ids.append(person2_id)
-            logging.error(f"Error: One or both persons (ID(s): {', '.join(missing_ids)}) not found."); log_audit(self.audit_log_path, added_by, 'add_relationship', f'failure - person not found ({", ".join(missing_ids)})'); return None
+            logging.error(f"Error in add_relationship: One or both persons (ID(s): {', '.join(missing_ids)}) not found."); log_audit(self.audit_log_path, added_by, 'add_relationship', f'failure - person not found ({", ".join(missing_ids)})'); return None
         for rel in self.relationships.values():
             if (rel.person1_id == person1_id and rel.person2_id == person2_id and rel.rel_type == relationship_type) or \
-               (rel.person1_id == person2_id and rel.person2_id == person1_id and rel.rel_type == relationship_type): logging.error(f"Validation Error: Relationship ({relationship_type}) already exists between {person1_id} and {person2_id}."); log_audit(self.audit_log_path, added_by, 'add_relationship', f'failure - validation: duplicate relationship'); return None
+               (rel.person1_id == person2_id and rel.person2_id == person1_id and rel.rel_type == relationship_type): logging.error(f"Error in add_relationship: Validation Error: Relationship ({relationship_type}) already exists between {person1_id} and {person2_id}."); log_audit(self.audit_log_path, added_by, 'add_relationship', f'failure - validation: duplicate relationship'); return None
         relationship_id = str(uuid.uuid4())
         try: relationship = Relationship(person1_id=person1_id, person2_id=person2_id, rel_type=relationship_type); self.relationships[relationship_id] = relationship; logging.info(f"Relationship added: {person1.get_display_name()} - {relationship_type} - {person2.get_display_name()}"); log_audit(self.audit_log_path, added_by, 'add_relationship', f'success - id: {relationship_id}, type: {relationship_type}, persons: ({person1_id}, {person2_id})'); self.save_tree(added_by); return relationship
-        except Exception as e: logging.error(f"Error creating Relationship object: {e}", exc_info=True); log_audit(self.audit_log_path, added_by, 'add_relationship', f'failure - error creating relationship object: {e}'); return None
+        except Exception as e: logging.error(f"Error in add_relationship: Error creating Relationship object: {e}", exc_info=True); log_audit(self.audit_log_path, added_by, 'add_relationship', f'failure - error creating relationship object: {e}'); return None
 
     def edit_relationship(self, relationship_id, updated_data, edited_by="system"):
         # (Keep implementation)
-        if relationship_id not in self.relationships: logging.error(f"Error: Relationship {relationship_id} not found."); log_audit(self.audit_log_path, edited_by, 'edit_relationship', f'failure - relationship not found: {relationship_id}'); return False
+        if relationship_id not in self.relationships: logging.error(f"Error in edit_relationship: Relationship {relationship_id} not found."); log_audit(self.audit_log_path, edited_by, 'edit_relationship', f'failure - relationship not found: {relationship_id}'); return False
         relationship = self.relationships[relationship_id]; original_type = relationship.rel_type; new_type = updated_data.get('rel_type', original_type).strip()
-        if not new_type: logging.error(f"Validation Error: Relationship type cannot be empty for {relationship_id}."); log_audit(self.audit_log_path, edited_by, 'edit_relationship', f'failure - validation: empty type for id {relationship_id}'); return False
+        if not new_type: logging.error(f"Error in edit_relationship: Validation Error: Relationship type cannot be empty for {relationship_id}."); log_audit(self.audit_log_path, edited_by, 'edit_relationship', f'failure - validation: empty type for id {relationship_id}'); return False
         if new_type != original_type:
             relationship.rel_type = new_type
             p1_name = self.people.get(relationship.person1_id, Person(person_id=relationship.person1_id)).get_display_name(); p2_name = self.people.get(relationship.person2_id, Person(person_id=relationship.person2_id)).get_display_name()
@@ -132,7 +131,7 @@ class FamilyTree:
             relationship = self.relationships[relationship_id]; p1_name = self.people.get(relationship.person1_id, Person(person_id=relationship.person1_id)).get_display_name(); p2_name = self.people.get(relationship.person2_id, Person(person_id=relationship.person2_id)).get_display_name(); rel_type = relationship.rel_type;            del self.relationships[relationship_id]
             logging.info(f"Relationship ({rel_type}) between {p1_name} and {p2_name} deleted.")
             log_audit(self.audit_log_path, deleted_by, 'delete_relationship', f'success - id: {relationship_id}, type: {rel_type}, persons: ({p1_name}, {p2_name})')
-            self.save_tree(deleted_by); return True;        else: logging.error(f"Error: Relationship {relationship_id} not found."); log_audit(self.audit_log_path, deleted_by, 'delete_relationship', f'failure - relationship not found: {relationship_id}'); return False
+            self.save_tree(deleted_by); return True;        else: logging.error(f"Error in delete_relationship: Relationship {relationship_id} not found."); log_audit(self.audit_log_path, deleted_by, 'delete_relationship', f'failure - relationship not found: {relationship_id}'); return False
 
     # --- Keep find_person ---
     def find_person(self, name=None, person_id=None):
@@ -168,7 +167,7 @@ class FamilyTree:
             if dob_start and self._is_valid_date(dob_start): start_date_obj = date.fromisoformat(dob_start)
             elif dob_start: print(f"Warning: Invalid start date format '{dob_start}' ignored.")
             if dob_end and self._is_valid_date(dob_end): end_date_obj = date.fromisoformat(dob_end);
-            elif dob_end: print(f"Warning: Invalid end date format '{dob_end}' ignored.")
+            elif dob_end: logging.warning(f"Warning in search_people: Invalid end date format '{dob_end}' ignored.")
         except ValueError as e: logging.error(f"Error parsing search dates: {e}", exc_info=True); return []
 
         for person in self.people.values():
@@ -204,7 +203,7 @@ class FamilyTree:
             if name_match and date_match and location_match:
                 results.append(person)
 
-        results.sort(key=lambda p: p.get_full_name())
+        results.sort(key=lambda p: p.get_full_name())  # Sort results by full name.
         return results
     # --- End Search People Method ---
 
@@ -246,7 +245,7 @@ class FamilyTree:
             if rel_id in processed_rel_ids: continue
             source_id = rel.person1_id; target_id = rel.person2_id; rel_type = rel.rel_type.lower()
             if source_id not in self.people or target_id not in self.people: logging.warning(f"Warning: Skipping relationship {rel_id} because person {source_id} or {target_id} not found."); continue
-            link_data = None
+            link_data = None;
             if rel_type == 'parent': link_data = {"source": source_id, "target": target_id, "type": "parent_child"}
             elif rel_type == 'child': link_data = {"source": target_id, "target": source_id, "type": "parent_child"}
             elif rel_type == 'spouse' or rel_type == 'partner':
@@ -266,10 +265,10 @@ class FamilyTree:
         for pid, pdata in data.get("people", {}).items():
              try: tree.people[pid] = Person.from_dict(pdata)
              except Exception as e: logging.warning(f"Warning: Skipping invalid person data for ID {pid} during load: {e}", exc_info=True)
-        for rid, rdata in data.get("relationships", {}).items():
+        for rid, rdata in data.get("relationships", {}).items(): # Add pob to node data.
              try: tree.relationships[rid] = Relationship.from_dict(rdata)
              except Exception as e: logging.warning(f"Warning: Skipping invalid relationship data for ID {rid} during load: {e}", exc_info=True)
-        return tree
+        return tree  # Add photoUrl
     def save_tree(self, saved_by="system"):
         try: data_to_save = self._to_dict(); save_data(self.tree_file_path, data_to_save)
         except Exception as e: logging.error(f"Error saving tree: {e}", exc_info=True); log_audit(self.audit_log_path, saved_by, 'save_tree', f'failure: {e}')
@@ -280,5 +279,4 @@ class FamilyTree:
             else: logging.info(f"No data found. Starting empty."); self.people = {}; self.relationships = {}
         except FileNotFoundError: logging.info(f"Tree file not found. Starting empty."); self.people = {}; self.relationships = {}
         except Exception as e: logging.error(f"Error loading tree: {e}", exc_info=True); log_audit(self.audit_log_path, loaded_by, 'load_tree', f'failure: {e}'); self.people = {}; self.relationships = {}
-
 

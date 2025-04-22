@@ -45,7 +45,7 @@ def get_reciprocal_relationship(rel_type: str) -> str:
         The reciprocal relationship type (e.g., 'child', 'spouse'), or the original
         type if no specific reciprocal is defined.
     """
-    logging.debug(f"Getting reciprocal relationship for: {rel_type}")
+    logging.debug(f"get_reciprocal_relationship: Getting reciprocal relationship for: {rel_type}")
     rel_type_lower = rel_type.lower()
     # Direct lookup
     if rel_type_lower in RELATIONSHIP_MAP:
@@ -61,11 +61,10 @@ def get_reciprocal_relationship(rel_type: str) -> str:
                 # returning the first one found or a combined string might be options.
                 # Returning the first found key for simplicity here.
                 # Consider refining this logic based on desired behavior for ambiguous cases.
-                logging.debug(f"Reciprocal keys found: {reciprocal_keys}")
+                logging.debug(f"get_reciprocal_relationship: Reciprocal keys found: {reciprocal_keys}")
                 return reciprocal_keys[0]
-    logging.warning(f"No specific reciprocal found for relationship type '{rel_type}'. Returning original.")
+    logging.warning(f"get_reciprocal_relationship: No specific reciprocal found for relationship type '{rel_type}'. Returning original.")
     # Default: return the original type if no reciprocal mapping found
-    logging.debug(f"No specific reciprocal found for relationship type '{rel_type}'. Returning original.")
     return rel_type # Return original type if not found
 
 
@@ -81,11 +80,11 @@ class Relationship:
     attributes: Optional[Dict[str, Any]] = field(default_factory=dict) # e.g., start_date, end_date, location, notes
 
     def __post_init__(self):
-        logging.debug("Initializing Relationship object")
+        logging.debug(f"__post_init__: Initializing Relationship object")
         # Validate rel_type against known types
         if self.rel_type.lower() not in VALID_RELATIONSHIP_TYPES:
-            logging.warning(f"Relationship created with potentially invalid type: '{self.rel_type}'")
-
+            logging.warning(f"__post_init__: Relationship created with potentially invalid type: '{self.rel_type}'")
+            
         # Ensure attributes is a dict
         if self.attributes is None:
             self.attributes = {}
@@ -119,9 +118,11 @@ class Relationship:
         rel_type = data.get('rel_type', data.get('type'))
         if rel_type is None:
              raise KeyError("Relationship data must include 'rel_type' or 'type'.")
-        logging.debug(f"Creating relationship from data: {data}")
+        logging.debug(f"from_dict: Creating relationship from data: {data}")
+        
+        
         return cls(
-            person1_id=data['person1_id'], # Let KeyError raise if missing
+            person1_id=data['person1_id'], # Let KeyError raise if missing 
             person2_id=data['person2_id'], # Let KeyError raise if missing
             rel_type=rel_type,
             attributes=data.get('attributes') # Defaults to None if missing, handled by __post_init__

@@ -100,7 +100,7 @@ class Person:
             end_date = date.today()
             if self.death_date:
                 try: end_date = date.fromisoformat(self.death_date)
-                except (ValueError, TypeError): logging.warning(f"Invalid death date format for {self.person_id}: {self.death_date}")
+                except (ValueError, TypeError) as e: logging.warning(f"get_age: Invalid death date format for {self.person_id}: {self.death_date}. Error: {e}")
             age = end_date.year - birth_dt.year - ((end_date.month, end_date.day) < (birth_dt.month, birth_dt.day))            
             return age
         except (ValueError, TypeError): logging.warning(f"Invalid birth date format for {self.person_id}: {self.birth_date}"); return None
@@ -112,7 +112,7 @@ class Person:
         return related_ids
 
     def get_parents(self, relationship_list: List['Relationship']) -> List[str]:
-        logging.warning("Person.get_parents() called - This logic likely belongs in FamilyTree for accurate results.")
+        logging.warning(f"get_parents: method called for person {self.person_id} - This logic likely belongs in FamilyTree for accurate results.")
         return []
 
     def get_children(self, relationship_list: List['Relationship']) -> List[str]:
@@ -121,8 +121,8 @@ class Person:
     def get_spouses(self, relationship_list: List['Relationship']) -> List[str]:
         return self.get_related_person_ids(relationship_list, 'spouse')
 
-    def get_siblings(self, family_tree: 'FamilyTree') -> List[str]:
-        if family_tree is None: logging.error("Cannot get siblings without FamilyTree instance."); return []
+    def get_siblings(self, family_tree: 'FamilyTree') -> List[str]:        
+        if family_tree is None: logging.error(f"get_siblings: Cannot get siblings for person {self.person_id} without FamilyTree instance."); return []
         siblings = set()
         parent_ids = family_tree.find_parents(self.person_id) # Assumes method exists
         if not parent_ids: return []

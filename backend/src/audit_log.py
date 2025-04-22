@@ -28,14 +28,14 @@ def log_audit(log_file_path, user, action, status_details=""):
         log_message = f"{timestamp} - User: {user:<15} | Action: {action:<20} | Status/Details: {status_details}\n"
 
         # Append the message to the log file
-        with open(log_file_path, 'a', encoding='utf-8') as f:
+        with open(log_file_path, "a", encoding="utf-8") as f:
             f.write(log_message)
 
     except Exception as e:
-        # Print error to console if logging fails (avoid infinite loop if logging itself fails)
-        logging.error(f"!!! FAILED TO WRITE AUDIT LOG to {log_file_path} !!!")
-        logging.error(f"!!! Error: {e} !!!", exc_info=True)
-        logging.error(f"!!! Log details: User={user}, Action={action}, Details={status_details} !!!")
+        # Log error if logging fails (avoid infinite loop if logging itself fails)
+        logging.error(f"log_audit - Failed to write audit log to {log_file_path}", exc_info=True)
+        logging.error(f"log_audit - Error details: {e}")
+        logging.error(f"log_audit - Log details: User={user}, Action={action}, Details={status_details}")
         
 
 # Example usage (can be removed or kept for testing this module directly)

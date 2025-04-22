@@ -22,7 +22,7 @@ class User:
             reset_token_expiry (datetime, optional): Expiry time for the reset token. Defaults to None.
         """
         if not username:
-            logging.warning("Username cannot be empty during User initialization.")
+            logging.warning("User.__init__: Username cannot be empty during User initialization.")
             # raise ValueError("Username cannot be empty") # Optionally raise error
 
         self.user_id = user_id
@@ -30,7 +30,7 @@ class User:
         self.password_hash = password_hash # Should be bytes
 
         # Validate and set role
-        if role not in VALID_ROLES:
+        if role not in VALID_ROLES and username:
             logging.warning(f"Invalid role '{role}' provided for user {username}. Defaulting to 'basic'. Valid roles are: {VALID_ROLES}")
             self.role = "basic"
         else:
@@ -43,7 +43,7 @@ class User:
             try:
                 self.reset_token_expiry = datetime.fromisoformat(reset_token_expiry)
             except (ValueError, TypeError):
-                logging.warning(f"Invalid reset token expiry format '{reset_token_expiry}' for user {username}. Setting to None.")
+                logging.warning(f"User.__init__: Invalid reset token expiry format '{reset_token_expiry}' for user {username}. Setting to None.")
                 self.reset_token_expiry = None
         else:
              self.reset_token_expiry = reset_token_expiry
@@ -57,7 +57,7 @@ class User:
         """
         hash_str = base64.b64encode(self.password_hash).decode('utf-8') if isinstance(self.password_hash, bytes) else None
         if not hash_str and self.password_hash is not None: 
-             logging.warning(f"Password hash for user {self.username} is not bytes, cannot serialize properly.")
+             logging.warning(f"User.to_dict: Password hash for user {self.username} is not bytes, cannot serialize properly.")
              hash_str = None
 
         expiry_str = self.reset_token_expiry.isoformat() if self.reset_token_expiry else None
@@ -90,16 +90,16 @@ class User:
             try:
                 password_hash_bytes = base64.b64decode(password_hash_b64.encode('utf-8'))
             except (base64.binascii.Error, TypeError, ValueError) as e:
-                 logging.warning(f"Could not decode password hash for user {username} from base64: {e}", exc_info=True)
+                 logging.warning(f"User.from_dict: Could not decode password hash for user {username} from base64: {e}", exc_info=True)
                  password_hash_bytes = None
         else:
              old_hash_str = data.get("password_hash")
              if isinstance(old_hash_str, str):
-                 logging.warning(f"Found old string hash format for user {username}. Attempting to encode.")
+                 logging.warning(f"User.from_dict: Found old string hash format for user {username}. Attempting to encode.")
                  try:
                     password_hash_bytes = old_hash_str.encode('utf-8')
                  except Exception as enc_e:
-                      logging.error(f"Could not encode old string hash for user {username}: {enc_e}")
+                      logging.error(f"User.from_dict: Could not encode old string hash for user {username}: {enc_e}", exc_info=True)
                       password_hash_bytes = None
 
         reset_token_expiry = None
@@ -107,7 +107,7 @@ class User:
             try:
                 reset_token_expiry = datetime.fromisoformat(reset_token_expiry_str)
             except (ValueError, TypeError):
-                 logging.warning(f"Invalid reset token expiry format '{reset_token_expiry_str}' in data for user {username}. Setting expiry to None.")
+                 logging.warning(f"User.from_dict: Invalid reset token expiry format '{reset_token_expiry_str}' in data for user {username}. Setting expiry to None.")
                  reset_token_expiry = None
 
 
@@ -124,7 +124,7 @@ class User:
                 reset_token_expiry=reset_token_expiry # Pass expiry datetime
             )
         except ValueError as e:
-            logging.error(f"Failed to create User object from dict for user ID {user_id}: {e}", exc_info=True)
+            logging.error(f"User.from_dict: Failed to create User object from dict for user ID {user_id}: {e}", exc_info=True)
             raise 
 
     def __repr__(self):
