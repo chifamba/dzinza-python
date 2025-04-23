@@ -1,0 +1,12 @@
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.coverage
+data/*
+logs/*
+tests/
+*.log
+# Add other files/dirs to ignore
