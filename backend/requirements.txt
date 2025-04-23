@@ -16,3 +16,6 @@ bcrypt
 # For data encryption
 pycryptodome
 
+# For sending emails (Password Reset)
+yagmail
+itsdangerous # Required by Flask for session signing, and used for tokens
