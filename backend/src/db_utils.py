@@ -2,24 +2,25 @@
 import json
 import os
 import logging
-# Import the actual Encryption class
-from .encryption import Encryption
+# Import the actual Encryption class - REMOVED FROM TOP LEVEL
 
-# Cache the Encryption instance to avoid recreating it and reading env var repeatedly
+# Cache the Encryption instance
 _encryption_instance = None
 
 def _get_encryption_instance():
-    """Gets or creates the Encryption instance."""
+    """Gets or creates the Encryption instance. Handles import internally."""
     global _encryption_instance
     if _encryption_instance is None:
         try:
+            # Import moved inside the function
+            from .encryption import Encryption
             _encryption_instance = Encryption()
+        except ImportError as e:
+            logging.critical(f"Failed to import Encryption class: {e}. Encrypted operations will fail.", exc_info=True)
+            _encryption_instance = None
         except ValueError as e:
-            # Log critical error if key is missing/invalid, but allow app to continue
-            # if encryption isn't strictly required for all operations.
-            # load/save will fail later if is_encrypted=True is passed.
             logging.critical(f"Failed to initialize Encryption instance: {e}. Encrypted operations will fail.")
-            _encryption_instance = None # Ensure it stays None if init fails
+            _encryption_instance = None
     return _encryption_instance
 
 def load_data(file_path, default=None, is_encrypted=False):
@@ -39,43 +40,51 @@ def load_data(file_path, default=None, is_encrypted=False):
         encryption = _get_encryption_instance()
         if not encryption:
             logging.error(f"load_data: Cannot load encrypted file {file_path}, Encryption service not available.")
-            return default
+            return default if default is not None else {}
 
     if not os.path.exists(file_path):
         logging.warning(f"load_data: Data file not found: {file_path}. Returning default.")
-        return default
+        return default if default is not None else {}
 
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             raw_data = f.read()
-            if not raw_data:
+            if not raw_data.strip():
                 logging.warning(f"load_data: Data file is empty: {file_path}. Returning default.")
-                return default
+                return default if default is not None else {}
 
             if is_encrypted:
+                if not encryption:
+                     logging.error(f"load_data: Encryption instance not available for decryption of {file_path}.")
+                     return default if default is not None else {}
                 decrypted_data_str = encryption.decrypt(raw_data)
                 if decrypted_data_str is None:
                     logging.error(f"load_data: Failed to decrypt data from {file_path}. Returning default.")
-                    return default
+                    return default if default is not None else {}
                 data = json.loads(decrypted_data_str)
             else:
-                # If not encrypted, parse directly from the raw data read
                 data = json.loads(raw_data)
         return data
 
     except json.JSONDecodeError as e:
         logging.error(f"load_data: Error decoding JSON from {file_path}: {e}", exc_info=True)
-        return default
+        return default if default is not None else {}
     except OSError as e:
         logging.error(f"load_data: OSError while loading data from {file_path}: {e}", exc_info=True)
-        return default
+        return default if default is not None else {}
     except TypeError as e:
-        # More likely during decryption or JSON parsing if data is malformed
         logging.error(f"load_data: Type error while processing data from {file_path}: {e}", exc_info=True)
-        return default
+        return default if default is not None else {}
+    # --- MODIFIED EXCEPTION LOGGING ---
     except Exception as e:
-        logging.error(f"load_data: An unexpected error occurred while loading data from {file_path}: {e}", exc_info=True)
-        return default
+        # Check if it's a RecursionError to avoid deep traceback logging
+        if isinstance(e, RecursionError):
+             logging.error(f"load_data: RecursionError occurred while loading data from {file_path}: {e}")
+        else:
+             # Log other exceptions with full traceback
+             logging.error(f"load_data: An unexpected error occurred while loading data from {file_path}: {e}", exc_info=True)
+        return default if default is not None else {}
+    # --- END MODIFIED EXCEPTION LOGGING ---
 
 def save_data(file_path, data, is_encrypted=False, append=False):
     """
@@ -92,12 +101,11 @@ def save_data(file_path, data, is_encrypted=False, append=False):
         encryption = _get_encryption_instance()
         if not encryption:
             logging.error(f"save_data: Cannot save encrypted file {file_path}, Encryption service not available.")
-            return # Prevent saving unencrypted data when encryption is requested but unavailable
+            return
 
     try:
-        # Ensure the directory exists before writing
         dir_name = os.path.dirname(file_path)
-        if dir_name: # Avoid error if file_path is just a filename in the current dir
+        if dir_name:
             os.makedirs(dir_name, exist_ok=True)
 
         mode = 'a' if append else 'w'
@@ -105,26 +113,31 @@ def save_data(file_path, data, is_encrypted=False, append=False):
             if append:
                 if not isinstance(data, str):
                     logging.error("save_data: When appending, data must be a string.")
-                    raise ValueError("When appending, data must be a string.")
+                    return
                 f.write(data)
             else:
-                # Handle overwriting file (normal JSON behavior)
                 if is_encrypted:
-                    json_data_str = json.dumps(data, indent=4) # Serialize first
+                    if not encryption:
+                         logging.error(f"save_data: Encryption instance not available for encryption of {file_path}.")
+                         return
+                    json_data_str = json.dumps(data, indent=4)
                     encrypted_data_str = encryption.encrypt(json_data_str)
                     if encrypted_data_str is None:
                         logging.error(f"save_data: Failed to encrypt data for {file_path}.")
-                        # Optionally raise an error or just return to prevent writing partial/bad data
                         return
                     f.write(encrypted_data_str)
                 else:
-                    json.dump(data, f, indent=4) # Save as formatted JSON
+                    json.dump(data, f, indent=4)
 
     except TypeError as e:
-        # Typically happens if 'data' is not JSON serializable when not appending
         logging.error(f"save_data: TypeError saving data to {file_path} (is data JSON serializable?): {e}", exc_info=True)
     except OSError as e:
         logging.error(f"save_data: OSError saving data to {file_path}: {e}", exc_info=True)
+    # --- MODIFIED EXCEPTION LOGGING ---
     except Exception as e:
-        logging.error(f"save_data: An unexpected error occurred saving data to {file_path}: {e}", exc_info=True)
+         if isinstance(e, RecursionError):
+              logging.error(f"save_data: RecursionError occurred while saving data to {file_path}: {e}")
+         else:
+              logging.error(f"save_data: An unexpected error occurred saving data to {file_path}: {e}", exc_info=True)
+    # --- END MODIFIED EXCEPTION LOGGING ---
 

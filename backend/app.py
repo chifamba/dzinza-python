@@ -7,10 +7,13 @@ from flask_cors import CORS
 # Assuming user_management, family_tree etc. are correctly imported from src
 from src.user_management import UserManagement, VALID_ROLES # Import VALID_ROLES
 from src.family_tree import FamilyTree
-from src.relationship import VALID_RELATIONSHIP_TYPES
+from src.relationship import Relationship, VALID_RELATIONSHIP_TYPES # Import Relationship for type hints if needed
 from src.audit_log import log_audit
 from logging.handlers import RotatingFileHandler
-from datetime import date # Correct import for date
+# Correct import for date AND timedelta
+from datetime import date, timedelta
+# Import HTTPException to catch specific aborts if needed, but better to let them propagate
+from werkzeug.exceptions import HTTPException, Unauthorized, InternalServerError, NotFound, BadRequest, Forbidden
 
 # --- Configuration ---
 SECRET_KEY = os.environ.get('FLASK_SECRET_KEY', 'a_very_strong_dev_secret_key_39$@5_v2')
@@ -31,6 +34,15 @@ APP_LOG_FILE = os.path.join(LOG_DIR, 'app.log')
 # --- Application Setup ---
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
+# Configure session cookie settings for security (optional but recommended)
+app.config.update(
+    SESSION_COOKIE_SECURE=os.environ.get('FLASK_ENV') == 'production', # Only send cookie over HTTPS in production
+    SESSION_COOKIE_HTTPONLY=True,  # Prevent client-side JS access
+    SESSION_COOKIE_SAMESITE='Lax', # Mitigate CSRF ('Strict' can be too restrictive)
+    # Set permanent session lifetime (used if session.permanent = True)
+    PERMANENT_SESSION_LIFETIME=timedelta(days=7) # Example: sessions expire after 7 days
+)
+
 
 # --- Configure CORS ---
 # Adjust origins for your specific development and production frontend URLs
@@ -60,6 +72,7 @@ app.logger.setLevel(logging.DEBUG if os.environ.get('FLASK_DEBUG') == '1' else l
 
 app.logger.info("Flask application starting up...")
 
+
 # --- Initialize Core Components ---
 os.makedirs(DATA_DIR, exist_ok=True)
 user_manager = None
@@ -74,7 +87,22 @@ except Exception as e:
 
 # --- Validation Helper ---
 def validate_person_data(data, is_edit=False):
-    """Validates data for adding or editing a person."""
+    """
+    Validates incoming data for creating or updating a Person.
+
+    Checks for required fields (first_name on create), valid date formats
+    (YYYY-MM-DD), ensures death date is not before birth date, and validates
+    gender values.
+
+    Args:
+        data (dict): The dictionary containing person data from the request.
+        is_edit (bool): Flag indicating if this is for an edit operation
+                        (doesn't require first_name if not provided).
+
+    Returns:
+        dict: A dictionary of validation errors, keyed by field name.
+              Returns an empty dictionary if validation passes.
+    """
     errors = {}
     # Use .get with default to avoid KeyError if field is missing
     first_name = data.get('first_name')
@@ -108,6 +136,7 @@ def validate_person_data(data, is_edit=False):
         except (ValueError, TypeError) as date_err:
              # Log the specific error during comparison phase
              app.logger.warning(f"Date comparison validation error: {date_err}", exc_info=True)
+             # Add a user-friendly error message
              errors['date_comparison'] = 'Invalid date format for comparison.'
 
     # Gender validation
@@ -117,35 +146,38 @@ def validate_person_data(data, is_edit=False):
     return errors
 
 # --- Decorators ---
-
-def family_tree_required(f):
-    """Decorator to ensure the family_tree service is initialized."""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if not family_tree:
-            current_app.logger.error(f"Family tree service unavailable. Endpoint '{request.endpoint}' accessed.")
-            return jsonify({"error": "Family tree service unavailable."}), 503
-        return f(*args, **kwargs)
-    return decorated_function
 def api_login_required(f):
-    """Decorator to ensure user is logged in for API endpoints."""
+    """
+    Decorator for API endpoints requiring user authentication.
+
+    Checks if 'user_id' is present in the session. If not, returns a 401
+    Unauthorized response. Also checks if core components (user_manager,
+    family_tree) are initialized, returning 503 Service Unavailable if not.
+    """
     @wraps(f)
     def decorated_function(*args, **kwargs):
         # Check session *before* checking component initialization
         if 'user_id' not in session:
             current_app.logger.warning(f"API Authentication Required: Endpoint '{request.endpoint}' accessed without login (IP: {request.remote_addr}).")
             log_audit(AUDIT_LOG_FILE, 'anonymous', 'api_access_denied', f'login required for API endpoint {request.endpoint}')
-            return jsonify({"error": "Authentication required"}), 401
+            # Use abort to trigger the 401 handler
+            abort(401, description="Authentication required.")
 
         # Check if core components initialized properly *after* confirming login attempt
         if not user_manager or not family_tree:
              current_app.logger.error(f"API Service Unavailable: Endpoint '{request.endpoint}' accessed but core components not initialized.")
-             return jsonify({"error": "Service temporarily unavailable. Please try again later."}), 503
+             # Use abort to trigger the 503 handler
+             abort(503, description="Service temporarily unavailable. Please try again later.")
         return f(*args, **kwargs)
     return decorated_function
 
 def api_admin_required(f):
-    """Decorator to ensure user has admin role for API endpoints."""
+    """
+    Decorator for API endpoints requiring administrator privileges.
+
+    Chains `api_login_required` first. Checks if the 'user_role' in the
+    session is 'admin'. If not, returns a 403 Forbidden response.
+    """
     @wraps(f)
     @api_login_required # Chain decorators: ensures login and component checks first
     def decorated_function(*args, **kwargs):
@@ -154,91 +186,93 @@ def api_admin_required(f):
         if user_role != 'admin':
             current_app.logger.warning(f"API Authorization Failed: User '{username}' (Role: {user_role}) attempted to access admin endpoint '{request.endpoint}'.")
             log_audit(AUDIT_LOG_FILE, username, 'api_access_denied', f'admin required (role: {user_role}) for API endpoint {request.endpoint}')
-            return jsonify({"error": "Administrator privileges required"}), 403
+            # Use abort to trigger the 403 handler
+            abort(403, description="Administrator privileges required.")
         return f(*args, **kwargs)
     return decorated_function
 
 # --- Custom Error Handlers ---
-@app.errorhandler(400)
-def handle_bad_request(error):
+@app.errorhandler(BadRequest) # 400
+def handle_bad_request(error: BadRequest):
     """Handles 400 Bad Request errors, often due to parsing or validation."""
     description = getattr(error, 'description', "Invalid request format or data.")
     current_app.logger.warning(f"API Bad Request (400): {description} - Endpoint: {request.endpoint}, IP: {request.remote_addr}")
+    # Structure the response based on whether description is detailed validation errors
     response_data = {"error": "Bad Request", "message": description}
     if isinstance(description, dict): # Assume validation errors
         response_data = {"error": "Validation failed", "details": description}
     return jsonify(response_data), 400
 
-@app.errorhandler(401)
-def handle_unauthorized(error):
+@app.errorhandler(Unauthorized) # 401
+def handle_unauthorized(error: Unauthorized):
     """Handles 401 Unauthorized errors."""
     description = getattr(error, 'description', "Authentication required.")
     current_app.logger.warning(f"API Unauthorized (401): {description} - Endpoint: {request.endpoint}, IP: {request.remote_addr}")
     return jsonify({"error": "Unauthorized", "message": description}), 401
 
-@app.errorhandler(403)
-def handle_forbidden(error):
+@app.errorhandler(Forbidden) # 403
+def handle_forbidden(error: Forbidden):
     """Handles 403 Forbidden errors."""
     description = getattr(error, 'description', "Permission denied.")
     current_app.logger.warning(f"API Forbidden (403): {description} - Endpoint: {request.endpoint}, User: {session.get('username', 'anonymous')}, IP: {request.remote_addr}")
     return jsonify({"error": "Forbidden", "message": description}), 403
 
-@app.errorhandler(404)
-def handle_not_found(error):
+@app.errorhandler(NotFound) # 404
+def handle_not_found(error: NotFound):
     """Handles 404 Not Found errors."""
     current_app.logger.warning(f"API Not Found (404): Path '{request.path}' - IP: {request.remote_addr}, Referrer: {request.referrer}")
     return jsonify({"error": "Not Found", "message": f"The requested URL '{request.path}' was not found on this server."}), 404
 
-@app.errorhandler(500)
-def handle_internal_server_error(error):
+@app.errorhandler(InternalServerError) # 500
+def handle_internal_server_error(error: InternalServerError):
     """Handles 500 Internal Server errors."""
-    current_app.logger.exception(f"API Internal Server Error (500): Endpoint: {request.endpoint}, User: {session.get('username', 'anonymous')}, IP: {request.remote_addr}")
+    # Log the original exception if available
+    original_exception = getattr(error, 'original_exception', None)
+    current_app.logger.error(
+        f"API Internal Server Error (500): Endpoint: {request.endpoint}, User: {session.get('username', 'anonymous')}, IP: {request.remote_addr}",
+        exc_info=original_exception or error # Log traceback
+    )
+    # Do not expose internal error details to the client
     return jsonify({"error": "Internal Server Error", "message": "An unexpected error occurred. Please try again later."}), 500
 
-@app.errorhandler(503)
+@app.errorhandler(503) # Service Unavailable
 def handle_service_unavailable(error):
     """Handles 503 Service Unavailable errors."""
     description = getattr(error, 'description', "Service temporarily unavailable.")
     current_app.logger.error(f"API Service Unavailable (503): {description} - Endpoint: {request.endpoint}, IP: {request.remote_addr}")
     return jsonify({"error": "Service Unavailable", "message": description}), 503
 
-# --- Password Validation ---
-import re
-
-def is_password_complex(password):
-    """Validates password complexity."""
-    if len(password) < 8:
-        return False
-    if not re.search(r'[A-Z]', password):  # At least one uppercase letter
-        return False
-    if not re.search(r'[a-z]', password):  # At least one lowercase letter
-        return False
-    if not re.search(r'[0-9]', password):  # At least one digit
-        return False
-    if not re.search(r'[!@#$%^&*(),.?":{}|<>]', password):  # At least one special character
-        return False
-    return True
-
 # --- API Authentication Routes ---
 @app.route('/api/login', methods=['POST'])
 def api_login():
-    """API endpoint for user login."""
-    if not user_manager:
-        current_app.logger.error("API Login attempt failed: User manager not initialized.")
-        return jsonify({"error": "Authentication service unavailable."}), 503
-
+    """
+    API Endpoint: POST /api/login
+    Authenticates a user via username and password. Sets session cookies on success.
+    """
+    username_for_log = 'unknown' # Initialize for logging in case of early failure
     try:
+        if not user_manager:
+            current_app.logger.error("API Login attempt failed: User manager not initialized.")
+            abort(503, description="Authentication service unavailable.")
+
         data = request.get_json()
-        if not data or not data.get('username') or not data.get('password'):
+        if not data:
+             abort(400, description="Request body must be valid JSON.")
+        if not data.get('username') or not data.get('password'):
             abort(400, description="Username and password are required.")
 
         username = data['username'].strip()
+        username_for_log = username # Update for logging
         password = data['password']
         current_app.logger.debug(f"API Login attempt for username: '{username}'")
 
         user = user_manager.login_user(username, password)
 
         if user:
+            # Regenerate session ID upon login to prevent session fixation
+            session.permanent = True # Make session persistent (e.g., browser close)
+            # app.permanent_session_lifetime is set globally in app config now
+            session.clear() # Clear old session data before setting new
             session['user_id'] = user.user_id
             session['username'] = user.username
             session['user_role'] = user.role
@@ -246,32 +280,44 @@ def api_login():
             # Audit log handled by user_manager
             return jsonify({"message": "Login successful!", "user": {"id": user.user_id, "username": user.username, "role": user.role}}), 200
         else:
-            # Error already logged by user_manager
+            # User not found or invalid password (already logged by user_manager)
             current_app.logger.warning(f"API Login Failed for username '{username}' from IP {request.remote_addr}.")
             abort(401, description="Invalid username or password.")
 
+    except HTTPException as http_ex:
+        # Re-raise HTTP exceptions (like abort(400), abort(401), abort(503))
+        raise http_ex
     except Exception as e:
-        current_app.logger.exception(f"API Login Error: Unexpected error during login for username '{data.get('username', 'unknown') if data else 'unknown'}'.")
-        log_audit(AUDIT_LOG_FILE, data.get('username', 'unknown') if data else 'unknown', 'api_login', f'unexpected error: {e}')
-        abort(500)
+        # Catch *other* unexpected errors during login process
+        current_app.logger.exception(f"API Login Error: Unexpected error during login for username '{username_for_log}'.")
+        log_audit(AUDIT_LOG_FILE, username_for_log, 'api_login', f'unexpected error: {e}')
+        abort(500) # Let the 500 handler provide generic message
+
 
 @app.route('/api/register', methods=['POST'])
 def api_register():
-    """API endpoint for user registration."""
-    if not user_manager:
-        current_app.logger.error("API Register attempt failed: User manager not initialized.")
-        return jsonify({"error": "Registration service unavailable."}), 503
-
+    """
+    API Endpoint: POST /api/register
+    Registers a new user with a 'basic' role.
+    """
+    username_for_log = 'unknown'
     try:
+        if not user_manager:
+            current_app.logger.error("API Register attempt failed: User manager not initialized.")
+            abort(503, description="Registration service unavailable.")
+
         data = request.get_json()
-        if not data or not data.get('username') or not data.get('password'):
+        if not data:
+             abort(400, description="Request body must be valid JSON.")
+        if not data.get('username') or not data.get('password'):
             abort(400, description="Username and password are required.")
 
         username = data['username'].strip()
+        username_for_log = username
         password = data['password']
 
         if not username: abort(400, description="Username cannot be empty.")
-        if not password: abort(400, description="Password cannot be empty.")
+        if not password: abort(400, description="Password cannot be empty.") # Add password complexity checks here if desired
 
         current_app.logger.debug(f"API Register attempt for username: '{username}'")
 
@@ -279,6 +325,7 @@ def api_register():
         if user_manager.find_user_by_username(username):
             current_app.logger.warning(f"API Register Failed: Username '{username}' already taken.")
             log_audit(AUDIT_LOG_FILE, username, 'api_register_attempt', 'failure - username exists')
+            # Use 409 Conflict for existing resource
             return jsonify({"error": f"Username '{username}' is already taken."}), 409
 
         user = user_manager.register_user(username, password) # Default role 'basic'
@@ -286,21 +333,27 @@ def api_register():
         if user:
             current_app.logger.info(f"API Registration Successful: User '{username}' (Role: {user.role}) registered from IP {request.remote_addr}.")
             # Audit log handled by user_manager
-            return jsonify({"message": "Registration successful!", "user": {"id": user.user_id, "username": user.username, "role": user.role}}), 201
+            return jsonify({"message": "Registration successful!", "user": {"id": user.user_id, "username": user.username, "role": user.role}}), 201 # 201 Created
         else:
+            # Registration failed for other reasons (logged within user_manager)
             current_app.logger.error(f"API Registration Failed: Unexpected error during registration for username '{username}'. Check user_manager logs.")
             log_audit(AUDIT_LOG_FILE, username, 'api_register', 'failure - unexpected error in user_manager')
             abort(500, description="Registration failed due to an internal error.")
 
+    except HTTPException as http_ex:
+        raise http_ex
     except Exception as e:
-        current_app.logger.exception(f"API Register Error: Unexpected error during registration for username '{data.get('username', 'unknown') if data else 'unknown'}'.")
-        log_audit(AUDIT_LOG_FILE, data.get('username', 'unknown') if data else 'unknown', 'api_register', f'unexpected error: {e}')
+        current_app.logger.exception(f"API Register Error: Unexpected error during registration for username '{username_for_log}'.")
+        log_audit(AUDIT_LOG_FILE, username_for_log, 'api_register', f'unexpected error: {e}')
         abort(500)
 
 @app.route('/api/logout', methods=['POST'])
 @api_login_required
 def api_logout():
-    """API endpoint for user logout."""
+    """
+    API Endpoint: POST /api/logout
+    Logs out the current user and clears the server-side session.
+    """
     username = session.get('username', 'unknown_user')
     role = session.get('user_role', 'unknown_role')
     user_id = session.get('user_id', 'unknown_id')
@@ -312,13 +365,18 @@ def api_logout():
         log_audit(AUDIT_LOG_FILE, username, 'api_logout', f'success - role: {role}')
         return jsonify({"message": "Logout successful"}), 200
     except Exception as e:
+        # Less likely to have errors here, but catch just in case
         current_app.logger.exception(f"API Logout Error: Unexpected error during logout for user '{username}'.")
         log_audit(AUDIT_LOG_FILE, username, 'api_logout', f'unexpected error: {e}')
         abort(500)
 
+
 @app.route('/api/session', methods=['GET'])
 def api_get_session():
-    """API endpoint to check current authentication status."""
+    """
+    API Endpoint: GET /api/session
+    Retrieves the current authentication status and user information if logged in.
+    """
     if 'user_id' in session:
         user_data = {
             "id": session.get('user_id'),
@@ -331,123 +389,154 @@ def api_get_session():
         current_app.logger.debug("API Session Check: No authenticated user.")
         return jsonify({"isAuthenticated": False, "user": None}), 200
 
+
 # --- Password Reset API Endpoints ---
 
 @app.route('/api/request-password-reset', methods=['POST'])
 def api_request_password_reset():
-    """API endpoint to request a password reset email."""
-    if not user_manager:
-        current_app.logger.error("API Password Reset Request failed: User manager not initialized.")
-        return jsonify({"error": "Password reset service unavailable."}), 503
-
-    data = request.get_json()
-    if not data or 'email' not in data:
-        abort(400, description="Email address is required.")
-
-    email = data['email'].strip()
-    if not email: # Extra validation
-         abort(400, description="Email address cannot be empty.")
-
-    current_app.logger.info(f"API Password Reset Request received for email: {email}")
-
+    """
+    API Endpoint: POST /api/request-password-reset
+    Initiates the password reset process by sending an email with a reset link.
+    """
+    email_for_log = 'unknown'
     try:
+        if not user_manager:
+            current_app.logger.error("API Password Reset Request failed: User manager not initialized.")
+            abort(503, description="Password reset service unavailable.")
+
+        data = request.get_json()
+        if not data:
+             abort(400, description="Request body must be valid JSON.")
+        if 'email' not in data:
+            abort(400, description="Email address is required.")
+
+        email = data['email'].strip()
+        email_for_log = email
+        if not email: # Basic validation
+             abort(400, description="Email address cannot be empty.")
+
+        current_app.logger.info(f"API Password Reset Request received for email: {email}")
+
         # Call the combined request/send logic in user_manager
+        # This function now handles logging internally and always returns True to the caller
+        # unless there's a critical internal error (like token generation failure).
         success = user_manager.request_password_reset(email)
 
-        # Always return a generic success message regardless of outcome
-        # This prevents attackers from discovering registered email addresses.
+        if not success:
+             # This indicates an internal error occurred (logged by user_manager)
+             abort(500, description="Could not process password reset request due to an internal error.")
+
+        # Always return a generic success message to prevent email enumeration
         log_audit(AUDIT_LOG_FILE, email, 'request_password_reset', f'processed (outcome hidden from user)')
         return jsonify({"message": "If an account exists for this email, a password reset link has been sent."}), 200
 
+    except HTTPException as http_ex:
+        raise http_ex
     except Exception as e:
-        # Catch unexpected errors during the process
-        current_app.logger.exception(f"API Request Password Reset Error: Unexpected error for email '{email}'.")
-        log_audit(AUDIT_LOG_FILE, email, 'request_password_reset', f'unexpected internal error: {e}')
-        # Return a generic server error message
-        abort(500, description="Could not process password reset request due to an internal error.")
+        current_app.logger.exception(f"API Request Password Reset Error: Unexpected error for email '{email_for_log}'.")
+        log_audit(AUDIT_LOG_FILE, email_for_log, 'request_password_reset', f'unexpected internal error: {e}')
+        abort(500)
 
 
 @app.route('/api/reset-password/<token>', methods=['POST'])
 def api_reset_password(token):
-    """API endpoint to reset password using a token."""
-    if not user_manager:
-        current_app.logger.error("API Password Reset failed: User manager not initialized.")
-        return jsonify({"error": "Password reset service unavailable."}), 503
-
-    data = request.get_json()
-    if not data or 'new_password' not in data:
-        abort(400, description="New password is required.")
-
-    new_password = data['new_password']
-    # Add password validation here (e.g., minimum length and complexity)
-    if not new_password or not is_password_complex(new_password):
-        abort(400, description="New password must be at least 8 characters long and include uppercase, lowercase, numbers, and special characters.")
-
-    current_app.logger.info(f"API Password Reset attempt with token: {token[:8]}...")
-
+    """
+    API Endpoint: POST /api/reset-password/<token>
+    Resets the user's password using a valid, non-expired token.
+    """
+    token_for_log = token[:8] + '...' if token else 'none'
     try:
+        if not user_manager:
+            current_app.logger.error("API Password Reset failed: User manager not initialized.")
+            abort(503, description="Password reset service unavailable.")
+
+        data = request.get_json()
+        if not data:
+             abort(400, description="Request body must be valid JSON.")
+        if 'new_password' not in data:
+            abort(400, description="New password is required.")
+
+        new_password = data['new_password']
+        # Add password complexity validation here
+        if not new_password or len(new_password) < 8:
+            abort(400, description="New password cannot be empty and must be at least 8 characters long.")
+
+        current_app.logger.info(f"API Password Reset attempt with token: {token_for_log}")
+
         success = user_manager.reset_password(token, new_password)
 
         if success:
-            current_app.logger.info(f"Password successfully reset using token: {token[:8]}...")
+            current_app.logger.info(f"Password successfully reset using token: {token_for_log}")
             # Audit log handled by user_manager
             return jsonify({"message": "Password reset successfully."}), 200
         else:
-            current_app.logger.warning(f"Password reset failed for token: {token[:8]}... (invalid/expired token or internal error)")
-            log_audit(AUDIT_LOG_FILE, f"token:{token[:8]}...", 'reset_password', 'failure - invalid/expired token or internal error')
+            # Failure logged by user_manager (invalid token or internal error)
+            current_app.logger.warning(f"Password reset failed for token: {token_for_log}")
+            log_audit(AUDIT_LOG_FILE, f"token:{token_for_log}", 'reset_password', 'failure - invalid/expired token or internal error')
             abort(400, description="Invalid or expired password reset token, or password could not be reset.")
+
+    except HTTPException as http_ex:
+        raise http_ex
     except Exception as e:
-        current_app.logger.exception(f"API Reset Password Error: Unexpected error for token '{token[:8]}...'.")
-        log_audit(AUDIT_LOG_FILE, f"token:{token[:8]}...", 'reset_password', f'unexpected error: {e}')
+        current_app.logger.exception(f"API Reset Password Error: Unexpected error for token '{token_for_log}'.")
+        log_audit(AUDIT_LOG_FILE, f"token:{token_for_log}", 'reset_password', f'unexpected error: {e}')
         abort(500)
 
 
 # --- Admin User Management API Endpoints ---
 
 @app.route('/api/users', methods=['GET'])
-@api_admin_required # Requires admin login
+@api_admin_required
 def api_get_all_users():
-    """API endpoint for admins to get a list of all users."""
+    """
+    API Endpoint: GET /api/users (Admin Only)
+    Retrieves a list of all registered users (excluding sensitive info).
+    """
     admin_username = session.get('username', 'admin_user')
     current_app.logger.info(f"API Get All Users requested by admin '{admin_username}'.")
     try:
+        if not user_manager: abort(503, description="User management service unavailable.")
+
         all_users = user_manager.get_all_users()
-        # Return user data excluding sensitive info (like password hash)
+        # Return user data excluding sensitive info
         users_list = [
-            # Use user.to_dict() and then remove the hash, ensuring other fields are included
             {k: v for k, v in u.to_dict().items() if k != 'password_hash_b64'}
-            for u in all_users if isinstance(u, object) # Ensure 'u' is an object before calling to_dict
+            for u in all_users if isinstance(u, object) # Ensure 'u' is an object
         ]
         current_app.logger.debug(f"Retrieved {len(users_list)} users for admin '{admin_username}'.")
         return jsonify(users_list), 200
+    except HTTPException as http_ex:
+        raise http_ex
     except Exception as e:
         current_app.logger.exception(f"API Get All Users Error: Failed for admin '{admin_username}'.")
-        abort(500, description="Failed to retrieve user list.")
+        abort(500)
 
 
 @app.route('/api/users/<user_id>', methods=['DELETE'])
-@api_admin_required # Requires admin login
+@api_admin_required
 def api_admin_delete_user(user_id):
-    """API endpoint for admins to delete a user."""
+    """
+    API Endpoint: DELETE /api/users/<user_id> (Admin Only)
+    Deletes the specified user.
+    """
     admin_username = session.get('username', 'admin_user')
     current_app.logger.info(f"API Delete User attempt by admin '{admin_username}' for user ID: {user_id}.")
 
-    if not user_manager: # Check again as it might fail between login and this call
-        return jsonify({"error": "User management service unavailable."}), 503
-
-    # Prevent admin from deleting themselves
-    if session.get('user_id') == user_id:
-        current_app.logger.warning(f"Admin '{admin_username}' attempted self-deletion (ID: {user_id}).")
-        log_audit(AUDIT_LOG_FILE, admin_username, 'api_delete_user', f'failure - admin self-deletion attempt for {user_id}')
-        abort(403, description="Administrators cannot delete their own account.")
-
-    user_to_delete = user_manager.find_user_by_id(user_id)
-    if not user_to_delete:
-        current_app.logger.warning(f"API Delete User Failed: User ID '{user_id}' not found by admin '{admin_username}'.")
-        abort(404, description="User not found.")
-
-    deleted_username = user_to_delete.username # Get username for logging before deletion
     try:
+        if not user_manager: abort(503, description="User management service unavailable.")
+
+        # Prevent admin from deleting themselves
+        if session.get('user_id') == user_id:
+            current_app.logger.warning(f"Admin '{admin_username}' attempted self-deletion (ID: {user_id}).")
+            log_audit(AUDIT_LOG_FILE, admin_username, 'api_delete_user', f'failure - admin self-deletion attempt for {user_id}')
+            abort(403, description="Administrators cannot delete their own account.")
+
+        user_to_delete = user_manager.find_user_by_id(user_id)
+        if not user_to_delete:
+            current_app.logger.warning(f"API Delete User Failed: User ID '{user_id}' not found by admin '{admin_username}'.")
+            abort(404, description="User not found.")
+
+        deleted_username = user_to_delete.username # Get username for logging before deletion
         success = user_manager.delete_user(user_id, actor_username=admin_username)
 
         if success:
@@ -455,43 +544,49 @@ def api_admin_delete_user(user_id):
             # Audit log handled by user_manager.delete_user
             return '', 204 # No Content
         else:
-            # Should not happen if user was found, implies internal error in delete_user
+            # Should not happen if user was found
             current_app.logger.error(f"API Delete User Failed: delete_user returned False for ID '{user_id}', admin '{admin_username}'.")
             abort(500, description="Failed to delete user due to an internal error.")
+
+    except HTTPException as http_ex:
+        raise http_ex
     except Exception as e:
         current_app.logger.exception(f"API Delete User Error: Unexpected error for admin '{admin_username}', user ID '{user_id}'.")
         log_audit(AUDIT_LOG_FILE, admin_username, 'api_delete_user', f'unexpected error for id {user_id}: {e}')
         abort(500)
 
+
 @app.route('/api/users/<user_id>/role', methods=['PUT'])
-@api_admin_required # Requires admin login
+@api_admin_required
 def api_admin_set_user_role(user_id):
-    """API endpoint for admins to change a user's role."""
+    """
+    API Endpoint: PUT /api/users/<user_id>/role (Admin Only)
+    Changes the role of the specified user. Expects {"role": "new_role"} in the body.
+    """
     admin_username = session.get('username', 'admin_user')
     current_app.logger.info(f"API Set User Role attempt by admin '{admin_username}' for user ID: {user_id}.")
 
-    if not user_manager: # Check again
-        return jsonify({"error": "User management service unavailable."}), 503
-
-    data = request.get_json()
-    if not data or 'role' not in data:
-        abort(400, description="New role is required in request body.")
-
-    new_role = data['role'].strip()
-    if new_role not in VALID_ROLES:
-        abort(400, description=f"Invalid role '{new_role}'. Valid roles are: {', '.join(VALID_ROLES)}")
-
-    user_to_modify = user_manager.find_user_by_id(user_id)
-    if not user_to_modify:
-        current_app.logger.warning(f"API Set Role Failed: User ID '{user_id}' not found by admin '{admin_username}'.")
-        abort(404, description="User not found.")
-
-    # Optional: Prevent changing own role?
-    # if session.get('user_id') == user_id:
-    #     abort(403, description="Administrators cannot change their own role via this endpoint.")
-
-    original_role = user_to_modify.role # Get role before change
     try:
+        if not user_manager: abort(503, description="User management service unavailable.")
+
+        data = request.get_json()
+        if not data: abort(400, description="Request body must be valid JSON.")
+        if 'role' not in data: abort(400, description="New role is required in request body.")
+
+        new_role = data['role'].strip()
+        if new_role not in VALID_ROLES:
+            abort(400, description=f"Invalid role '{new_role}'. Valid roles are: {', '.join(VALID_ROLES)}")
+
+        user_to_modify = user_manager.find_user_by_id(user_id)
+        if not user_to_modify:
+            current_app.logger.warning(f"API Set Role Failed: User ID '{user_id}' not found by admin '{admin_username}'.")
+            abort(404, description="User not found.")
+
+        # Optional: Prevent changing own role?
+        # if session.get('user_id') == user_id:
+        #     abort(403, description="Administrators cannot change their own role via this endpoint.")
+
+        original_role = user_to_modify.role # Get role before change
         success = user_manager.set_user_role(user_id, new_role, actor_username=admin_username)
 
         if success:
@@ -501,13 +596,14 @@ def api_admin_set_user_role(user_id):
             # Audit log handled by user_manager.set_user_role
             return jsonify({"user_id": user_id, "username": updated_user.username, "role": updated_user.role}), 200
         else:
-            # Failure logged within user_manager (e.g., invalid role, save error)
+            # Failure logged within user_manager (e.g., save error)
+            # Check if role was already the target role (set_user_role now returns True in this case)
+            # This else block might only be reached on internal errors now.
             current_app.logger.error(f"API Set Role Failed: set_user_role returned False for ID '{user_id}', admin '{admin_username}'.")
-            # Check if role was already the target role
-            if original_role == new_role:
-                 return jsonify({"message": f"User already has role '{new_role}'. No change made."}), 200
-            else:
-                 abort(500, description="Failed to set user role due to an internal error.")
+            abort(500, description="Failed to set user role due to an internal error.")
+
+    except HTTPException as http_ex:
+        raise http_ex
     except Exception as e:
         current_app.logger.exception(f"API Set Role Error: Unexpected error for admin '{admin_username}', user ID '{user_id}'.")
         log_audit(AUDIT_LOG_FILE, admin_username, 'api_set_user_role', f'unexpected error for id {user_id}: {e}')
@@ -517,30 +613,26 @@ def api_admin_set_user_role(user_id):
 # --- API Family Tree Data Routes ---
 @app.route('/api/people', methods=['GET'])
 @api_login_required
-@family_tree_required
 def get_all_people():
     """API endpoint to get a list of all people."""
     username = session.get('username', 'api_user')
     current_app.logger.debug(f"API Get All People requested by '{username}'.")
-    # This check is now handled by the @family_tree_required decorator.
-    pass
+    if not family_tree: abort(503, description="Family tree service unavailable.")
     try:
-        # Return full details needed by frontend list/visualization
         people_list = [person.to_dict() for person in family_tree.people.values() if isinstance(person, object)]
         current_app.logger.info(f"API Get All People: Retrieved {len(people_list)} people for user '{username}'.")
         return jsonify(people_list)
     except Exception as e:
         current_app.logger.exception(f"API Get All People Error: Failed to retrieve people data for user '{username}'.")
-        abort(500, description="Failed to retrieve people data.")
+        abort(500)
 
 @app.route('/api/people/<person_id>', methods=['GET'])
 @api_login_required
-@family_tree_required
 def get_person(person_id):
     """API endpoint to get details for a specific person."""
     username = session.get('username', 'api_user')
     current_app.logger.debug(f"API Get Person requested by '{username}' for ID: {person_id}.")
-    if not family_tree: return jsonify({"error": "Family tree service unavailable."}), 503
+    if not family_tree: abort(503, description="Family tree service unavailable.")
     try:
         person = family_tree.find_person(person_id=person_id)
         if person:
@@ -549,22 +641,22 @@ def get_person(person_id):
         else:
             current_app.logger.warning(f"API Get Person Failed: Person ID '{person_id}' not found for user '{username}'.")
             abort(404, description="Person not found.")
+    except HTTPException as http_ex:
+        raise http_ex
     except Exception as e:
         current_app.logger.exception(f"API Get Person Error: Failed to retrieve person data for ID '{person_id}', user '{username}'.")
-        abort(500, description="Failed to retrieve person data.")
+        abort(500)
 
 @app.route('/api/people', methods=['POST'])
 @api_login_required
-@family_tree_required
 def api_add_person():
     """API endpoint to add a new person."""
     username = session.get('username', 'api_user')
     current_app.logger.debug(f"API Add Person attempt by '{username}'.")
-    if not family_tree: return jsonify({"error": "Family tree service unavailable."}), 503
+    if not family_tree: abort(503, description="Family tree service unavailable.")
     try:
         data = request.get_json()
-        if not data:
-            abort(400, description="Request body cannot be empty.")
+        if not data: abort(400, description="Request body must be valid JSON.")
 
         validation_errors = validate_person_data(data, is_edit=False)
         if validation_errors:
@@ -596,6 +688,8 @@ def api_add_person():
             current_app.logger.error(f"API Add Person Failed: family_tree.add_person returned None for user '{username}' after validation.")
             abort(500, description="Failed to add person due to an internal error after validation.")
 
+    except HTTPException as http_ex:
+        raise http_ex
     except Exception as e:
         current_app.logger.exception(f"API Add Person Error: Unexpected error for user '{username}'.")
         log_audit(AUDIT_LOG_FILE, username, 'api_add_person', f'unexpected error: {e}')
@@ -603,16 +697,14 @@ def api_add_person():
 
 @app.route('/api/people/<person_id>', methods=['PUT'])
 @api_login_required
-@family_tree_required
 def api_edit_person(person_id):
     """API endpoint to edit an existing person."""
     username = session.get('username', 'api_user')
     current_app.logger.debug(f"API Edit Person attempt by '{username}' for ID: {person_id}.")
-    if not family_tree: return jsonify({"error": "Family tree service unavailable."}), 503
+    if not family_tree: abort(503, description="Family tree service unavailable.")
     try:
         data = request.get_json()
-        if not data:
-            abort(400, description="Request body cannot be empty.")
+        if not data: abort(400, description="Request body must be valid JSON.")
 
         person = family_tree.find_person(person_id=person_id)
         if not person:
@@ -645,6 +737,8 @@ def api_edit_person(person_id):
             current_app.logger.info(f"API Edit Person: No effective changes made by '{username}' for ID '{person_id}'.")
             return jsonify({"message": "No effective changes detected or update failed internally."}), 200
 
+    except HTTPException as http_ex:
+        raise http_ex
     except Exception as e:
         current_app.logger.exception(f"API Edit Person Error: Unexpected error for user '{username}', ID '{person_id}'.")
         log_audit(AUDIT_LOG_FILE, username, 'api_edit_person', f'unexpected error for id {person_id}: {e}')
@@ -652,12 +746,11 @@ def api_edit_person(person_id):
 
 @app.route('/api/people/<person_id>', methods=['DELETE'])
 @api_login_required
-@family_tree_required
 def api_delete_person(person_id):
     """API endpoint to delete a person."""
     username = session.get('username', 'api_user')
     current_app.logger.debug(f"API Delete Person attempt by '{username}' for ID: {person_id}.")
-    if not family_tree: return jsonify({"error": "Family tree service unavailable."}), 503
+    if not family_tree: abort(503, description="Family tree service unavailable.")
     try:
         person = family_tree.find_person(person_id=person_id)
         if not person:
@@ -674,6 +767,8 @@ def api_delete_person(person_id):
             current_app.logger.error(f"API Delete Person Failed: delete_person returned False for ID '{person_id}', user '{username}' after person was found.")
             abort(500, description="Failed to delete person due to an internal error.")
 
+    except HTTPException as http_ex:
+        raise http_ex
     except Exception as e:
         current_app.logger.exception(f"API Delete Person Error: Unexpected error for user '{username}', ID '{person_id}'.")
         log_audit(AUDIT_LOG_FILE, username, 'api_delete_person', f'unexpected error for id {person_id}: {e}')
@@ -682,36 +777,34 @@ def api_delete_person(person_id):
 
 @app.route('/api/relationships', methods=['GET'])
 @api_login_required
-@family_tree_required
 def get_all_relationships():
     """API endpoint to get a list of all relationships."""
     username = session.get('username', 'api_user')
     current_app.logger.debug(f"API Get All Relationships requested by '{username}'.")
-    if not family_tree: return jsonify({"error": "Family tree service unavailable."}), 503
+    if not family_tree: abort(503, description="Family tree service unavailable.")
     try:
         relationships_list = [rel.to_dict() for rel in family_tree.relationships.values() if isinstance(rel, object)]
         current_app.logger.info(f"API Get All Relationships: Retrieved {len(relationships_list)} relationships for user '{username}'.")
         return jsonify(relationships_list)
     except Exception as e:
         current_app.logger.exception(f"API Get All Relationships Error: Failed to retrieve relationships data for user '{username}'.")
-        abort(500, description="Failed to retrieve relationships data.")
+        abort(500)
 
 @app.route('/api/relationships', methods=['POST'])
 @api_login_required
-@family_tree_required
 def api_add_relationship():
     """API endpoint to add a new relationship."""
     username = session.get('username', 'api_user')
     current_app.logger.debug(f"API Add Relationship attempt by '{username}'.")
-    if not family_tree: return jsonify({"error": "Family tree service unavailable."}), 503
+    if not family_tree: abort(503, description="Family tree service unavailable.")
     try:
         data = request.get_json()
-        if not data:
-            abort(400, description="Request body cannot be empty.")
+        if not data: abort(400, description="Request body must be valid JSON.")
 
-        person1_id = data.get('person1') # Match frontend key 'person1'
-        person2_id = data.get('person2') # Match frontend key 'person2'
-        rel_type = data.get('relationshipType') # Match frontend key 'relationshipType'
+        # Map frontend keys to backend expected keys
+        person1_id = data.get('person1')
+        person2_id = data.get('person2')
+        rel_type = data.get('relationshipType')
         attributes = data.get('attributes', {})
 
         errors = {}
@@ -721,9 +814,9 @@ def api_add_relationship():
         if person1_id and person1_id == person2_id:
             errors['person2'] = 'Cannot add relationship to the same person.'
         if rel_type and rel_type not in VALID_RELATIONSHIP_TYPES:
-            # Allow frontend flexibility, but log warning if not in predefined list
-            # errors['relationshipType'] = f"Invalid relationship type '{rel_type}'. Valid types: {', '.join(VALID_RELATIONSHIP_TYPES)}"
             current_app.logger.warning(f"API Add Relationship: Received potentially non-standard relationship type '{rel_type}' from user '{username}'.")
+            # Decide if this is an error or just a warning
+            # errors['relationshipType'] = f"Invalid relationship type '{rel_type}'. Valid types: {', '.join(VALID_RELATIONSHIP_TYPES)}"
 
         person1, person2 = None, None
         if person1_id and 'person1' not in errors:
@@ -751,6 +844,8 @@ def api_add_relationship():
             current_app.logger.error(f"API Add Relationship Failed: family_tree.add_relationship returned None for user '{username}' after validation.")
             abort(409, description="Failed to add relationship. It might already exist or an internal error occurred.")
 
+    except HTTPException as http_ex:
+        raise http_ex
     except Exception as e:
         current_app.logger.exception(f"API Add Relationship Error: Unexpected error for user '{username}'.")
         log_audit(AUDIT_LOG_FILE, username, 'api_add_relationship', f'unexpected error: {e}')
@@ -758,16 +853,14 @@ def api_add_relationship():
 
 @app.route('/api/relationships/<relationship_id>', methods=['PUT'])
 @api_login_required
-@family_tree_required
 def api_edit_relationship(relationship_id):
     """API endpoint to edit an existing relationship."""
     username = session.get('username', 'api_user')
     current_app.logger.debug(f"API Edit Relationship attempt by '{username}' for ID: {relationship_id}.")
-    if not family_tree: return jsonify({"error": "Family tree service unavailable."}), 503
+    if not family_tree: abort(503, description="Family tree service unavailable.")
     try:
         data = request.get_json()
-        if not data:
-            abort(400, description="Request body cannot be empty.")
+        if not data: abort(400, description="Request body must be valid JSON.")
 
         rel = family_tree.relationships.get(relationship_id)
         if not rel:
@@ -775,39 +868,45 @@ def api_edit_relationship(relationship_id):
             abort(404, description="Relationship not found.")
 
         errors = {}
-        new_type = data.get('relationshipType') # Match frontend key
+        # Map frontend keys to backend expected keys for validation
+        new_type = data.get('relationshipType')
+        new_p1_id = data.get('person1')
+        new_p2_id = data.get('person2')
+        new_attributes = data.get('attributes')
+
         if 'relationshipType' in data:
             if not new_type or not str(new_type).strip():
                 errors['relationshipType'] = 'Relationship type cannot be empty.'
             elif new_type not in VALID_RELATIONSHIP_TYPES:
                  current_app.logger.warning(f"API Edit Relationship: Received potentially non-standard relationship type '{new_type}' from user '{username}' for rel ID {relationship_id}.")
-                 # Decide if this should be an error or just a warning
                  # errors['relationshipType'] = f"Invalid relationship type '{new_type}'. Valid types: {', '.join(VALID_RELATIONSHIP_TYPES)}"
 
-        if 'attributes' in data and not isinstance(data.get('attributes'), dict):
+        if 'attributes' in data and not isinstance(new_attributes, dict):
             errors['attributes'] = 'Attributes must be a valid JSON object (dictionary).'
-        # Validate person IDs if they are included (ensure they exist)
-        new_p1_id = data.get('person1')
-        new_p2_id = data.get('person2')
+
+        # Validate person IDs if they are being changed
         if 'person1' in data:
              if not family_tree.find_person(person_id=new_p1_id): errors['person1'] = f"Person with ID {new_p1_id} not found."
         if 'person2' in data:
              if not family_tree.find_person(person_id=new_p2_id): errors['person2'] = f"Person with ID {new_p2_id} not found."
-        if 'person1' in data and 'person2' in data and new_p1_id == new_p2_id:
+
+        # Check for self-relationship if both persons are being potentially updated
+        check_p1 = new_p1_id if 'person1' in data else rel.person1_id
+        check_p2 = new_p2_id if 'person2' in data else rel.person2_id
+        if check_p1 == check_p2:
              errors['person2'] = 'Cannot set relationship to the same person.'
+
 
         if errors:
             current_app.logger.warning(f"API Edit Relationship Validation Failed for user '{username}', ID '{relationship_id}': {errors}")
             abort(400, description=errors)
 
+        # Prepare update data dict using backend keys
         updated_data = {}
-        # Map frontend keys to backend keys if necessary
         if 'relationshipType' in data: updated_data['rel_type'] = str(new_type).strip()
-        if 'attributes' in data: updated_data['attributes'] = data['attributes']
-        # Allow changing persons in relationship? Be careful with implications.
+        if 'attributes' in data: updated_data['attributes'] = new_attributes
         if 'person1' in data: updated_data['person1_id'] = new_p1_id
         if 'person2' in data: updated_data['person2_id'] = new_p2_id
-
 
         if not updated_data:
             current_app.logger.info(f"API Edit Relationship: No update data provided by '{username}' for ID '{relationship_id}'.")
@@ -826,6 +925,8 @@ def api_edit_relationship(relationship_id):
             current_app.logger.info(f"API Edit Relationship: No effective changes made by '{username}' for ID '{relationship_id}'.")
             return jsonify({"message": "No effective changes detected or update failed internally."}), 200
 
+    except HTTPException as http_ex:
+        raise http_ex
     except Exception as e:
         current_app.logger.exception(f"API Edit Relationship Error: Unexpected error for user '{username}', ID '{relationship_id}'.")
         log_audit(AUDIT_LOG_FILE, username, 'api_edit_relationship', f'unexpected error for id {relationship_id}: {e}')
@@ -834,12 +935,11 @@ def api_edit_relationship(relationship_id):
 
 @app.route('/api/relationships/<relationship_id>', methods=['DELETE'])
 @api_login_required
-@family_tree_required
 def api_delete_relationship(relationship_id):
     """API endpoint to delete a relationship."""
     username = session.get('username', 'api_user')
     current_app.logger.debug(f"API Delete Relationship attempt by '{username}' for ID: {relationship_id}.")
-    if not family_tree: return jsonify({"error": "Family tree service unavailable."}), 503
+    if not family_tree: abort(503, description="Family tree service unavailable.")
     try:
         rel = family_tree.relationships.get(relationship_id)
         if not rel:
@@ -858,6 +958,8 @@ def api_delete_relationship(relationship_id):
             current_app.logger.error(f"API Delete Relationship Failed: delete_relationship returned False for ID '{relationship_id}', user '{username}'.")
             abort(500, description="Failed to delete relationship due to an internal error.")
 
+    except HTTPException as http_ex:
+        raise http_ex
     except Exception as e:
         current_app.logger.exception(f"API Delete Relationship Error: Unexpected error for user '{username}', ID '{relationship_id}'.")
         log_audit(AUDIT_LOG_FILE, username, 'api_delete_relationship', f'unexpected error for id {relationship_id}: {e}')
@@ -865,7 +967,6 @@ def api_delete_relationship(relationship_id):
 
 @app.route('/api/tree_data')
 @api_login_required
-@family_tree_required
 def tree_data():
     """
     Retrieves node and link data for the family tree visualization.
@@ -876,7 +977,7 @@ def tree_data():
     depth_str = request.args.get('depth')
     max_depth = None
 
-    if not family_tree: return jsonify({"error": "Family tree service unavailable."}), 503
+    if not family_tree: abort(503, description="Family tree service unavailable.")
 
     if depth_str:
         try:
@@ -894,41 +995,50 @@ def tree_data():
         data = family_tree.get_nodes_links_data(start_node_id=start_node_id, max_depth=max_depth)
         current_app.logger.debug(f"API Tree Data: Generated {len(data.get('nodes',[]))} nodes, {len(data.get('links',[]))} links for '{username}'.")
         return jsonify(data)
+    except HTTPException as http_ex:
+        raise http_ex
     except Exception as e:
         current_app.logger.exception(f"API Tree Data Error: Failed to generate tree data for user '{username}'. Params: {log_params}.")
         log_audit(AUDIT_LOG_FILE, username, 'get_tree_data', f'error generating data: {e}')
-        abort(500, description="Failed to generate tree data.")
+        abort(500)
 
 
 # --- Main Execution ---
 if __name__ == '__main__':
     # Check for admin user only if user_manager initialized successfully
     if user_manager:
-        if user_manager.users and not any(isinstance(user, object) and getattr(user, 'role', None) == 'admin' for user in user_manager.users.values()):
-            try:
+        try:
+            # Check if ANY admin user exists
+            has_admin = any(isinstance(user, object) and getattr(user, 'role', None) == 'admin'
+                            for user in user_manager.users.values())
+
+            if user_manager.users and not has_admin:
                 first_user_id = next(iter(user_manager.users)) # Get the first user ID
                 user = user_manager.users[first_user_id]
-                if isinstance(user, object): # Check if it's an object
+                if isinstance(user, object): # Check if it's a valid user object
                     first_username = getattr(user, 'username', 'unknown')
                     app.logger.warning(f"No admin user found. Making first user '{first_username}' (ID: {first_user_id}) an admin for initial setup.")
                     user_manager.set_user_role(first_user_id, 'admin', actor_username='system_startup')
                 else:
-                    app.logger.error(f"First item in user manager (ID: {first_user_id}) is not a valid user object.")
-
-            except StopIteration:
-                 app.logger.info("User file exists but contains no users.")
-            except Exception as admin_err:
-                 app.logger.error(f"Error setting initial admin role: {admin_err}", exc_info=True)
-        elif not user_manager.users:
-            app.logger.info("No users found in user file. First registered user may need manual promotion to admin if required.")
+                    app.logger.error(f"First item in user manager (ID: {first_user_id}) is not a valid user object. Cannot promote to admin.")
+            elif not user_manager.users:
+                app.logger.info("No users found in user file. First registered user may need manual promotion to admin if required.")
+            else:
+                 app.logger.info("Admin user(s) found.")
+        except StopIteration:
+             app.logger.info("User file exists but contains no users.")
+        except Exception as admin_err:
+             app.logger.error(f"Error during initial admin check/promotion: {admin_err}", exc_info=True)
     else:
         app.logger.error("User manager failed to initialize. Cannot perform admin check or run application correctly.")
         # Consider exiting if core components fail
         # exit(1)
 
     port = int(os.environ.get('PORT', 8090))
+    # Read FLASK_DEBUG from environment variable for consistency
     debug_mode = os.environ.get('FLASK_DEBUG', '0') == '1'
     app.logger.info(f"Starting Flask server on host 0.0.0.0, port {port}, Debug: {debug_mode}")
 
     # Use app.run for development only
+    # For production, use a WSGI server like Gunicorn or Waitress
     app.run(debug=debug_mode, host='0.0.0.0', port=port)

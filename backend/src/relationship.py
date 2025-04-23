@@ -2,7 +2,8 @@
 
 from typing import Optional, Dict, Any
 from dataclasses import dataclass, field
-import logging  # noqa: E402
+import logging
+import uuid # Import uuid for potential rel_id generation if needed
 
 # Define known relationship types and their reciprocals
 # Use lowercase for consistency
@@ -45,7 +46,9 @@ def get_reciprocal_relationship(rel_type: str) -> str:
         The reciprocal relationship type (e.g., 'child', 'spouse'), or the original
         type if no specific reciprocal is defined.
     """
-    logging.debug(f"get_reciprocal_relationship: Getting reciprocal relationship for: {rel_type}")
+    if not rel_type: # Handle empty string case
+        return ""
+    logging.debug(f"Getting reciprocal relationship for: {rel_type}")
     rel_type_lower = rel_type.lower()
     # Direct lookup
     if rel_type_lower in RELATIONSHIP_MAP:
@@ -60,10 +63,9 @@ def get_reciprocal_relationship(rel_type: str) -> str:
                 # If multiple keys map to this value (like aunt/uncle -> nephew/niece),
                 # returning the first one found or a combined string might be options.
                 # Returning the first found key for simplicity here.
-                # Consider refining this logic based on desired behavior for ambiguous cases.
-                logging.debug(f"get_reciprocal_relationship: Reciprocal keys found: {reciprocal_keys}")
+                logging.debug(f"Reciprocal keys found: {reciprocal_keys}")
                 return reciprocal_keys[0]
-    logging.warning(f"get_reciprocal_relationship: No specific reciprocal found for relationship type '{rel_type}'. Returning original.")
+    logging.warning(f"No specific reciprocal found for relationship type '{rel_type}'. Returning original.")
     # Default: return the original type if no reciprocal mapping found
     return rel_type # Return original type if not found
 
@@ -73,59 +75,114 @@ class Relationship:
     """
     Represents a relationship between two individuals in the family tree.
     Stores the relationship from the perspective of person1.
+
+    Attributes:
+        person1_id (str): ID of the first person in the relationship.
+        person2_id (str): ID of the second person in the relationship.
+        rel_type (str): Type of relationship from person1 to person2 (e.g., 'parent', 'spouse').
+        rel_id (str): Unique identifier for the relationship instance. Generated if not provided.
+        attributes (Optional[Dict[str, Any]]): Dictionary for custom attributes like dates, notes.
     """
     person1_id: str
     person2_id: str
-    rel_type: str # Type of relationship from person1 to person2 (e.g., 'parent', 'spouse')
-    attributes: Optional[Dict[str, Any]] = field(default_factory=dict) # e.g., start_date, end_date, location, notes
+    rel_type: str
+    rel_id: str = field(default_factory=lambda: str(uuid.uuid4())) # Auto-generate ID if not provided
+    attributes: Optional[Dict[str, Any]] = field(default_factory=dict)
 
     def __post_init__(self):
-        logging.debug(f"__post_init__: Initializing Relationship object")
-        # Validate rel_type against known types
+        """Post-initialization checks and setup."""
+        logging.debug(f"Initializing Relationship object: {self.rel_id}")
+        # Ensure IDs are strings
+        if not isinstance(self.person1_id, str) or not self.person1_id:
+             raise ValueError("person1_id must be a non-empty string")
+        if not isinstance(self.person2_id, str) or not self.person2_id:
+             raise ValueError("person2_id must be a non-empty string")
+        if not isinstance(self.rel_type, str) or not self.rel_type:
+             raise ValueError("rel_type must be a non-empty string")
+        if not isinstance(self.rel_id, str) or not self.rel_id:
+             raise ValueError("rel_id must be a non-empty string")
+
+        # Validate rel_type against known types (optional warning)
         if self.rel_type.lower() not in VALID_RELATIONSHIP_TYPES:
-            logging.warning(f"__post_init__: Relationship created with potentially invalid type: '{self.rel_type}'")
-            
+            logging.warning(f"Relationship {self.rel_id} created with potentially invalid type: '{self.rel_type}'")
+
         # Ensure attributes is a dict
         if self.attributes is None:
             self.attributes = {}
+        elif not isinstance(self.attributes, dict):
+             logging.warning(f"Relationship {self.rel_id} attributes initialized with non-dict type ({type(self.attributes)}). Setting to empty dict.")
+             self.attributes = {}
+
 
     def __repr__(self) -> str:
         """Provides a developer-friendly string representation."""
-        return f"Relationship: {self.person1_id} -> {self.person2_id} ({self.rel_type})"
+        return f"Relationship(id={self.rel_id}, p1={self.person1_id}, p2={self.person2_id}, type='{self.rel_type}')"
+
+    def __str__(self) -> str:
+        """Provides a user-friendly string representation."""
+        # Potentially fetch names if a FamilyTree instance is available?
+        # For now, just show IDs and type.
+        return f"{self.person1_id} -> {self.person2_id} ({self.rel_type})"
 
     def __eq__(self, other: object) -> bool:
-        """Checks equality based on persons involved, type, and attributes."""
+        """Checks equality based on rel_id."""
         if not isinstance(other, Relationship):
             return NotImplemented
-        return (self.person1_id == other.person1_id and
-                self.person2_id == other.person2_id and
-                self.rel_type == other.rel_type and
-                self.attributes == other.attributes) # Compare attributes too
+        # Primary key for equality is the relationship ID
+        return self.rel_id == other.rel_id
+
+    def __hash__(self) -> int:
+         """Hashes based on the unique relationship ID."""
+         return hash(self.rel_id)
 
     def to_dict(self) -> Dict[str, Any]:
         """Converts the Relationship object to a dictionary."""
         return {
+            "rel_id": self.rel_id,
             "person1_id": self.person1_id,
             "person2_id": self.person2_id,
-            "rel_type": self.rel_type, # Changed 'type' to 'rel_type' for consistency
-            "attributes": self.attributes
+            "rel_type": self.rel_type,
+            "attributes": self.attributes if self.attributes is not None else {} # Ensure attributes is always a dict
         }
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'Relationship':
-        """Creates a Relationship object from a dictionary."""
-        # Handle potential variations in key names ('type' vs 'rel_type')
+        """
+        Creates a Relationship object from a dictionary.
+
+        Args:
+            data (Dict[str, Any]): Dictionary containing relationship data.
+                                   Expected keys: 'person1_id', 'person2_id', 'rel_type'.
+                                   Optional keys: 'rel_id', 'attributes'.
+
+        Returns:
+            Relationship: An instance of the Relationship class.
+
+        Raises:
+            KeyError: If required keys ('person1_id', 'person2_id', 'rel_type') are missing.
+            ValueError: If any ID or type field is invalid (e.g., not a string, empty).
+        """
+        # Handle potential variations in key names ('type' vs 'rel_type') for robustness
         rel_type = data.get('rel_type', data.get('type'))
         if rel_type is None:
              raise KeyError("Relationship data must include 'rel_type' or 'type'.")
-        logging.debug(f"from_dict: Creating relationship from data: {data}")
-        
-        
-        return cls(
-            person1_id=data['person1_id'], # Let KeyError raise if missing 
-            person2_id=data['person2_id'], # Let KeyError raise if missing
-            rel_type=rel_type,
-            attributes=data.get('attributes') # Defaults to None if missing, handled by __post_init__
-        )
-        )
 
+        # Get required fields, letting KeyError propagate if missing
+        person1_id = data['person1_id']
+        person2_id = data['person2_id']
+
+        # Get optional fields
+        rel_id = data.get('rel_id') # If missing, __init__ will generate one
+        attributes = data.get('attributes') # Defaults to None if missing, handled by __post_init__
+
+        logging.debug(f"Creating relationship from dict. Provided rel_id: {rel_id}, Data: {data}")
+
+        # Use cls() which calls __init__ and __post_init__
+        # The extra parenthesis was removed from the end of this return statement
+        return cls(
+            rel_id=rel_id, # Pass rel_id if present, otherwise default factory in __init__ handles it
+            person1_id=person1_id,
+            person2_id=person2_id,
+            rel_type=rel_type,
+            attributes=attributes
+        )

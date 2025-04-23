@@ -1,7 +1,5 @@
 # docker-compose.yml (in project root: dzinza-python/)
 
-version: '3.8' # Specify docker-compose version
-
 services:
   # Backend Service (Flask API)
   backend:

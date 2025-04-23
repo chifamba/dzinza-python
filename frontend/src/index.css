@@ -1,11 +1,47 @@
+/* frontend/src/index.css */
+
+/* Define color variables (keep existing light/dark theme variables) */
 :root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
+  /* Light Theme (Default) */
+  --color-background: #f8f9fa; /* Slightly off-white background */
+  --color-text: #213547;
+  --color-border: #dee2e6; /* Lighter border */
+  --color-primary: #007bff;
+  --color-primary-hover: #0056b3;
+  --color-secondary: #6c757d;
+  --color-secondary-hover: #5a6268;
+  --color-link: #007bff;
+  --color-link-hover: #0056b3;
+  --color-input-bg: #ffffff;
+  --color-input-border: #ced4da;
+  --color-input-text: #495057;
+  --color-button-bg: var(--color-primary);
+  --color-button-text: #ffffff;
+  --color-button-hover-bg: var(--color-primary-hover);
+  --color-success-bg: #d1e7dd; /* Adjusted success/error colors */
+  --color-success-border: #badbcc;
+  --color-success-text: #0f5132;
+  --color-error-bg: #f8d7da;
+  --color-error-border: #f5c2c7;
+  --color-error-text: #842029;
+  --color-card-bg: #ffffff;
+  --color-card-border: var(--color-border);
+  --color-reactflow-bg: #ffffff; /* Lighter flow bg */
+  --color-reactflow-node-bg: #ffffff;
+  --color-reactflow-node-border: #adb5bd;
+  --color-reactflow-minimap-mask: rgba(240, 240, 240, 0.6);
+  --color-nav-bg: #ffffff; /* Nav specific background */
+  --color-nav-border: var(--color-border);
+  --box-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.6; /* Slightly increased line height */
   font-weight: 400;
 
   color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+  color: var(--color-text);
+  background-color: var(--color-background);
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -13,56 +49,401 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
+/* Dark Theme Styles */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-background: #1a1a1a; /* Darker background */
+    --color-text: rgba(255, 255, 255, 0.87);
+    --color-border: #3a3a3a;
+    --color-primary: #3b82f6;
+    --color-primary-hover: #2563eb;
+    --color-secondary: #9ca3af;
+    --color-secondary-hover: #6b7280;
+    --color-link: #60a5fa;
+    --color-link-hover: #93c5fd;
+    --color-input-bg: #2a2a2a;
+    --color-input-border: #4a4a4a;
+    --color-input-text: rgba(255, 255, 255, 0.87);
+    --color-button-bg: var(--color-primary);
+    --color-button-text: #ffffff;
+    --color-button-hover-bg: var(--color-primary-hover);
+    --color-success-bg: #0f5132;
+    --color-success-border: #1c7430;
+    --color-success-text: #d1e7dd;
+    --color-error-bg: #842029;
+    --color-error-border: #a33a41;
+    --color-error-text: #f8d7da;
+    --color-card-bg: #242424;
+    --color-card-border: var(--color-border);
+    --color-reactflow-bg: #1e1e1e;
+    --color-reactflow-node-bg: #2d2d2d;
+    --color-reactflow-node-border: #555;
+    --color-reactflow-minimap-mask: rgba(60, 60, 60, 0.6);
+    --color-nav-bg: #242424;
+    --color-nav-border: var(--color-border);
+  }
 }
-a:hover {
-  color: #535bf2;
+
+/* Basic Reset and Global Styles */
+*, *::before, *::after {
+  box-sizing: border-box; /* Better box model */
 }
 
 body {
   margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
+  font-family: var(--font-family, Inter, sans-serif); /* Use variable */
+  background-color: var(--color-background);
+  color: var(--color-text);
   min-height: 100vh;
 }
 
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
+#root {
+  /* Remove max-width and padding from root */
+  /* Let App.jsx handle main content constraints */
+  width: 100%;
+  min-height: 100vh;
+  display: flex; /* Use flex for layout */
+  flex-direction: column; /* Stack children vertically */
 }
 
+/* Basic Link Styling */
+a {
+  font-weight: 500;
+  color: var(--color-link);
+  text-decoration: none; /* Remove underline by default */
+  transition: color 0.2s ease-in-out;
+}
+a:hover {
+  color: var(--color-link-hover);
+  text-decoration: underline;
+}
+
+/* Basic Button Styling */
 button {
-  border-radius: 8px;
+  border-radius: 6px; /* Slightly less round */
   border: 1px solid transparent;
   padding: 0.6em 1.2em;
   font-size: 1em;
   font-weight: 500;
   font-family: inherit;
-  background-color: #1a1a1a;
+  background-color: var(--color-button-bg);
+  color: var(--color-button-text);
   cursor: pointer;
-  transition: border-color 0.25s;
+  transition: background-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+  box-shadow: var(--box-shadow-sm);
 }
 button:hover {
-  border-color: #646cff;
+  background-color: var(--color-button-hover-bg);
+  box-shadow: var(--box-shadow);
 }
 button:focus,
 button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+  outline: 2px solid var(--color-primary); /* Thinner outline */
+  outline-offset: 2px;
+}
+button:disabled {
+    background-color: var(--color-secondary);
+    color: rgba(255, 255, 255, 0.7);
+    cursor: not-allowed;
+    opacity: 0.7;
+    box-shadow: none;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
-  }
+/* Basic Input/Select/Textarea Styling */
+input[type="text"],
+input[type="password"],
+input[type="email"],
+input[type="date"],
+select,
+textarea {
+    display: block; /* Ensure they take full width of parent */
+    width: 100%;
+    padding: 0.6em 1em;
+    margin-bottom: 0.5em;
+    border: 1px solid var(--color-input-border);
+    border-radius: 4px;
+    background-color: var(--color-input-bg);
+    color: var(--color-input-text);
+    box-sizing: border-box;
+    font-family: inherit;
+    font-size: 1em;
+    transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
 }
+input:focus, select:focus, textarea:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25); /* Focus ring */
+}
+
+textarea {
+    min-height: 80px;
+    resize: vertical;
+}
+label {
+    display: block;
+    margin-bottom: 0.4em; /* Slightly more space */
+    font-weight: 500; /* Slightly less bold */
+    font-size: 0.95em;
+}
+
+/* Form Container Styling */
+.form-container {
+    /* Keep max-width for readability on wide screens */
+    max-width: 600px;
+    /* Center the form container itself */
+    margin: 40px auto;
+    padding: 25px 30px; /* More padding */
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background-color: var(--color-card-bg);
+    box-shadow: var(--box-shadow);
+}
+.form-container h1,
+.form-container h2 {
+    text-align: center;
+    margin-top: 0;
+    margin-bottom: 1.5rem;
+    color: var(--color-text);
+    font-weight: 600;
+}
+.form-group {
+    margin-bottom: 1.2rem; /* More space between groups */
+}
+
+/* Message Styling */
+.message {
+    margin-bottom: 1rem;
+    padding: 0.8em 1em;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    text-align: center;
+    font-size: 0.95em;
+}
+.success-message {
+    color: var(--color-success-text);
+    background-color: var(--color-success-bg);
+    border-color: var(--color-success-border);
+}
+.error-message {
+    color: var(--color-error-text);
+    background-color: var(--color-error-bg);
+    border-color: var(--color-error-border);
+}
+.field-error {
+    color: var(--color-error-text);
+    font-size: 0.9em;
+    margin-top: 0.3em;
+}
+
+/* Basic Table Styling */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 1em;
+    margin-bottom: 1em;
+    background-color: var(--color-card-bg);
+    box-shadow: var(--box-shadow-sm);
+    border-radius: 6px;
+    overflow: hidden; /* Needed for border-radius */
+}
+th, td {
+    border: 1px solid var(--color-border);
+    padding: 0.7em 1em; /* More padding */
+    text-align: left;
+    vertical-align: middle;
+}
+th {
+    background-color: var(--color-background); /* Use main bg for header */
+    font-weight: 600;
+    color: var(--color-text);
+    border-bottom-width: 2px;
+}
+/* Remove striping for cleaner look, or adjust dark mode */
+/* tr:nth-child(even) { background-color: rgba(0, 0, 0, 0.02); } */
+/* @media (prefers-color-scheme: dark) { tr:nth-child(even) { background-color: rgba(255, 255, 255, 0.03); } } */
+td select {
+    margin-bottom: 0; /* Remove margin inside table cell */
+    padding: 0.4em 0.6em; /* Smaller padding for selects in tables */
+}
+td button {
+    padding: 0.3em 0.8em; /* Smaller padding for buttons in tables */
+    font-size: 0.9em;
+}
+
+
+/* Basic Card Styling */
+.card {
+    border: 1px solid var(--color-border);
+    padding: 20px; /* More padding */
+    border-radius: 8px; /* Consistent rounding */
+    margin-bottom: 1rem; /* Space below cards */
+    background-color: var(--color-card-bg);
+    box-shadow: var(--box-shadow-sm);
+}
+
+/* Main Content Area Styling */
+.main-content-area {
+    flex-grow: 1; /* Allow content to take remaining vertical space */
+    padding: 20px; /* Add padding around the main content */
+    width: 100%;
+    max-width: 1400px; /* Optional: Max width for very wide screens */
+    margin: 0 auto; /* Center content area */
+    box-sizing: border-box;
+}
+
+/* Navigation Styling */
+.app-nav {
+    background-color: var(--color-nav-bg);
+    padding: 10px 20px;
+    border-bottom: 1px solid var(--color-nav-border);
+    box-shadow: var(--box-shadow-sm);
+}
+.app-nav ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    gap: 20px; /* More space between nav items */
+    align-items: center;
+}
+.app-nav li {
+    /* Styles for list items if needed */
+}
+.nav-user-info {
+    margin-left: auto; /* Pushes user info/logout to the right */
+    display: flex;
+    align-items: center;
+    gap: 15px; /* Space between welcome text and button */
+}
+.nav-user-info span {
+     color: var(--color-text);
+     font-size: 0.95em;
+}
+.nav-user-info button {
+    padding: 0.4em 0.8em; /* Smaller padding for logout button */
+    font-size: 0.9em;
+    background-color: var(--color-secondary);
+}
+.nav-user-info button:hover {
+    background-color: var(--color-secondary-hover);
+}
+
+/* Dashboard specific layout */
+.dashboard-layout {
+    display: flex;
+    flex-direction: column; /* Stack controls above visualization */
+    height: calc(100vh - 150px); /* Adjust height based on nav/padding */
+    gap: 15px;
+}
+.dashboard-controls {
+    flex-shrink: 0; /* Prevent controls from shrinking */
+    display: flex;
+    gap: 10px;
+}
+.dashboard-main {
+    flex-grow: 1; /* Allow visualization/details to take space */
+    display: flex;
+    gap: 15px;
+    min-height: 400px; /* Ensure minimum height */
+}
+.dashboard-viz-container {
+    flex-grow: 1;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background-color: var(--color-reactflow-bg);
+    position: relative; /* Needed for React Flow controls */
+    box-shadow: var(--box-shadow-sm);
+}
+.dashboard-details-sidebar {
+    width: 320px; /* Fixed width for details */
+    flex-shrink: 0;
+    overflow-y: auto; /* Allow scrolling if content overflows */
+    /* Card styling applied via className="card" */
+}
+
+/* Admin Page Table Container */
+.admin-table-container {
+    overflow-x: auto; /* Allow horizontal scrolling on small screens */
+}
+
+/* Person Node Styling (ensure class names match PersonNode.jsx) */
+.person-node-container {
+    padding: 10px 15px;
+    border: 1px solid var(--color-reactflow-node-border);
+    border-radius: 6px;
+    background: var(--color-reactflow-node-bg);
+    color: var(--color-text);
+    text-align: center;
+    min-width: 160px;
+    box-shadow: var(--box-shadow-sm);
+    cursor: grab; /* Indicate draggable */
+}
+.person-node-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+.person-node-image {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    margin-bottom: 5px;
+    border: 1px solid var(--color-border);
+    background-color: var(--color-secondary); /* Use secondary for placeholder */
+    object-fit: cover; /* Ensure image covers the area */
+}
+.person-node-name {
+    margin: 5px 0;
+    font-size: 0.95em;
+    font-weight: 600; /* Bold name */
+}
+.person-node-dates {
+    margin: 2px 0;
+    font-size: 0.8em;
+    color: var(--color-secondary);
+}
+.person-node-edit-button {
+    margin-top: 8px;
+    font-size: 0.8em;
+    padding: 3px 8px;
+    background-color: var(--color-secondary);
+    color: var(--color-button-text);
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    opacity: 0.8;
+    transition: opacity 0.2s ease-in-out;
+}
+.person-node-edit-button:hover {
+    background-color: var(--color-secondary-hover);
+    opacity: 1;
+}
+/* React Flow Specific Overrides (Use with caution) */
+.react-flow__handle {
+    background: var(--color-primary) !important;
+    width: 8px !important;
+    height: 8px !important;
+    border: 1px solid var(--color-background) !important;
+    box-shadow: var(--box-shadow-sm);
+}
+.react-flow__minimap {
+    background-color: var(--color-card-bg) !important;
+    border: 1px solid var(--color-border) !important;
+    border-radius: 4px;
+}
+.react-flow__controls {
+    box-shadow: var(--box-shadow-sm) !important;
+}
+.react-flow__controls button {
+    background-color: var(--color-card-bg) !important;
+    color: var(--color-text) !important;
+    border-bottom: 1px solid var(--color-border) !important;
+    box-shadow: none !important;
+}
+.react-flow__controls button:hover {
+     background-color: var(--color-background) !important;
+}
+.react-flow__background {
+    background-color: var(--color-reactflow-bg);
+}
+

@@ -11,12 +11,14 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-RUN npm install
+# Use --legacy-peer-deps if you encounter peer dependency issues, otherwise remove it
+RUN npm install # --legacy-peer-deps
 
 # Copy the rest of the frontend application code
 COPY . .
 
 # Build the React application for production
+# Ensure the build command succeeds
 RUN npm run build
 
 # --- Production Stage ---
@@ -26,12 +28,12 @@ FROM nginx:stable-alpine
 # Copy the built assets from the build stage to Nginx's web root
 COPY --from=build /app/dist /usr/share/nginx/html
 
-# Copy custom Nginx configuration if needed (e.g., to handle routing)
-# COPY nginx.conf /etc/nginx/conf.d/default.conf
+# *** ADDED LINE: Copy custom Nginx configuration ***
+# This replaces the default Nginx config with our SPA-friendly one
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # Expose port 80 (default Nginx port)
 EXPOSE 80
 
 # Default command to start Nginx
 CMD ["nginx", "-g", "daemon off;"]
-

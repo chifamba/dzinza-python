@@ -1,14 +1,29 @@
-import React, { useContext } from 'react';
-import { Navigate } from 'react-router-dom';
-import { AuthContext } from '../context/AuthContext';
+import React from 'react'; // Import React
+import { Navigate, useLocation } from 'react-router-dom';
+// Import the custom hook instead of context directly
+import { useAuth } from '../context/AuthContext';
 
 const PrivateRoute = ({ children }) => {
-  const { user } = useContext(AuthContext);
+  // Use the custom hook to get user and loading state
+  const { user, loading } = useAuth();
+  const location = useLocation(); // Get current location
 
-  if (!user) {
-    return <Navigate to="/login" />;
+  // Show loading indicator while authentication status is being checked
+  if (loading) {
+    // You can replace this with a more sophisticated loading spinner
+    return <div>Loading authentication...</div>;
   }
 
+  // If not loading and no user exists, redirect to login
+  if (!user) {
+    // Redirect them to the /login page, but save the current location they were
+    // trying to go to in the state property. This allows us to send them
+    // along to that page after they login, which is a nicer user experience
+    // than dropping them off on the home page.
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  // If user is authenticated, render the child components
   return children;
 };
 

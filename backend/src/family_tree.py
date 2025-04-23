@@ -1,424 +1,598 @@
 # backend/src/family_tree.py
 import json
-import uuid
-import logging
 import os
-from datetime import datetime, date
-from collections import deque # Needed for BFS
+import logging
+from typing import Dict, List, Optional, Any, Tuple
+from dataclasses import asdict
+from datetime import date
+import uuid # Ensure uuid is imported
 
+# Import Person and Relationship from sibling modules
 from .person import Person
-from .relationship import Relationship, VALID_RELATIONSHIP_TYPES
-from .db_utils import load_data, save_data
+from .relationship import Relationship, get_reciprocal_relationship, VALID_RELATIONSHIP_TYPES
 from .audit_log import log_audit
-from .photo_utils import generate_default_person_photo
+from .db_utils import load_data, save_data
+
 
 class FamilyTree:
     """
-    Manages the collection of Person and Relationship objects,
-    handling loading, saving, and basic operations.
+    Manages the collection of people and relationships in a family tree.
+    Handles loading from and saving to a JSON file.
     """
     def __init__(self, tree_file_path=None, audit_log_path=None):
         """
         Initializes the FamilyTree.
 
         Args:
-            tree_file_path (str, optional): Path to the family tree data file.
-                                            Defaults to 'data/family_tree.json' in the backend directory.
+            tree_file_path (str, optional): Path to the JSON file storing tree data.
+                                            Defaults to 'backend/data/family_tree.json'.
             audit_log_path (str, optional): Path to the audit log file.
-                                            Defaults to 'audit.log' in the backend directory.
+                                            Defaults to 'backend/logs/audit.log'.
         """
-        self.people: dict[str, Person] = {}
-        self.relationships: dict[str, Relationship] = {}
-        backend_dir = os.path.dirname(os.path.dirname(__file__))
-        default_tree_file = os.path.join(backend_dir, 'data', 'family_tree.json')
-        default_audit_log = os.path.join(backend_dir, 'audit.log') # Keep audit log path simple for now
+        # Determine base directory relative to this file's location
+        backend_dir = os.path.dirname(os.path.dirname(__file__)) # Go up two directories
 
-        self.tree_file_path = tree_file_path if tree_file_path else default_tree_file
-        self.audit_log_path = audit_log_path if audit_log_path else default_audit_log
+        # Set default paths relative to the backend directory
+        self.tree_file_path = tree_file_path or os.path.join(backend_dir, 'data', 'family_tree.json')
+        self.audit_log_path = audit_log_path or os.path.join(backend_dir, 'logs', 'backend', 'audit.log') # Corrected default path
 
+        # Ensure directories exist
         tree_dir = os.path.dirname(self.tree_file_path)
-        if tree_dir:
-            os.makedirs(tree_dir, exist_ok=True)
+        log_dir = os.path.dirname(self.audit_log_path)
+        if tree_dir: os.makedirs(tree_dir, exist_ok=True)
+        if log_dir: os.makedirs(log_dir, exist_ok=True)
+
+        self.people: Dict[str, Person] = {}
+        self.relationships: Dict[str, Relationship] = {}
         logging.info(f"FamilyTree initialized. Data file: {self.tree_file_path}, Audit log: {self.audit_log_path}")
-        # Load tree on initialization
         self.load_tree()
 
-    # --- Validation Helper ---
+    # --- Person Management ---
+
+    def add_person(self, first_name: str, last_name: str = "", nickname: Optional[str] = None,
+                   dob: Optional[str] = None, dod: Optional[str] = None, gender: Optional[str] = None,
+                   pob: Optional[str] = None, pod: Optional[str] = None, notes: Optional[str] = None,
+                   added_by: str = "system", **kwargs) -> Optional[Person]:
+        """
+        Adds a new person to the family tree.
+
+        Args:
+            first_name (str): The person's first name.
+            last_name (str, optional): The person's last name. Defaults to "".
+            nickname (Optional[str], optional): The person's nickname. Defaults to None.
+            dob (Optional[str], optional): Date of birth (YYYY-MM-DD). Defaults to None.
+            dod (Optional[str], optional): Date of death (YYYY-MM-DD). Defaults to None.
+            gender (Optional[str], optional): Gender ('Male', 'Female', 'Other'). Defaults to None.
+            pob (Optional[str], optional): Place of birth. Defaults to None.
+            pod (Optional[str], optional): Place of death. Defaults to None.
+            notes (Optional[str], optional): Additional notes. Defaults to None.
+            added_by (str, optional): Username of the user adding the person. Defaults to "system".
+            **kwargs: Additional attributes to store in the person's attributes dictionary.
+
+        Returns:
+            Optional[Person]: The newly created Person object, or None if creation failed.
+        """
+        try:
+            # Basic validation
+            if not first_name or not isinstance(first_name, str):
+                raise ValueError("First name is required and must be a string.")
+            if dob and not self._is_valid_date(dob):
+                raise ValueError("Invalid date format for Date of Birth (YYYY-MM-DD).")
+            if dod and not self._is_valid_date(dod):
+                raise ValueError("Invalid date format for Date of Death (YYYY-MM-DD).")
+            if dob and dod and date.fromisoformat(dod) < date.fromisoformat(dob):
+                raise ValueError("Date of Death cannot be before Date of Birth.")
+            if gender and gender not in ['Male', 'Female', 'Other']:
+                raise ValueError("Invalid gender. Use 'Male', 'Female', or 'Other'.")
+
+            person_id = str(uuid.uuid4()) # Generate a unique ID
+            new_person = Person(
+                person_id=person_id,
+                first_name=first_name.strip(),
+                last_name=last_name.strip() if last_name else "",
+                nickname=nickname.strip() if nickname else None,
+                birth_date=dob,
+                death_date=dod,
+                gender=gender,
+                place_of_birth=pob.strip() if pob else None,
+                place_of_death=pod.strip() if pod else None,
+                notes=notes.strip() if notes else None,
+                attributes=kwargs # Store any extra attributes
+            )
+            self.people[person_id] = new_person
+            self.save_tree()
+            log_audit(self.audit_log_path, added_by, 'add_person', f'success - id: {person_id}, name: {new_person.get_full_name()}')
+            logging.info(f"Added person: {new_person}")
+            return new_person
+        except ValueError as ve:
+            logging.error(f"Error adding person (Validation): {ve}", exc_info=False) # No need for traceback on validation
+            log_audit(self.audit_log_path, added_by, 'add_person', f'failure - validation: {ve}')
+            return None
+        except Exception as e:
+            logging.error(f"Unexpected error adding person: {e}", exc_info=True)
+            log_audit(self.audit_log_path, added_by, 'add_person', f'failure - unexpected: {e}')
+            return None
+
+    def edit_person(self, person_id: str, updates: Dict[str, Any], edited_by: str = "system") -> bool:
+        """
+        Edits details of an existing person.
+
+        Args:
+            person_id (str): The ID of the person to edit.
+            updates (Dict[str, Any]): Dictionary containing fields to update and their new values.
+                                      Allowed keys match Person attributes.
+            edited_by (str, optional): Username of the user editing the person. Defaults to "system".
+
+        Returns:
+            bool: True if the person was found and updated (even if no effective change), False otherwise.
+        """
+        person = self.find_person(person_id=person_id)
+        if not person:
+            logging.warning(f"edit_person: Person with ID {person_id} not found.")
+            log_audit(self.audit_log_path, edited_by, 'edit_person', f'failure - person not found: {person_id}')
+            return False
+
+        logging.info(f"Attempting to edit person {person_id} by {edited_by}. Updates: {updates}")
+        original_data = person.to_dict() # For comparison/logging if needed
+        updated = False
+        validation_errors = {}
+
+        # Validate and apply updates
+        allowed_fields = list(Person.__annotations__.keys()) # Get fields from dataclass definition
+        allowed_fields.remove('person_id') # ID cannot be changed
+
+        # Validate dates first
+        new_dob = updates.get('birth_date', person.birth_date)
+        new_dod = updates.get('death_date', person.death_date)
+        if 'birth_date' in updates and new_dob and not self._is_valid_date(new_dob):
+            validation_errors['birth_date'] = "Invalid date format (YYYY-MM-DD)."
+        if 'death_date' in updates and new_dod and not self._is_valid_date(new_dod):
+            validation_errors['death_date'] = "Invalid date format (YYYY-MM-DD)."
+        if new_dob and new_dod and 'birth_date' not in validation_errors and 'death_date' not in validation_errors:
+            try:
+                if date.fromisoformat(new_dod) < date.fromisoformat(new_dob):
+                    validation_errors['death_date'] = "Date of Death cannot be before Date of Birth."
+            except (ValueError, TypeError):
+                 validation_errors['date_comparison'] = "Invalid date format for comparison." # Should have been caught above, but check again
+
+        # Validate gender if present
+        if 'gender' in updates and updates['gender'] and updates['gender'] not in ['Male', 'Female', 'Other']:
+             validation_errors['gender'] = "Invalid gender. Use 'Male', 'Female', or 'Other'."
+
+        if validation_errors:
+            logging.warning(f"Validation errors editing person {person_id}: {validation_errors}")
+            log_audit(self.audit_log_path, edited_by, 'edit_person', f'failure - validation: {validation_errors} for {person_id}')
+            # Optionally raise an exception or return a specific code/message
+            # For now, just return False as update didn't proceed
+            return False
+
+        # Apply valid updates
+        for field, value in updates.items():
+            if field in allowed_fields:
+                # Strip strings, handle None for optional fields
+                current_value = getattr(person, field)
+                new_value = value
+                if isinstance(new_value, str):
+                    new_value = new_value.strip()
+                if field in ['nickname', 'birth_date', 'death_date', 'gender', 'place_of_birth', 'place_of_death', 'notes'] and not new_value:
+                    new_value = None # Set optional fields to None if update value is empty
+
+                if current_value != new_value:
+                    setattr(person, field, new_value)
+                    updated = True
+                    logging.debug(f"Updated field '{field}' for person {person_id}")
+            elif field == 'attributes' and isinstance(value, dict):
+                 # Special handling for attributes dictionary (merge or replace?)
+                 # Let's merge for now
+                 if person.attributes != value: # Check if attributes actually changed
+                     person.attributes.update(value) # Or person.attributes = value for replacement
+                     updated = True
+                     logging.debug(f"Updated attributes for person {person_id}")
+            else:
+                 logging.warning(f"edit_person: Ignoring invalid or disallowed field '{field}' for person {person_id}")
+
+
+        if updated:
+            self.save_tree()
+            log_audit(self.audit_log_path, edited_by, 'edit_person', f'success - id: {person_id}')
+            logging.info(f"Successfully updated person {person_id}.")
+        else:
+            logging.info(f"No effective changes made to person {person_id}.")
+            log_audit(self.audit_log_path, edited_by, 'edit_person', f'no change - id: {person_id}')
+
+        return True # Return True even if no changes, as the person was found
+
+    def delete_person(self, person_id: str, deleted_by: str = "system") -> bool:
+        """
+        Deletes a person and all their associated relationships.
+
+        Args:
+            person_id (str): The ID of the person to delete.
+            deleted_by (str, optional): Username of the user deleting the person. Defaults to "system".
+
+        Returns:
+            bool: True if the person was found and deleted, False otherwise.
+        """
+        if person_id not in self.people:
+            logging.warning(f"delete_person: Person with ID {person_id} not found.")
+            log_audit(self.audit_log_path, deleted_by, 'delete_person', f'failure - person not found: {person_id}')
+            return False
+
+        person_name = self.people[person_id].get_full_name()
+        logging.info(f"Attempting to delete person {person_id} ('{person_name}') by {deleted_by}.")
+
+        # Find and delete relationships involving this person
+        rels_to_delete = [
+            rel_id for rel_id, rel in self.relationships.items()
+            if rel.person1_id == person_id or rel.person2_id == person_id
+        ]
+        deleted_rel_count = 0
+        for rel_id in rels_to_delete:
+            if rel_id in self.relationships:
+                del self.relationships[rel_id]
+                deleted_rel_count += 1
+                logging.debug(f"Deleted associated relationship {rel_id} for person {person_id}.")
+
+        # Delete the person
+        del self.people[person_id]
+        self.save_tree()
+        log_audit(self.audit_log_path, deleted_by, 'delete_person', f'success - id: {person_id}, name: {person_name}, deleted {deleted_rel_count} relationships')
+        logging.info(f"Deleted person {person_id} ('{person_name}') and {deleted_rel_count} relationships.")
+        return True
+
+    def find_person(self, person_id: Optional[str] = None, name: Optional[str] = None) -> Optional[Person]:
+        """
+        Finds a person by ID or name (case-insensitive partial match on full name).
+
+        Args:
+            person_id (Optional[str]): The exact ID of the person.
+            name (Optional[str]): A name (or part of a name) to search for.
+
+        Returns:
+            Optional[Person]: The found Person object, or None if not found.
+                              If searching by name and multiple matches occur, returns the first match.
+        """
+        if person_id:
+            return self.people.get(person_id)
+        elif name:
+            search_name_lower = name.lower()
+            for person in self.people.values():
+                # Simple search: check if search term is in first or last name
+                if (person.first_name and search_name_lower in person.first_name.lower()) or \
+                   (person.last_name and search_name_lower in person.last_name.lower()) or \
+                   (person.nickname and search_name_lower in person.nickname.lower()):
+                    return person
+            return None # Not found by name
+        else:
+            logging.warning("find_person called without person_id or name.")
+            return None
+
+    # --- Relationship Management ---
+
+    def add_relationship(self, person1_id: str, person2_id: str, relationship_type: str,
+                         attributes: Optional[Dict[str, Any]] = None, added_by: str = "system") -> Optional[Relationship]:
+        """
+        Adds a new relationship between two people.
+
+        Args:
+            person1_id (str): ID of the first person.
+            person2_id (str): ID of the second person.
+            relationship_type (str): The type of relationship (e.g., 'spouse', 'parent').
+            attributes (Optional[Dict[str, Any]], optional): Custom attributes. Defaults to None.
+            added_by (str, optional): Username of the user adding the relationship. Defaults to "system".
+
+        Returns:
+            Optional[Relationship]: The newly created Relationship object, or None if creation failed.
+        """
+        # Validate inputs
+        if person1_id not in self.people:
+            logging.error(f"add_relationship: Person 1 with ID {person1_id} not found.")
+            log_audit(self.audit_log_path, added_by, 'add_relationship', f'failure - person1 not found: {person1_id}')
+            return None
+        if person2_id not in self.people:
+            logging.error(f"add_relationship: Person 2 with ID {person2_id} not found.")
+            log_audit(self.audit_log_path, added_by, 'add_relationship', f'failure - person2 not found: {person2_id}')
+            return None
+        if person1_id == person2_id:
+            logging.error("add_relationship: Cannot add relationship between a person and themselves.")
+            log_audit(self.audit_log_path, added_by, 'add_relationship', f'failure - self-relationship attempt: {person1_id}')
+            return None
+        if not relationship_type: # Check for empty string
+             logging.error("add_relationship: Relationship type cannot be empty.")
+             log_audit(self.audit_log_path, added_by, 'add_relationship', f'failure - empty relationship type between {person1_id} and {person2_id}')
+             return None
+        # Optional: Stricter validation against VALID_RELATIONSHIP_TYPES
+        # if relationship_type.lower() not in VALID_RELATIONSHIP_TYPES:
+        #    logging.warning(f"Adding relationship with potentially invalid type: '{relationship_type}'")
+        #    # Decide whether to reject or allow
+
+        # Check if relationship already exists (consider directionality if needed)
+        # Simple check: Does *any* relationship exist between these two?
+        # More complex: Does this specific type exist? (e.g., prevent adding 'spouse' twice)
+        for rel in self.relationships.values():
+            if (rel.person1_id == person1_id and rel.person2_id == person2_id) or \
+               (rel.person1_id == person2_id and rel.person2_id == person1_id):
+                # Found an existing relationship between these two people.
+                # Check if it's the same type we're trying to add.
+                if rel.rel_type.lower() == relationship_type.lower():
+                    logging.warning(f"Relationship '{relationship_type}' already exists between {person1_id} and {person2_id}.")
+                    log_audit(self.audit_log_path, added_by, 'add_relationship', f'failure - relationship type {relationship_type} already exists between {person1_id} and {person2_id}')
+                    return None # Or return the existing relationship?
+
+        try:
+            new_rel = Relationship(
+                person1_id=person1_id,
+                person2_id=person2_id,
+                rel_type=relationship_type,
+                attributes=attributes # Handled by __post_init__
+            )
+            self.relationships[new_rel.rel_id] = new_rel
+            self.save_tree()
+            log_audit(self.audit_log_path, added_by, 'add_relationship', f'success - id: {new_rel.rel_id}, type: {relationship_type} between {person1_id} and {person2_id}')
+            logging.info(f"Added relationship: {new_rel}")
+            return new_rel
+        except ValueError as ve: # Catch validation errors from Relationship.__post_init__
+            logging.error(f"Error adding relationship (Validation): {ve}", exc_info=False)
+            log_audit(self.audit_log_path, added_by, 'add_relationship', f'failure - validation: {ve}')
+            return None
+        except Exception as e:
+            logging.error(f"Unexpected error adding relationship: {e}", exc_info=True)
+            log_audit(self.audit_log_path, added_by, 'add_relationship', f'failure - unexpected: {e}')
+            return None
+
+    def edit_relationship(self, relationship_id: str, updates: Dict[str, Any], edited_by: str = "system") -> bool:
+        """
+        Edits details of an existing relationship.
+
+        Args:
+            relationship_id (str): The ID of the relationship to edit.
+            updates (Dict[str, Any]): Dictionary containing fields to update.
+                                      Allowed keys: 'rel_type', 'attributes', 'person1_id', 'person2_id'.
+            edited_by (str, optional): Username of the user editing. Defaults to "system".
+
+        Returns:
+            bool: True if the relationship was found and updated, False otherwise.
+        """
+        rel = self.relationships.get(relationship_id)
+        if not rel:
+            logging.warning(f"edit_relationship: Relationship with ID {relationship_id} not found.")
+            log_audit(self.audit_log_path, edited_by, 'edit_relationship', f'failure - relationship not found: {relationship_id}')
+            return False
+
+        logging.info(f"Attempting to edit relationship {relationship_id} by {edited_by}. Updates: {updates}")
+        updated = False
+        validation_errors = {}
+
+        # Validate potential updates
+        new_type = updates.get('rel_type', rel.rel_type)
+        new_p1 = updates.get('person1_id', rel.person1_id)
+        new_p2 = updates.get('person2_id', rel.person2_id)
+        new_attrs = updates.get('attributes') # Check type later
+
+        if 'rel_type' in updates and (not new_type or not isinstance(new_type, str)):
+             validation_errors['rel_type'] = "Relationship type must be a non-empty string."
+        # elif 'rel_type' in updates and new_type.lower() not in VALID_RELATIONSHIP_TYPES:
+        #      logging.warning(f"Editing relationship {relationship_id} to potentially invalid type: '{new_type}'")
+             # Decide if this is an error
+
+        if 'person1_id' in updates:
+             if not new_p1 or not isinstance(new_p1, str): validation_errors['person1_id'] = "Person 1 ID must be a non-empty string."
+             elif new_p1 not in self.people: validation_errors['person1_id'] = f"Person with ID {new_p1} not found."
+        if 'person2_id' in updates:
+             if not new_p2 or not isinstance(new_p2, str): validation_errors['person2_id'] = "Person 2 ID must be a non-empty string."
+             elif new_p2 not in self.people: validation_errors['person2_id'] = f"Person with ID {new_p2} not found."
+
+        if new_p1 == new_p2: # Check if update would result in self-relationship
+             validation_errors['person_ids'] = "Person 1 and Person 2 cannot be the same."
+
+        if 'attributes' in updates and not isinstance(new_attrs, dict):
+             validation_errors['attributes'] = "Attributes must be a dictionary."
+
+        if validation_errors:
+            logging.warning(f"Validation errors editing relationship {relationship_id}: {validation_errors}")
+            log_audit(self.audit_log_path, edited_by, 'edit_relationship', f'failure - validation: {validation_errors} for {relationship_id}')
+            return False
+
+        # Apply valid updates
+        if 'rel_type' in updates and rel.rel_type != new_type:
+            rel.rel_type = new_type
+            updated = True
+        if 'person1_id' in updates and rel.person1_id != new_p1:
+            rel.person1_id = new_p1
+            updated = True
+        if 'person2_id' in updates and rel.person2_id != new_p2:
+            rel.person2_id = new_p2
+            updated = True
+        if 'attributes' in updates and rel.attributes != new_attrs:
+            rel.attributes = new_attrs if new_attrs is not None else {} # Ensure it's a dict
+            updated = True
+
+        if updated:
+            self.save_tree()
+            log_audit(self.audit_log_path, edited_by, 'edit_relationship', f'success - id: {relationship_id}')
+            logging.info(f"Successfully updated relationship {relationship_id}.")
+        else:
+            logging.info(f"No effective changes made to relationship {relationship_id}.")
+            log_audit(self.audit_log_path, edited_by, 'edit_relationship', f'no change - id: {relationship_id}')
+
+        return True # Return True even if no changes, as relationship was found
+
+    def delete_relationship(self, relationship_id: str, deleted_by: str = "system") -> bool:
+        """
+        Deletes a specific relationship by its ID.
+
+        Args:
+            relationship_id (str): The ID of the relationship to delete.
+            deleted_by (str, optional): Username of the user deleting. Defaults to "system".
+
+        Returns:
+            bool: True if the relationship was found and deleted, False otherwise.
+        """
+        if relationship_id not in self.relationships:
+            logging.warning(f"delete_relationship: Relationship with ID {relationship_id} not found.")
+            log_audit(self.audit_log_path, deleted_by, 'delete_relationship', f'failure - relationship not found: {relationship_id}')
+            return False
+
+        rel_info = repr(self.relationships[relationship_id]) # Get info before deleting
+        del self.relationships[relationship_id]
+        self.save_tree()
+        log_audit(self.audit_log_path, deleted_by, 'delete_relationship', f'success - id: {relationship_id}, info: {rel_info}')
+        logging.info(f"Deleted relationship {relationship_id}.")
+        return True
+
+    # --- Data Persistence ---
+
+    def save_tree(self):
+        """Saves the current state of the family tree (people and relationships) to the JSON file."""
+        logging.debug(f"Attempting to save tree to {self.tree_file_path}")
+        try:
+            tree_data = {
+                "people": {pid: person.to_dict() for pid, person in self.people.items()},
+                "relationships": {rid: rel.to_dict() for rid, rel in self.relationships.items()}
+            }
+            # Use db_utils to handle saving and encryption
+            save_data(self.tree_file_path, tree_data, is_encrypted=True)
+            logging.info(f"Family tree saved successfully to {self.tree_file_path}")
+        except Exception as e:
+            logging.error(f"Failed to save family tree to {self.tree_file_path}: {e}", exc_info=True)
+            # Avoid audit log for routine saves unless specifically needed
+            # log_audit(self.audit_log_path, "system", "save_tree", f"failure: {e}")
+
+    def load_tree(self, loaded_by="system"):
+        """Loads the family tree state from the JSON file."""
+        logging.debug(f"Attempting to load tree from {self.tree_file_path}")
+        try:
+            # Use db_utils to handle loading and decryption
+            data = load_data(self.tree_file_path, default=None, is_encrypted=True)
+
+            if data is None or not isinstance(data, dict):
+                 # This case handles file not found, decryption failure, or invalid format from load_data
+                 logging.warning(f"No valid data loaded from {self.tree_file_path}. Initializing empty tree.")
+                 self.people = {}
+                 self.relationships = {}
+                 # Optionally save an empty encrypted file immediately if one didn't exist
+                 # if not os.path.exists(self.tree_file_path):
+                 #     self.save_tree()
+                 return
+
+            # If data is loaded, process it
+            loaded_people = {}
+            loaded_relationships = {}
+            invalid_people_count = 0
+            invalid_rel_count = 0
+
+            # Load people
+            people_data = data.get("people", {})
+            if isinstance(people_data, dict):
+                for pid, p_data in people_data.items():
+                    try:
+                        if isinstance(p_data, dict):
+                            loaded_people[pid] = Person.from_dict(p_data)
+                        else:
+                             logging.warning(f"Invalid data format for person ID {pid} in {self.tree_file_path}. Skipping.")
+                             invalid_people_count += 1
+                    except (KeyError, ValueError, TypeError) as e:
+                        logging.error(f"Error loading person data for ID {pid} from {self.tree_file_path}: {e}. Skipping.")
+                        invalid_people_count += 1
+
+            # Load relationships
+            relationships_data = data.get("relationships", {})
+            if isinstance(relationships_data, dict):
+                for rid, r_data in relationships_data.items():
+                     try:
+                         if isinstance(r_data, dict):
+                             # Ensure persons exist before adding relationship
+                             p1_id = r_data.get('person1_id')
+                             p2_id = r_data.get('person2_id')
+                             if p1_id in loaded_people and p2_id in loaded_people:
+                                 loaded_relationships[rid] = Relationship.from_dict(r_data)
+                             else:
+                                 logging.warning(f"Skipping relationship {rid}: Person ID {p1_id or '??'} or {p2_id or '??'} not found/loaded.")
+                                 invalid_rel_count += 1
+                         else:
+                              logging.warning(f"Invalid data format for relationship ID {rid} in {self.tree_file_path}. Skipping.")
+                              invalid_rel_count += 1
+                     except (KeyError, ValueError, TypeError) as e:
+                         logging.error(f"Error loading relationship data for ID {rid} from {self.tree_file_path}: {e}. Skipping.")
+                         invalid_rel_count += 1
+
+            self.people = loaded_people
+            self.relationships = loaded_relationships
+
+            log_msg = f"success - loaded {len(self.people)} people, {len(self.relationships)} relationships."
+            if invalid_people_count > 0: log_msg += f" Skipped {invalid_people_count} invalid people entries."
+            if invalid_rel_count > 0: log_msg += f" Skipped {invalid_rel_count} invalid relationship entries."
+            logging.info(f"Family tree loaded successfully: {len(self.people)} people, {len(self.relationships)} relationships.")
+            log_audit(self.audit_log_path, loaded_by, 'load_tree', log_msg)
+
+        # --- MODIFIED EXCEPTION LOGGING ---
+        except Exception as e:
+            log_audit_msg = f'failure: {e}'
+            # Check if it's a RecursionError to avoid deep traceback logging
+            if isinstance(e, RecursionError):
+                 logging.error(f"Critical RecursionError loading family tree from {self.tree_file_path}: {e}")
+                 log_audit_msg = f'failure: RecursionError - {e}'
+            else:
+                 # Log other exceptions with full traceback
+                 logging.error(f"Critical error loading family tree from {self.tree_file_path}: {e}", exc_info=True)
+
+            log_audit(self.audit_log_path, loaded_by, 'load_tree', log_audit_msg)
+            # Reset to empty state on critical load failure
+            self.people = {}
+            self.relationships = {}
+        # --- END MODIFIED EXCEPTION LOGGING ---
+
+    # --- Utility Methods ---
+
     @staticmethod
-    def _is_valid_date(date_str):
+    def _is_valid_date(date_str: Optional[str]) -> bool:
         """Checks if a string is a valid YYYY-MM-DD date."""
         if not date_str:
-            return True # Allow empty dates
+            return True # Allow empty/None dates
         try:
-            datetime.strptime(date_str, '%Y-%m-%d')
+            date.fromisoformat(date_str)
             return True
         except (ValueError, TypeError):
             return False
 
-    # --- Person Methods (add_person, edit_person, delete_person remain the same) ---
-    def add_person(self, first_name, last_name, nickname=None, dob=None, dod=None, pob=None, pod=None, gender=None, notes=None, added_by="system", **kwargs):
-        """Adds a new person to the family tree."""
-        # --- Validation ---
-        if not first_name or not str(first_name).strip():
-            logging.error("add_person validation failed: First name cannot be empty.")
-            log_audit(self.audit_log_path, added_by, 'add_person', 'failure - validation: empty first name')
-            return None
-        if dob and not self._is_valid_date(dob):
-            logging.error(f"add_person validation failed: Invalid DOB format '{dob}'. Use YYYY-MM-DD.")
-            log_audit(self.audit_log_path, added_by, 'add_person', f'failure - validation: invalid dob format ({dob})')
-            return None
-        if dod and not self._is_valid_date(dod):
-            logging.error(f"add_person validation failed: Invalid DOD format '{dod}'. Use YYYY-MM-DD.")
-            log_audit(self.audit_log_path, added_by, 'add_person', f'failure - validation: invalid dod format ({dod})')
-            return None
-        if dob and dod:
-            try:
-                if date.fromisoformat(dod) < date.fromisoformat(dob):
-                    logging.error(f"add_person validation failed: DOD ({dod}) cannot be before DOB ({dob}).")
-                    log_audit(self.audit_log_path, added_by, 'add_person', 'failure - validation: dod before dob')
-                    return None
-            except (ValueError, TypeError):
-                logging.warning(f"Could not compare DOB/DOD for validation: {dob}, {dod}", exc_info=True)
-        if gender and gender not in ['Male', 'Female', 'Other']:
-            logging.warning(f"add_person: Invalid gender '{gender}' provided. Setting to None.")
-            gender = None
+    # --- Data for Visualization ---
 
-        person_id = str(uuid.uuid4())
-        try:
-            person = Person(
-                person_id=person_id, first_name=str(first_name).strip(),
-                last_name=str(last_name).strip() if last_name else "",
-                nickname=str(nickname).strip() if nickname else None,
-                birth_date=dob if dob else None, death_date=dod if dod else None,
-                place_of_birth=str(pob).strip() if pob else None,
-                place_of_death=str(pod).strip() if pod else None,
-                gender=gender, notes=str(notes).strip() if notes else None, attributes=kwargs
-            )
-            person.photo_url = generate_default_person_photo(person.person_id)
-        except Exception as e:
-            logging.error(f"Error creating Person object: {e}", exc_info=True)
-            log_audit(self.audit_log_path, added_by, 'add_person', f'failure - error creating person object: {e}')
-            return None
-
-        self.people[person_id] = person
-        display_name = person.get_display_name(); full_name = person.get_full_name()
-        logging.info(f"Person added: {display_name} (ID: {person.person_id})")
-        log_audit(self.audit_log_path, added_by, 'add_person', f'success - id: {person.person_id}, name: {full_name}')
-        self.save_tree(added_by); return person
-
-    def edit_person(self, person_id, updated_data, edited_by="system"):
-        """Edits an existing person's details."""
-        person = self.find_person(person_id=person_id)
-        if not person:
-            logging.error(f"edit_person failed: Person {person_id} not found.")
-            log_audit(self.audit_log_path, edited_by, 'edit_person', f'failure - person not found: {person_id}')
-            return False
-
-        # --- Validation (as before) ---
-        new_first_name = updated_data.get('first_name', person.first_name)
-        new_dob = updated_data.get('birth_date', person.birth_date)
-        new_dod = updated_data.get('death_date', person.death_date)
-        new_gender = updated_data.get('gender', person.gender)
-        if 'first_name' in updated_data and (not new_first_name or not str(new_first_name).strip()):
-            logging.error(f"edit_person validation failed for {person_id}: First name cannot be empty.")
-            log_audit(self.audit_log_path, edited_by, 'edit_person', f'failure - validation: empty first name for id {person_id}')
-            return False
-        if 'birth_date' in updated_data and new_dob and not self._is_valid_date(new_dob):
-            logging.error(f"edit_person validation failed for {person_id}: Invalid DOB format '{new_dob}'.")
-            log_audit(self.audit_log_path, edited_by, 'edit_person', f'failure - validation: invalid dob format ({new_dob}) for id {person_id}')
-            return False
-        if 'death_date' in updated_data and new_dod and not self._is_valid_date(new_dod):
-            logging.error(f"edit_person validation failed for {person_id}: Invalid DOD format '{new_dod}'.")
-            log_audit(self.audit_log_path, edited_by, 'edit_person', f'failure - validation: invalid dod format ({new_dod}) for id {person_id}')
-            return False
-        current_dob_for_check = new_dob if 'birth_date' in updated_data else person.birth_date
-        current_dod_for_check = new_dod if 'death_date' in updated_data else person.death_date
-        if current_dob_for_check and current_dod_for_check:
-            try:
-                if date.fromisoformat(current_dod_for_check) < date.fromisoformat(current_dob_for_check):
-                    logging.error(f"edit_person validation failed for {person_id}: DOD ({current_dod_for_check}) cannot be before DOB ({current_dob_for_check}).")
-                    log_audit(self.audit_log_path, edited_by, 'edit_person', f'failure - validation: dod before dob for id {person_id}')
-                    return False
-            except (ValueError, TypeError):
-                 logging.warning(f"Could not compare DOB/DOD during edit validation: {current_dob_for_check}, {current_dod_for_check}", exc_info=True)
-        if 'gender' in updated_data and new_gender and new_gender not in ['Male', 'Female', 'Other']:
-             logging.warning(f"edit_person: Invalid gender '{new_gender}' provided for {person_id}. Ignoring gender update.")
-             updated_data.pop('gender', None)
-
-        # --- Apply Changes (as before) ---
-        original_display_name = person.get_display_name(); changes_made = False
-        allowed_fields = ['first_name', 'last_name', 'nickname', 'birth_date', 'death_date', 'gender', 'place_of_birth', 'place_of_death', 'notes']
-        for key, value in updated_data.items():
-            if key in allowed_fields:
-                current_value = getattr(person, key)
-                if isinstance(value, str): new_value = value.strip()
-                else: new_value = value
-                if key != 'last_name' and new_value == '': new_value = None
-                elif key == 'last_name' and new_value is None: new_value = ""
-                if current_value != new_value: setattr(person, key, new_value); changes_made = True; logging.debug(f"Updated {key} for {person_id} from '{current_value}' to '{new_value}'")
-            elif key == 'attributes' and isinstance(value, dict): person.attributes.update(value); changes_made = True; logging.debug(f"Updated attributes for {person_id}")
-            else: logging.warning(f"edit_person: Attempted to update disallowed or unknown attribute '{key}' for person {person_id}. Ignoring.")
-
-        if changes_made:
-            person.photo_url = generate_default_person_photo(person.person_id)
-            log_audit(self.audit_log_path, edited_by, 'edit_person', f'success - id: {person_id}, name: {original_display_name} -> {person.get_display_name()}')
-            self.save_tree(edited_by); return True
-        else: log_audit(self.audit_log_path, edited_by, 'edit_person', f'no changes detected for id: {person_id}'); return False
-
-    def delete_person(self, person_id, deleted_by="system"):
-        """Deletes a person and all their associated relationships."""
-        person = self.find_person(person_id=person_id)
-        if person:
-            person_display_name = person.get_display_name(); del self.people[person_id]
-            rels_to_delete = [rid for rid, rel in self.relationships.items() if rel.person1_id == person_id or rel.person2_id == person_id]
-            num_rels_deleted = len(rels_to_delete)
-            for rid in rels_to_delete: del self.relationships[rid]
-            logging.info(f"Person '{person_display_name}' (ID: {person_id}) and {num_rels_deleted} related relationships deleted.")
-            log_audit(self.audit_log_path, deleted_by, 'delete_person', f'success - id: {person_id}, name: {person_display_name}, removed {num_rels_deleted} relationships')
-            self.save_tree(deleted_by); return True
-        else: logging.error(f"delete_person failed: Person with ID {person_id} not found."); log_audit(self.audit_log_path, deleted_by, 'delete_person', f'failure - person not found: {person_id}'); return False
-
-    # --- Relationship Methods (add_relationship, edit_relationship, delete_relationship remain the same) ---
-    def add_relationship(self, person1_id, person2_id, relationship_type, added_by="system", attributes=None):
-        """Adds a new relationship between two people."""
-        # --- Validation ---
-        if not person1_id or not person2_id: logging.error("add_relationship validation failed: Both Person 1 and Person 2 IDs are required."); log_audit(self.audit_log_path, added_by, 'add_relationship', 'failure - validation: missing person id'); return None
-        if person1_id == person2_id: logging.error("add_relationship validation failed: Cannot add a relationship between a person and themselves."); log_audit(self.audit_log_path, added_by, 'add_relationship', f'failure - validation: self relationship ({person1_id})'); return None
-        if not relationship_type or not str(relationship_type).strip(): logging.error("add_relationship validation failed: Relationship type cannot be empty."); log_audit(self.audit_log_path, added_by, 'add_relationship', 'failure - validation: empty relationship type'); return None
-        if relationship_type not in VALID_RELATIONSHIP_TYPES: logging.warning(f"add_relationship: Adding relationship with potentially invalid type: '{relationship_type}'. Valid types: {VALID_RELATIONSHIP_TYPES}")
-        person1 = self.people.get(person1_id); person2 = self.people.get(person2_id)
-        if not person1 or not person2:
-            missing_ids = [];
-            if not person1: missing_ids.append(person1_id)
-            if not person2: missing_ids.append(person2_id)
-            logging.error(f"add_relationship failed: One or both persons (ID(s): {', '.join(missing_ids)}) not found."); log_audit(self.audit_log_path, added_by, 'add_relationship', f'failure - person not found ({", ".join(missing_ids)})'); return None
-        for rel in self.relationships.values():
-            match1 = (rel.person1_id == person1_id and rel.person2_id == person2_id and rel.rel_type == relationship_type)
-            match2 = (rel.person1_id == person2_id and rel.person2_id == person1_id and rel.rel_type == relationship_type)
-            if match1 or match2: logging.error(f"add_relationship validation failed: Relationship ({relationship_type}) already exists between {person1_id} and {person2_id}."); log_audit(self.audit_log_path, added_by, 'add_relationship', f'failure - validation: duplicate relationship ({relationship_type}) between {person1_id}, {person2_id}'); return None
-
-        relationship_id = str(uuid.uuid4())
-        try:
-            relationship = Relationship( rel_id=relationship_id, person1_id=person1_id, person2_id=person2_id, rel_type=str(relationship_type).strip(), attributes=attributes if attributes else {})
-            self.relationships[relationship_id] = relationship
-            p1_name = person1.get_display_name(); p2_name = person2.get_display_name()
-            logging.info(f"Relationship added: {p1_name} - {relationship_type} - {p2_name} (ID: {relationship_id})")
-            log_audit(self.audit_log_path, added_by, 'add_relationship', f'success - id: {relationship_id}, type: {relationship_type}, persons: ({person1_id}, {person2_id})')
-            self.save_tree(added_by); return relationship
-        except Exception as e: logging.error(f"Error creating Relationship object: {e}", exc_info=True); log_audit(self.audit_log_path, added_by, 'add_relationship', f'failure - error creating relationship object: {e}'); return None
-
-    def edit_relationship(self, relationship_id, updated_data, edited_by="system"):
-        """Edits an existing relationship's type or attributes."""
-        if relationship_id not in self.relationships: logging.error(f"edit_relationship failed: Relationship {relationship_id} not found."); log_audit(self.audit_log_path, edited_by, 'edit_relationship', f'failure - relationship not found: {relationship_id}'); return False
-        relationship = self.relationships[relationship_id]; original_type = relationship.rel_type; original_attributes = relationship.attributes.copy(); changes_made = False
-        if 'rel_type' in updated_data:
-            new_type = updated_data['rel_type']
-            if not new_type or not str(new_type).strip(): logging.error(f"edit_relationship validation failed for {relationship_id}: Relationship type cannot be empty."); log_audit(self.audit_log_path, edited_by, 'edit_relationship', f'failure - validation: empty type for id {relationship_id}'); return False
-            if new_type not in VALID_RELATIONSHIP_TYPES: logging.warning(f"edit_relationship: Attempting to set potentially invalid relationship type '{new_type}' for {relationship_id}.")
-            if relationship.rel_type != new_type: relationship.rel_type = str(new_type).strip(); changes_made = True
-        if 'attributes' in updated_data and isinstance(updated_data['attributes'], dict):
-            relationship.attributes.update(updated_data['attributes'])
-            if original_attributes != relationship.attributes: changes_made = True
-        if changes_made:
-            p1 = self.people.get(relationship.person1_id); p2 = self.people.get(relationship.person2_id)
-            p1_name = p1.get_display_name() if p1 else f"ID:{relationship.person1_id}"; p2_name = p2.get_display_name() if p2 else f"ID:{relationship.person2_id}"
-            log_audit(self.audit_log_path, edited_by, 'edit_relationship', f'success - id: {relationship_id}, type: {original_type} -> {relationship.rel_type}, persons: ({p1_name}, {p2_name}), attrs changed: {original_attributes != relationship.attributes}')
-            self.save_tree(edited_by); return True
-        else: log_audit(self.audit_log_path, edited_by, 'edit_relationship', f'no changes detected for id: {relationship_id}'); return False
-
-    def delete_relationship(self, relationship_id, deleted_by="system"):
-        """Deletes a relationship by its ID."""
-        if relationship_id in self.relationships:
-            relationship = self.relationships[relationship_id]
-            p1 = self.people.get(relationship.person1_id); p2 = self.people.get(relationship.person2_id)
-            p1_name = p1.get_display_name() if p1 else f"ID:{relationship.person1_id}"; p2_name = p2.get_display_name() if p2 else f"ID:{relationship.person2_id}"
-            rel_type = relationship.rel_type; del self.relationships[relationship_id]
-            logging.info(f"Relationship (ID: {relationship_id}, Type: {rel_type}) between {p1_name} and {p2_name} deleted.")
-            log_audit(self.audit_log_path, deleted_by, 'delete_relationship', f'success - id: {relationship_id}, type: {rel_type}, persons: ({p1_name}, {p2_name})')
-            self.save_tree(deleted_by); return True
-        else: logging.error(f"delete_relationship failed: Relationship {relationship_id} not found."); log_audit(self.audit_log_path, deleted_by, 'delete_relationship', f'failure - relationship not found: {relationship_id}'); return False
-
-    # --- Search and Retrieval Methods (find_person, search_people, find_relationships_for_person, find_parents, find_children, find_siblings remain the same) ---
-    def find_person(self, name=None, person_id=None):
-        """Finds a person by ID or exact full name match."""
-        if person_id: return self.people.get(person_id)
-        if name:
-            search_name_lower = name.lower().strip()
-            for person in self.people.values():
-                if person.get_full_name().lower() == search_name_lower: return person
-        return None
-
-    def search_people(self, query=None, dob_start=None, dob_end=None, location=None):
-        """Searches people by name/nickname, DOB range, and/or location (birth/death place)."""
-        results = []; search_term = query.lower().strip() if query else None; location_term = location.lower().strip() if location else None
-        start_date_obj, end_date_obj = None, None
-        try:
-            if dob_start and self._is_valid_date(dob_start): start_date_obj = date.fromisoformat(dob_start)
-            elif dob_start: logging.warning(f"search_people: Invalid start date format '{dob_start}' ignored.")
-            if dob_end and self._is_valid_date(dob_end): end_date_obj = date.fromisoformat(dob_end);
-            elif dob_end: logging.warning(f"search_people: Invalid end date format '{dob_end}' ignored.")
-        except ValueError as e: logging.error(f"Error parsing search dates: {e}", exc_info=True); return []
-
-        for person in self.people.values():
-            match = True
-            if search_term:
-                name_match = False
-                if person.first_name and search_term in person.first_name.lower(): name_match = True
-                if not name_match and person.last_name and search_term in person.last_name.lower(): name_match = True
-                if not name_match and person.nickname and search_term in person.nickname.lower(): name_match = True
-                if not name_match: match = False
-            if match and (start_date_obj or end_date_obj):
-                date_match = False
-                if person.birth_date and self._is_valid_date(person.birth_date):
-                    try:
-                        person_dob = date.fromisoformat(person.birth_date); dob_in_range = True
-                        if start_date_obj and person_dob < start_date_obj: dob_in_range = False
-                        if end_date_obj and person_dob > end_date_obj: dob_in_range = False
-                        if dob_in_range: date_match = True
-                    except ValueError: pass
-                if not date_match: match = False
-            if match and location_term:
-                location_match = False
-                if person.place_of_birth and location_term in person.place_of_birth.lower(): location_match = True
-                if not location_match and person.place_of_death and location_term in person.place_of_death.lower(): location_match = True
-                if not location_match: match = False
-            if match: results.append(person)
-        results.sort(key=lambda p: p.get_full_name()); logging.info(f"Search found {len(results)} people for query='{query}', dob='{dob_start}-{dob_end}', location='{location}'"); return results
-
-    def find_relationships_for_person(self, person_id):
-        """Finds all relationships involving a specific person."""
-        return [rel for rel in self.relationships.values() if rel.person1_id == person_id or rel.person2_id == person_id]
-
-    def find_parents(self, person_id):
-        """Finds the parent(s) of a given person."""
-        parent_ids = []
-        for rel in self.relationships.values():
-            if rel.person1_id == person_id and rel.rel_type.lower() == 'child': parent_ids.append(rel.person2_id)
-            elif rel.person2_id == person_id and rel.rel_type.lower() == 'parent': parent_ids.append(rel.person1_id)
-        return parent_ids
-
-    def find_children(self, person_id):
-        """Finds the children of a given person."""
-        child_ids = []
-        for rel in self.relationships.values():
-            if rel.person1_id == person_id and rel.rel_type.lower() == 'parent': child_ids.append(rel.person2_id)
-            elif rel.person2_id == person_id and rel.rel_type.lower() == 'child': child_ids.append(rel.person1_id)
-        return child_ids
-
-    def find_siblings(self, person_id):
-        """Finds the siblings of a given person (sharing at least one parent)."""
-        if person_id not in self.people: return []
-        parent_ids = self.find_parents(person_id);
-        if not parent_ids: return []
-        siblings = set()
-        for parent_id in parent_ids:
-            children_of_parent = self.find_children(parent_id)
-            for child_id in children_of_parent:
-                if child_id != person_id: siblings.add(child_id)
-        return list(siblings)
-
-    # --- Data Summaries & Export (get_people_summary, get_relationships_summary remain the same) ---
-    def get_people_summary(self):
-        """Returns a list of dictionaries summarizing each person."""
-        summary_list = []
-        for p in self.people.values():
-            summary_list.append({
-                "person_id": p.person_id, "name": p.get_full_name(), "display_name": p.get_display_name(),
-                "nickname": p.nickname, "dob": p.birth_date, "dod": p.death_date, "gender": p.gender,
-                "pob": p.place_of_birth, "pod": p.place_of_death,
-                "photo_url": getattr(p, 'photo_url', generate_default_person_photo(p.person_id))
-            })
-        return sorted(summary_list, key=lambda x: x.get('name', ''))
-
-    def get_relationships_summary(self):
-        """Returns a list of dictionaries summarizing each relationship."""
-        summary = []
-        for rel_id, rel in self.relationships.items():
-            person1 = self.people.get(rel.person1_id); person2 = self.people.get(rel.person2_id)
-            person1_display_name = person1.get_display_name() if person1 else f"Unknown (ID: {rel.person1_id[:8]}...)"
-            person2_display_name = person2.get_display_name() if person2 else f"Unknown (ID: {rel.person2_id[:8]}...)"
-            person1_sort_name = person1.get_full_name() if person1 else "Unknown"
-            summary.append({
-                "relationship_id": rel_id, "person1_id": rel.person1_id, "person1_name": person1_display_name,
-                "person2_id": rel.person2_id, "person2_name": person2_display_name,
-                "relationship_type": rel.rel_type, "attributes": rel.attributes, "_person1_sort_name": person1_sort_name
-            })
-        return sorted(summary, key=lambda x: (x.get('relationship_type', ''), x.get('_person1_sort_name', '')))
-
-
-    # --- UPDATED Tree Visualization Data Method ---
-    def get_nodes_links_data(self, start_node_id=None, max_depth=None):
+    def get_nodes_links_data(self, start_node_id: Optional[str] = None, max_depth: Optional[int] = None) -> Dict[str, List[Dict]]:
         """
-        Generates data suitable for graph visualization libraries like React Flow.
-        Can optionally return a subset of the tree starting from a specific node up to a max depth.
+        Generates data suitable for graph visualization libraries (like React Flow).
 
         Args:
-            start_node_id (str, optional): The ID of the person to start the traversal from.
-                                           If None, returns the full tree. Defaults to None.
-            max_depth (int, optional): The maximum depth to traverse from the start node.
-                                       Depth 0 is the start node itself. Ignored if start_node_id is None.
-                                       Defaults to None (no depth limit).
+            start_node_id (Optional[str]): The ID of the person to start the traversal from.
+                                           If None, returns the full tree.
+            max_depth (Optional[int]): The maximum depth to traverse from the start node.
+                                       Ignored if start_node_id is None.
 
         Returns:
-            dict: A dictionary containing 'nodes' and 'links' lists.
+            Dict[str, List[Dict]]: A dictionary containing 'nodes' and 'links' (or 'edges').
         """
-        nodes = []
-        links = []
-        included_node_ids = set()
+        nodes_data = []
+        links_data = []
 
-        if start_node_id and start_node_id in self.people:
-            # --- BFS for Lazy Loading ---
-            logging.info(f"Generating tree subset: start_node={start_node_id}, max_depth={max_depth}")
-            queue = deque([(start_node_id, 0)]) # Store (node_id, depth)
-            visited = {start_node_id} # Keep track of visited nodes to prevent cycles/redundancy
-
-            while queue:
-                current_id, current_depth = queue.popleft()
-
-                # Check depth limit
-                if max_depth is not None and current_depth > max_depth:
-                    continue
-
-                # Add current node to results
-                included_node_ids.add(current_id)
-
-                # Find neighbors (parents, children, spouses/partners)
-                neighbors = set()
-                # Find relationships involving the current person
-                related_rels = self.find_relationships_for_person(current_id)
-                for rel in related_rels:
-                    other_id = None
-                    if rel.person1_id == current_id:
-                        other_id = rel.person2_id
-                    else:
-                        other_id = rel.person1_id
-
-                    # Ensure the other person exists in the main people dict
-                    if other_id and other_id in self.people:
-                         neighbors.add(other_id)
-
-                # Add unvisited neighbors to the queue for the next level
-                if max_depth is None or current_depth < max_depth:
-                    for neighbor_id in neighbors:
-                        if neighbor_id not in visited:
-                            visited.add(neighbor_id)
-                            queue.append((neighbor_id, current_depth + 1))
-            # --- End BFS ---
-
+        if start_node_id:
+            # Implement BFS or DFS traversal if needed for partial loading
+             logging.warning("Partial tree loading (start_node/depth) not fully implemented yet. Returning full tree.")
+             # For now, return full tree regardless of start_node/depth
+             people_to_include = self.people
+             rels_to_include = self.relationships
         else:
-            # If no start node or start node invalid, include all people
-            if start_node_id:
-                 logging.warning(f"get_nodes_links_data: start_node_id '{start_node_id}' not found. Returning full tree.")
-            included_node_ids = set(self.people.keys())
+            # Full tree
+            people_to_include = self.people
+            rels_to_include = self.relationships
 
-        # --- Generate Node Data for Included Nodes ---
-        for person_id in included_node_ids:
-            person = self.people[person_id]
-            photo_url = getattr(person, 'photo_url', generate_default_person_photo(person_id))
-            nodes.append({
-                "id": person.person_id,
-                "type": "personNode",
+
+        # Create nodes
+        for person_id, person in people_to_include.items():
+            if not isinstance(person, Person): continue # Skip invalid entries
+            nodes_data.append({
+                "id": person.person_id, # Ensure consistency
+                "type": "personNode", # Node type for React Flow
                 "data": {
+                    "id": person.person_id, # Pass ID for editing
                     "label": person.get_display_name(),
                     "full_name": person.get_full_name(),
                     "gender": person.gender,
@@ -426,83 +600,62 @@ class FamilyTree:
                     "dod": person.death_date,
                     "birth_place": person.place_of_birth,
                     "death_place": person.place_of_death,
-                    "photoUrl": photo_url
+                    # Add photo URL later if implemented
+                    "photoUrl": getattr(person, 'photo_url', None) # Example if photo added
                 },
-                "position": {"x": 0, "y": 0}
+                "position": {"x": 0, "y": 0} # Placeholder, layout engine will set this
             })
 
-        # --- Generate Link Data for Relationships Between Included Nodes ---
-        processed_rel_ids = set()
-        for rel_id, rel in self.relationships.items():
-            # Skip if already processed (for symmetric types) or if persons aren't included
-            if rel_id in processed_rel_ids or \
-               rel.person1_id not in included_node_ids or \
-               rel.person2_id not in included_node_ids:
-                continue
+        # Create links (edges)
+        for rel_id, rel in rels_to_include.items():
+            if not isinstance(rel, Relationship): continue # Skip invalid entries
+            # Ensure both source and target nodes exist in our included people
+            if rel.person1_id in people_to_include and rel.person2_id in people_to_include:
+                links_data.append({
+                    "id": rel.rel_id,
+                    "source": rel.person1_id,
+                    "target": rel.person2_id,
+                    "type": "default", # Or use custom edge types
+                    "animated": False, # Or True
+                    "label": rel.rel_type, # Display relationship type
+                    "data": rel.attributes # Pass attributes if needed by frontend
+                })
 
-            source_id = rel.person1_id
-            target_id = rel.person2_id
-            rel_type = rel.rel_type.lower() if rel.rel_type else 'unknown'
-
-            link_data = { "id": rel_id, "source": source_id, "target": target_id, "type": "default", "animated": False, "label": rel.rel_type, "data": rel.attributes }
-
-            # Adjust source/target and style based on type for clearer visualization
-            if rel_type == 'parent':
-                 link_data["source"] = source_id; link_data["target"] = target_id
-            elif rel_type == 'child':
-                 link_data["source"] = target_id; link_data["target"] = source_id # Reverse for Parent->Child flow
-                 link_data["label"] = "Parent" # Label edge from parent's perspective
-            elif rel_type == 'spouse' or rel_type == 'partner':
-                 link_data["type"] = "smoothstep"; link_data["label"] = "" # Hide label for spouse edge
-                 # Mark reciprocal as processed
-                 reciprocal_rel = next((r_id for r_id, r in self.relationships.items() if r.person1_id == target_id and r.person2_id == source_id and r.rel_type.lower() == rel_type), None)
-                 if reciprocal_rel: processed_rel_ids.add(reciprocal_rel)
-
-            links.append(link_data)
-            processed_rel_ids.add(rel_id)
-
-        logging.info(f"Generated node/link data: {len(nodes)} nodes, {len(links)} links.")
-        return {"nodes": nodes, "links": links}
+        return {"nodes": nodes_data, "links": links_data} # Use 'links' or 'edges' based on frontend expectation
 
 
-    # --- Persistence (_to_dict, _from_dict, save_tree, load_tree remain the same) ---
-    def _to_dict(self):
-        """Converts the entire tree (people and relationships) to a dictionary."""
-        return { "people": {pid: person.to_dict() for pid, person in self.people.items()}, "relationships": {rid: rel.to_dict() for rid, rel in self.relationships.items()} }
-
+    # --- Internal Helper for Loading ---
+    # This method might be redundant if load_tree handles everything
     @classmethod
-    def _from_dict(cls, data, tree_file_path, audit_log_path):
-        """Creates a FamilyTree instance from a dictionary."""
-        tree = cls(tree_file_path=tree_file_path, audit_log_path=audit_log_path)
-        tree.people = {}; tree.relationships = {}
-        for pid, pdata in data.get("people", {}).items():
-            try:
-                person = Person.from_dict(pdata)
-                person.photo_url = getattr(person, 'photo_url', generate_default_person_photo(person.person_id))
-                tree.people[pid] = person
-            except (KeyError, ValueError, TypeError) as e: logging.warning(f"_from_dict: Skipping invalid person data for ID {pid} during load: {e}", exc_info=True)
-        for rid, rdata in data.get("relationships", {}).items():
-            try:
-                rdata.setdefault('rel_id', rid); relationship = Relationship.from_dict(rdata)
-                final_rid = relationship.rel_id if hasattr(relationship, 'rel_id') and relationship.rel_id else rid
-                tree.relationships[final_rid] = relationship
-            except (KeyError, ValueError, TypeError) as e: logging.warning(f"_from_dict: Skipping invalid relationship data for ID {rid} during load: {e}", exc_info=True)
+    def _from_dict(cls, data: dict, tree_file_path: str, audit_log_path: str) -> 'FamilyTree':
+        """
+        (Deprecated/Internal) Creates a FamilyTree instance from dictionary data.
+        Prefer using load_tree directly on an instance.
+        """
+        logging.warning("_from_dict is likely deprecated. Use instance.load_tree() instead.")
+        tree = cls(tree_file_path=tree_file_path, audit_log_path=audit_log_path) # Creates instance, which calls load_tree
+
+        # The logic below is now mostly handled within load_tree itself
+        # people_data = data.get("people", {})
+        # relationships_data = data.get("relationships", {})
+
+        # for pid, p_data in people_data.items():
+        #     try:
+        #         tree.people[pid] = Person.from_dict(p_data)
+        #     except Exception as e:
+        #         logging.error(f"Error loading person {pid} in _from_dict: {e}")
+
+        # for rid, r_data in relationships_data.items():
+        #     try:
+        #         # Ensure persons exist before adding relationship
+        #         p1_id = r_data.get('person1_id')
+        #         p2_id = r_data.get('person2_id')
+        #         if p1_id in tree.people and p2_id in tree.people:
+        #              tree.relationships[rid] = Relationship.from_dict(r_data)
+        #         else:
+        #              logging.warning(f"Skipping relationship {rid} in _from_dict: Person {p1_id} or {p2_id} not loaded.")
+        #     except Exception as e:
+        #         logging.error(f"Error loading relationship {rid} in _from_dict: {e}")
+
         return tree
-
-    def save_tree(self, saved_by="system"):
-        """Saves the current state of the tree to the JSON file (encrypted)."""
-        try: data_to_save = self._to_dict(); save_data(self.tree_file_path, data_to_save, is_encrypted=True)
-        except Exception as e: logging.error(f"Error saving family tree to {self.tree_file_path}: {e}", exc_info=True); log_audit(self.audit_log_path, saved_by, 'save_tree', f'failure: {e}')
-
-    def load_tree(self, loaded_by="system"):
-        """Loads the tree state from the JSON file (encrypted)."""
-        try:
-            data = load_data(self.tree_file_path, default={}, is_encrypted=True)
-            if data:
-                loaded_tree = self._from_dict(data, self.tree_file_path, self.audit_log_path)
-                self.people = loaded_tree.people; self.relationships = loaded_tree.relationships
-                logging.info(f"Family tree loaded successfully: {len(self.people)} people, {len(self.relationships)} relationships.")
-            else: logging.warning(f"No valid data found in {self.tree_file_path}. Starting with an empty tree."); self.people = {}; self.relationships = {}
-        except FileNotFoundError: logging.info(f"Tree file {self.tree_file_path} not found. Starting with an empty tree."); self.people = {}; self.relationships = {}
-        except Exception as e: logging.error(f"Critical error loading family tree from {self.tree_file_path}: {e}", exc_info=True); log_audit(self.audit_log_path, loaded_by, 'load_tree', f'failure: {e}'); self.people = {}; self.relationships = {}
 
