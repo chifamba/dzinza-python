@@ -1,0 +1,48 @@
+# docker-compose.yml (in project root: dzinza-python/)
+
+services:
+  # Backend Service (Flask API)
+  backend:
+    build:
+      context: ./backend # Path to the directory containing the backend Dockerfile
+      dockerfile: Dockerfile
+    container_name: dzinza-backend
+    ports:
+      - "8090:8090" # Map host port 8090 to container port 8090
+    volumes:
+      # Mount data and logs directories to persist data outside the container
+      - ./backend/data:/app/data
+      - ./logs/backend:/app/logs # Assuming logs are written relative to /app inside container
+      # Optional: Mount source code for development hot-reloading (if Flask DEBUG=1)
+      # - ./backend:/app
+    environment:
+      # Pass necessary environment variables
+      # --- IMPORTANT: Use a .env file or secrets management for production ---
+      - FLASK_SECRET_KEY=${FLASK_SECRET_KEY:-a_very_strong_dev_secret_key_39$@5_v2_docker} # Provide a default or use .env
+      - FLASK_DEBUG=${FLASK_DEBUG:-0} # Default to production mode (0)
+      - EMAIL_USER=${EMAIL_USER}
+      - EMAIL_PASSWORD=${EMAIL_PASSWORD}
+      - EMAIL_SERVER=${EMAIL_SERVER}
+      - EMAIL_PORT=${EMAIL_PORT:-587}
+      - MAIL_SENDER=${MAIL_SENDER}
+      - APP_URL=${APP_URL:-http://localhost:5173} # URL frontend uses
+      # Add any other environment variables your backend needs
+    restart: unless-stopped # Restart policy
+
+  # Frontend Service (React App served by Nginx)
+  frontend:
+    build:
+      context: ./frontend # Path to the directory containing the frontend Dockerfile
+      dockerfile: Dockerfile
+    container_name: dzinza-frontend
+    ports:
+      - "5173:80" # Map host port 5173 to Nginx container port 80
+    depends_on:
+      - backend # Optional: Ensures backend starts before frontend (doesn't guarantee readiness)
+    restart: unless-stopped
+
+# Optional: Define named volumes if you prefer them over bind mounts
+# volumes:
+#   backend_data:
+#   backend_logs:
+

@@ -1,0 +1,21 @@
+# backend/requirements.txt
+
+# Web Framework
+Flask
+Flask-Cors # Added for API Cross-Origin Resource Sharing
+
+# Database (If you were using TinyDB, keep it, otherwise remove if not used)
+# tinydb
+
+# Password Hashing
+bcrypt
+
+# For GEDCOM import/export (Optional - Keep if needed for future API endpoints)
+# gedcom-py
+
+# For data encryption
+pycryptodome
+
+# For sending emails (Password Reset)
+yagmail
+itsdangerous # Required by Flask for session signing, and used for tokens

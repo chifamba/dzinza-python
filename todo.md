@@ -1,94 +1,130 @@
 # Project TODO List
 
-## Core Functionality
-- [x] Basic project structure setup (folders, main files)
-- [x] `Person` class implementation (attributes: id, first_name, last_name, nickname, dob, dod, pob, pod, etc.)
-- [x] `Relationship` class implementation (attributes: person1_id, person2_id, rel_type)
-- [x] `FamilyTree` class core logic (add person, add relationship, find person)
-- [x] Data persistence for family tree (e.g., JSON file using db_utils)
-- [x] Implement editing a person's details (Backend + Web route)
-- [x] Implement deleting a person (Backend + Web route)
-- [x] Implement editing a relationship (Backend + Web route - Type only)
-- [x] Implement deleting a relationship (Backend + Web route)
-- [x] Add support for different relationship types (parent-child, spouse, sibling, etc.)
-- [x] Implement search/filtering functionality (Basic name/nickname search implemented)
-- [x] Implement advanced search/filtering (by date range implemented)
-- [x] Implement advanced search/filtering (by location implemented)
+## Core Backend/Features
+- [x] Basic user authentication (login/logout/session check)
+- [x] User registration
+- [x] Add person to family tree
+- [x] Edit person details
+- [x] Delete person (and related relationships)
+- [x] Add relationships between people
+- [x] Edit relationship details
+- [x] Delete relationship
+- [x] View family tree structure (API for visualization)
+- [x] User roles (Admin, Basic)
+- [x] Admin user management (List, Delete, Change Role via API)
+- [x] Search functionality for people (Backend API implemented)
+- [x] Password reset functionality (Backend API and email logic implemented)
+- [x] Audit logging for important actions
+- [x] Data encryption at rest (`users.json`, `family_tree.json`)
 
-## User Management
-- [x] `User` class implementation (attributes: id, username, password_hash, role, reset_token*)
-- [x] User registration logic
-- [x] User login logic
-- [x] Password hashing (using bcrypt via encryption.py)
-- [x] Data persistence for users (e.g., JSON file using UserManagement & db_utils)
-- [x] User roles/permissions (Basic 'admin'/'basic' roles added, session tracking, @admin_required decorator)
-- [x] Implement Admin UI for managing user roles (view users, set role, delete user)
-- [x] Password reset functionality (Basic token flow implemented - **INSECURE DEMO ONLY, lacks email**)
+## Refactoring: React Frontend & Visualization
 
-## Web Interface (Flask)
-- [x] Basic Flask app setup (`app.py`)
-- [x] Templates directory and basic HTML structure (`templates/index.html`)
-- [x] Web interface for user registration
-- [x] Web interface for user login
-- [x] User session management (login/logout, role tracking)
-- [x] Web form for adding a new person to the tree
-- [x] Web form for adding a new relationship between people
-- [x] Display family tree data on the web page (list view for people & relationships)
-- [x] Interface for editing people/relationships
-- [x] Interface for deleting people/relationships
-- [x] Protect family tree modification routes (require login)
-- [x] Basic Search UI and Results Page (with DOB & Location filter)
-- [x] Added Admin user management interface (view, set role, delete user)
-- [x] Added Password Reset request/confirm pages (basic flow)
-- [x] Improved form validation feedback (re-render form with errors)
-- [ ] Improve UI/UX (styling, layout, feedback messages)
+### Phase 1: Backend API Preparation
+- [x] Review and implement `/api/tree_data` endpoint for React Flow format.
+- [x] Create RESTful API endpoint: `POST /api/register`.
+- [x] Create RESTful API endpoint: `POST /api/login`.
+- [x] Create RESTful API endpoint: `POST /api/logout`.
+- [x] Create RESTful API endpoint: `GET /api/session`.
+- [x] Create RESTful API endpoint: `GET /api/people`.
+- [x] Create RESTful API endpoint: `GET /api/people/{id}`.
+- [x] Create RESTful API endpoint: `POST /api/people`.
+- [x] Create RESTful API endpoint: `PUT /api/people/{id}`.
+- [x] Create RESTful API endpoint: `DELETE /api/people/{id}`.
+- [x] Create RESTful API endpoint: `GET /api/relationships`.
+- [x] Create RESTful API endpoint: `POST /api/relationships`.
+- [x] Create RESTful API endpoint: `PUT /api/relationships/{id}`.
+- [x] Create RESTful API endpoint: `DELETE /api/relationships/{id}`.
+- [x] Create RESTful API endpoint: `POST /api/request-password-reset`.
+- [x] Create RESTful API endpoint: `POST /api/reset-password/<token>`.
+- [x] Create RESTful API endpoint: `GET /api/users` (Admin).
+- [x] Create RESTful API endpoint: `DELETE /api/users/{id}` (Admin).
+- [x] Create RESTful API endpoint: `PUT /api/users/{id}/role` (Admin).
+- [x] Define and implement API authentication strategy (Session-based).
+- [x] Implement consistent JSON error handling for all API endpoints.
+- [x] Implement CORS support.
 
-## Data Management & Storage
-- [x] Utility functions for loading/saving JSON data (`db_utils.py`)
-- [ ] Consider switching to a database (SQLite, PostgreSQL) for larger trees
-- [x] Data validation (Basic date logic, required fields, self-reference checks added)
-- [ ] Implement more robust/complex data validation rules
-- [ ] Backup and restore functionality
+### Phase 2: Frontend Setup & Basic Interaction (React)
+- [x] Create `frontend/` directory and initialize React project (Vite).
+- [x] Install core dependencies: `react-router-dom`, `axios`, `reactflow`.
+- [x] Set up basic frontend routing (Login, Register, Dashboard, Edit Forms, Admin).
+- [x] Create core React components (App, LoginPage, RegisterPage, DashboardPage, Add/Edit Forms, AdminPage, etc.).
+- [x] Create API service module (`api.js`) for frontend-backend communication.
+- [x] Implement frontend state management (Context API for auth state).
+- [x] Implement frontend login/registration forms and API calls.
+- [x] Implement protected routes (`PrivateRoute`, `AdminRoute`).
 
-## Security
-- [x] Password hashing
-- [x] Secure session management (e.g., Flask's secret key)
-- [x] Basic role-based access control (@admin_required)
-- [x] Basic password reset flow (token generation/verification - **needs secure delivery**)
-- [ ] Input validation and sanitization to prevent injection attacks (Minimal validation added, needs review)
-- [ ] CSRF protection for forms (Removed due to issues, needs revisit/re-implementation)
-- [ ] More granular permissions (e.g., edit own profile, edit specific tree branches)
-- [ ] Secure password reset token delivery (e.g., via email)
-- [ ] Rate limiting for login/password reset attempts
+### Phase 3: Visualization Integration (React Flow)
+- [x] Create `FamilyTreeVisualization` React component.
+- [x] Integrate `<ReactFlow>`, `<Background>`, `<Controls>`, `<MiniMap>`.
+- [x] Fetch data from `/api/tree_data` endpoint in the component.
+- [x] Implement layout strategy (Using Dagre via backend/frontend).
+- [x] Configure hierarchical layout algorithm.
+- [x] Implement basic node/edge rendering using fetched data.
 
-## Logging & Error Handling
-- [x] Basic audit logging for user actions (registration, login, add/edit/delete person/relationship, search, access denied, role change, user deletion, password reset steps)
-- [x] Expand audit logging for family tree modifications (Done for current CRUD)
-- [x] Added audit logs for user management actions (load/save users, set role)
-- [x] Basic Flask logging setup in app.py
-- [x] Implemented robust error handling and user feedback (File logging, custom error pages, improved form feedback)
+### Phase 4: Enhanced Visualization & Interaction
+- [x] Implement `onNodeClick` handler for node selection in React Flow.
+- [x] Fetch detailed person data on node click (`GET /api/people/{id}`).
+- [x] Display person details in a separate sidebar/modal component (`PersonDetails.jsx`).
+- [x] Define and implement custom React Flow nodes (`PersonNode.js`) to show name, dates, photo placeholder, edit button.
 
-## Testing
-- [x] Unit tests for `Person` class (File exists)
-- [x] Unit tests for `Relationship` class (File exists)
-- [x] Unit tests for `FamilyTree` class (File exists)
-- [x] Unit tests for `User` class (File exists)
-- [x] Unit tests for `UserManagement` (File exists)
-- [ ] Add tests for new Role features in User/UserManagement
-- [ ] Add tests for Admin UI actions (role set, user delete)
-- [ ] Add tests for Password Reset flow (token generation, verification, reset)
-- [ ] Add tests for improved form error handling in routes
-- [ ] Integration tests for web endpoints (including auth/admin checks, error pages)
-- [ ] Test edge cases and error conditions (Partially covered)
-- [ ] Add tests for new features (Search, Relationship CRUD, Validation)
+### Phase 5: Editing & Performance
+- [x] Connect "Edit" button in `PersonNode.jsx` to navigate to `EditPersonPage`.
+- [x] Implement form submission to update person via API (`PUT /api/people/{id}`) in `EditPersonPage.jsx`.
+- [x] Implement form submission to update relationship via API (`PUT /api/relationships/{id}`) in `EditRelationshipPage.jsx`.
+- [ ] Add UI element (e.g., button in `PersonDetails` or on edge click) to navigate to `EditRelationshipPage`.
+- [ ] Investigate/Implement performance optimizations for large trees (if needed):
+    - [ ] Verify viewport rendering effectiveness provided by React Flow.
+    - [ ] Consider lazy loading parts of the tree (requires frontend changes to use `/api/tree_data` query params).
+    - [ ] Evaluate layout performance and consider backend pre-computation if client-side is too slow.
+
+### Phase 6: Admin UI
+- [x] Create `AdminPage.jsx` component.
+- [x] Implement fetching and displaying user list (`GET /api/users`).
+- [x] Implement role changing functionality (`PUT /api/users/{id}/role`).
+- [x] Implement user deletion functionality (`DELETE /api/users/{id}`).
+- [x] Protect admin route using `AdminRoute` guard.
+
+### Phase 7: Cleanup
+- [x] Remove unused Jinja2 templates from `backend/src/templates/` (if any existed).
+- [x] Remove Flask routes in `backend/app.py` used only for old server-side rendering (if any existed).
+- [x] Remove duplicate `frontend/README.md`.
+
+## Frontend TODOs (Remaining/Refinement)
+- [ ] Implement frontend UI for password reset request and token handling.
+- [ ] Implement frontend search interface to use backend search capabilities.
+- [ ] Add UI element to trigger navigation to `EditRelationshipPage`.
+- [ ] Refactor frontend component structure for better organization/scalability.
+- [ ] Improve UI/UX (loading states, error messages, general flow, styling).
+
+## General Improvements (Ongoing)
+- [ ] Improve general backend error handling and logging details.
+- [ ] Refactor database interactions (potentially use a simple ORM or dedicated data layer) - *Lower priority*.
+- [ ] Ensure `load_data`/`save_data` usage is robust, especially error handling during encryption/decryption.
+- [ ] Add password complexity rules during registration/reset.
+
+## Testing (Updated Focus)
+- **Backend:**
+    - [x] Unit tests for core classes (`Person`, `Relationship`, `User`, `FamilyTree`, `UserManagement`).
+    - [x] Unit tests for utilities (`encryption`, `db_utils`, `audit_log`).
+    - [x] Basic integration tests for Flask app (`test_app.py`).
+    - [x] API Integration tests (`test_api.py` - expanded).
+- **Frontend:**
+    - [x] Basic component tests (`LoginPage.test.jsx`, `DashboardPage.test.jsx`).
+    - [ ] Add more component tests (e.g., `AdminPage`, `EditPersonPage`, `FamilyTreeVisualization`).
+    - [ ] Add tests for context (`AuthContext`).
+    - [ ] Add tests for routing.
+- **End-to-End:**
+    - [ ] Implement E2E tests for key user workflows (e.g., using Cypress or Playwright).
 
 ## Documentation
-- [x] Basic `README.md` (File exists)
-- [ ] Add usage instructions to `README.md`
-- [ ] Document code with comments and docstrings (Partially done)
-- [ ] User guide (optional)
+- [x] Basic `README.md` (updated for new structure, env vars, running tests).
+- [x] Document API endpoints in `api_docs.md` (updated).
+- [x] Improve backend docstrings (ongoing).
+- [ ] Add detailed usage instructions for the React frontend to `README.md`.
+- [ ] (Optional) Set up project documentation website (e.g., using Sphinx for backend, Storybook/Styleguidist for frontend).
 
 ## Deployment
-- [ ] Choose a deployment platform (e.g., Heroku, PythonAnywhere)
-- [ ] Configure production environment (e.g., Gunicorn, environment variables for SECRET_KEY)
-- [ ] Setup instructions for deployment
+- [ ] Configure Flask backend for production API deployment (e.g., Gunicorn, Nginx).
+- [ ] Configure React frontend build process for production.
+- [ ] Set up database/data storage for production (if moving away from JSON).
+- [ ] Containerize the application (Docker - backend & frontend services).
