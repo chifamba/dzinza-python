@@ -1,130 +1,388 @@
 # Project TODO List
 
-## Core Backend/Features
-- [x] Basic user authentication (login/logout/session check)
-- [x] User registration
-- [x] Add person to family tree
-- [x] Edit person details
-- [x] Delete person (and related relationships)
-- [x] Add relationships between people
-- [x] Edit relationship details
-- [x] Delete relationship
-- [x] View family tree structure (API for visualization)
-- [x] User roles (Admin, Basic)
-- [x] Admin user management (List, Delete, Change Role via API)
-- [x] Search functionality for people (Backend API implemented)
-- [x] Password reset functionality (Backend API and email logic implemented)
-- [x] Audit logging for important actions
-- [x] Data encryption at rest (`users.json`, `family_tree.json`)
+EPIC 1: Database Migration & Core Infrastructure
+Feature 1.1: Database Schema & Migration
 
-## Refactoring: React Frontend & Visualization
+Design and create PostgreSQL database schema with all tables (Users, People, Relationships, etc.)
+Implement SQLAlchemy ORM models for all entities
+Create migration scripts to transfer data from JSON files to database
+Implement foreign key constraints and proper indexes
+Build database connection pooling with pgBouncer (3 pools configuration)
+Create materialized views for common ancestor/descendant paths
+Develop automated database backup system
 
-### Phase 1: Backend API Preparation
-- [x] Review and implement `/api/tree_data` endpoint for React Flow format.
-- [x] Create RESTful API endpoint: `POST /api/register`.
-- [x] Create RESTful API endpoint: `POST /api/login`.
-- [x] Create RESTful API endpoint: `POST /api/logout`.
-- [x] Create RESTful API endpoint: `GET /api/session`.
-- [x] Create RESTful API endpoint: `GET /api/people`.
-- [x] Create RESTful API endpoint: `GET /api/people/{id}`.
-- [x] Create RESTful API endpoint: `POST /api/people`.
-- [x] Create RESTful API endpoint: `PUT /api/people/{id}`.
-- [x] Create RESTful API endpoint: `DELETE /api/people/{id}`.
-- [x] Create RESTful API endpoint: `GET /api/relationships`.
-- [x] Create RESTful API endpoint: `POST /api/relationships`.
-- [x] Create RESTful API endpoint: `PUT /api/relationships/{id}`.
-- [x] Create RESTful API endpoint: `DELETE /api/relationships/{id}`.
-- [x] Create RESTful API endpoint: `POST /api/request-password-reset`.
-- [x] Create RESTful API endpoint: `POST /api/reset-password/<token>`.
-- [x] Create RESTful API endpoint: `GET /api/users` (Admin).
-- [x] Create RESTful API endpoint: `DELETE /api/users/{id}` (Admin).
-- [x] Create RESTful API endpoint: `PUT /api/users/{id}/role` (Admin).
-- [x] Define and implement API authentication strategy (Session-based).
-- [x] Implement consistent JSON error handling for all API endpoints.
-- [x] Implement CORS support.
+Feature 1.2: Caching Implementation
 
-### Phase 2: Frontend Setup & Basic Interaction (React)
-- [x] Create `frontend/` directory and initialize React project (Vite).
-- [x] Install core dependencies: `react-router-dom`, `axios`, `reactflow`.
-- [x] Set up basic frontend routing (Login, Register, Dashboard, Edit Forms, Admin).
-- [x] Create core React components (App, LoginPage, RegisterPage, DashboardPage, Add/Edit Forms, AdminPage, etc.).
-- [x] Create API service module (`api.js`) for frontend-backend communication.
-- [x] Implement frontend state management (Context API for auth state).
-- [x] Implement frontend login/registration forms and API calls.
-- [x] Implement protected routes (`PrivateRoute`, `AdminRoute`).
+Set up Redis server and connection configuration
+Implement L1 Node cache (LRU, 10k entries, 5min TTL)
+Implement L2 Relationship cache (LFU, 50k entries, 1hr TTL)
+Implement L3 Tree path cache (ARC, 1k complex queries, 24hr TTL)
+Create cache invalidation triggers using PostgreSQL NOTIFY/LISTEN
+Add TTL (Time-To-Live) based cache invalidation
+Build cache refresh triggers on data updates
 
-### Phase 3: Visualization Integration (React Flow)
-- [x] Create `FamilyTreeVisualization` React component.
-- [x] Integrate `<ReactFlow>`, `<Background>`, `<Controls>`, `<MiniMap>`.
-- [x] Fetch data from `/api/tree_data` endpoint in the component.
-- [x] Implement layout strategy (Using Dagre via backend/frontend).
-- [x] Configure hierarchical layout algorithm.
-- [x] Implement basic node/edge rendering using fetched data.
+Feature 1.3: Authentication & Security
 
-### Phase 4: Enhanced Visualization & Interaction
-- [x] Implement `onNodeClick` handler for node selection in React Flow.
-- [x] Fetch detailed person data on node click (`GET /api/people/{id}`).
-- [x] Display person details in a separate sidebar/modal component (`PersonDetails.jsx`).
-- [x] Define and implement custom React Flow nodes (`PersonNode.js`) to show name, dates, photo placeholder, edit button.
+Implement JWT authentication system
+Create JWT token generation and validation middleware
+Build role-based access control system
+Implement password hashing and security best practices
+Add two-factor authentication support
+Create security audit logging system
+Implement data access audit trail with Merkle trees
+Build GDPR-compliant anonymization pipeline
 
-### Phase 5: Editing & Performance
-- [x] Connect "Edit" button in `PersonNode.jsx` to navigate to `EditPersonPage`.
-- [x] Implement form submission to update person via API (`PUT /api/people/{id}`) in `EditPersonPage.jsx`.
-- [x] Implement form submission to update relationship via API (`PUT /api/relationships/{id}`) in `EditRelationshipPage.jsx`.
-- [ ] Add UI element (e.g., button in `PersonDetails` or on edge click) to navigate to `EditRelationshipPage`.
-- [ ] Investigate/Implement performance optimizations for large trees (if needed):
-    - [ ] Verify viewport rendering effectiveness provided by React Flow.
-    - [ ] Consider lazy loading parts of the tree (requires frontend changes to use `/api/tree_data` query params).
-    - [ ] Evaluate layout performance and consider backend pre-computation if client-side is too slow.
+EPIC 2: Tree Traversal & Visualization
+Feature 2.1: Advanced Tree Traversal Algorithms
 
-### Phase 6: Admin UI
-- [x] Create `AdminPage.jsx` component.
-- [x] Implement fetching and displaying user list (`GET /api/users`).
-- [x] Implement role changing functionality (`PUT /api/users/{id}/role`).
-- [x] Implement user deletion functionality (`DELETE /api/users/{id}`).
-- [x] Protect admin route using `AdminRoute` guard.
+Implement ancestors traversal algorithm (person → ancestors)
+Implement descendants traversal algorithm (person → descendants)
+Create extended family traversal algorithm (siblings, cousins)
+Build lateral traversal algorithm (in-laws, step-relations)
+Implement bidirectional BFS for ancestor/descendant paths
+Create modified A* algorithm for lateral relationship discovery
+Implement Bloom filter for quick existence checks
+Add depth control parameters for all traversals
 
-### Phase 7: Cleanup
-- [x] Remove unused Jinja2 templates from `backend/src/templates/` (if any existed).
-- [x] Remove Flask routes in `backend/app.py` used only for old server-side rendering (if any existed).
-- [x] Remove duplicate `frontend/README.md`.
+Feature 2.2: Panning View API
 
-## Frontend TODOs (Remaining/Refinement)
-- [ ] Implement frontend UI for password reset request and token handling.
-- [ ] Implement frontend search interface to use backend search capabilities.
-- [ ] Add UI element to trigger navigation to `EditRelationshipPage`.
-- [ ] Refactor frontend component structure for better organization/scalability.
-- [ ] Improve UI/UX (loading states, error messages, general flow, styling).
+Create viewport-based tree loading API endpoint
+Implement start_node and depth parameters
+Build relative coordinates system for viewport positioning
+Create "fetch more" capability for boundary nodes
+Implement proximity loading parameters
+Add direction-specific traversal (up/down/left/right)
+Create response structure with nodes, links, and pagination
 
-## General Improvements (Ongoing)
-- [ ] Improve general backend error handling and logging details.
-- [ ] Refactor database interactions (potentially use a simple ORM or dedicated data layer) - *Lower priority*.
-- [ ] Ensure `load_data`/`save_data` usage is robust, especially error handling during encryption/decryption.
-- [ ] Add password complexity rules during registration/reset.
+Feature 2.3: Tree Layout Calculation
 
-## Testing (Updated Focus)
-- **Backend:**
-    - [x] Unit tests for core classes (`Person`, `Relationship`, `User`, `FamilyTree`, `UserManagement`).
-    - [x] Unit tests for utilities (`encryption`, `db_utils`, `audit_log`).
-    - [x] Basic integration tests for Flask app (`test_app.py`).
-    - [x] API Integration tests (`test_api.py` - expanded).
-- **Frontend:**
-    - [x] Basic component tests (`LoginPage.test.jsx`, `DashboardPage.test.jsx`).
-    - [ ] Add more component tests (e.g., `AdminPage`, `EditPersonPage`, `FamilyTreeVisualization`).
-    - [ ] Add tests for context (`AuthContext`).
-    - [ ] Add tests for routing.
-- **End-to-End:**
-    - [ ] Implement E2E tests for key user workflows (e.g., using Cypress or Playwright).
+Move layout calculation to backend for consistency
+Implement horizontal layout algorithm
+Implement vertical layout algorithm
+Create radial layout algorithm
+Build layout caching for frequently accessed views
+Implement user preferences for layout configuration
 
-## Documentation
-- [x] Basic `README.md` (updated for new structure, env vars, running tests).
-- [x] Document API endpoints in `api_docs.md` (updated).
-- [x] Improve backend docstrings (ongoing).
-- [ ] Add detailed usage instructions for the React frontend to `README.md`.
-- [ ] (Optional) Set up project documentation website (e.g., using Sphinx for backend, Storybook/Styleguidist for frontend).
+Feature 2.4: Frontend Viewport Management
 
-## Deployment
-- [ ] Configure Flask backend for production API deployment (e.g., Gunicorn, Nginx).
-- [ ] Configure React frontend build process for production.
-- [ ] Set up database/data storage for production (if moving away from JSON).
-- [ ] Containerize the application (Docker - backend & frontend services).
+Create ViewportState interface and manager class
+Implement pan and zoom handlers with boundary detection
+Build debounced fetch mechanism for viewport data
+Create diffing algorithm for node updates
+Implement prefetching system for off-screen nodes
+Add smooth transitions for newly loaded data
+
+EPIC 3: React Flow Enhancement & Frontend Architecture
+Feature 3.1: State Management & React Flow
+
+Replace Context API with Redux/Redux Toolkit
+Create selectors for optimized state access
+Implement action creators and reducers
+Add middleware for async operations
+Create custom node types for different person types
+Implement custom edge types for relationship types
+Add minimap with navigation capability
+
+Feature 3.2: Performance Optimization
+
+Implement React.memo for complex components
+Add virtualization for tree rendering
+Create component lazy loading
+Implement worker threads for layout calculations
+Create worker for data prefetching
+Build worker for local IndexedDB cache
+Implement performance monitoring system
+
+Feature 3.3: API Communication Layer
+
+Create axios interceptors for auth and error handling
+Implement request queuing and batching
+Add offline support with request caching
+Create retry logic for failed requests
+Build API versioning (/api/v1/...)
+Create OpenAPI/Swagger documentation
+Implement rate limiting and throttling
+
+EPIC 4: Advanced Person Management
+Feature 4.1: Person Detail Enhancement
+
+Add fields for military service
+Add fields for education history
+Add fields for occupation history
+Create tabbed interface for person details
+Implement life event timeline tracking
+Build timeline visualization component
+Create person merging capability for duplicate detection
+Add confidence levels for biographical data
+
+Feature 4.2: Media Management
+
+Create S3-compatible storage architecture
+Build media upload functionality with drag-and-drop
+Create media processing pipeline (validation, virus scan, EXIF extraction)
+Implement thumbnail generation for different resolutions
+Build media gallery with lightbox
+Create media organization tools
+Add face recognition suggestion interface
+Implement media tagging system
+
+Feature 4.3: Form Components
+
+Create form validation library
+Implement stepped forms for complex data entry
+Add autosave functionality
+Create reusable form components
+Implement field-level validation and error handling
+Build form state persistence
+
+EPIC 5: Advanced Relationship Management
+Feature 5.1: Relationship Enhancement
+
+Implement relationship qualifiers (adoptive, step, half, biological)
+Create relationship timeline (marriage date, divorce date)
+Build complex relationship detection (cousin calculator)
+Add relationship verification status
+Create drag-and-drop relationship creation in UI
+Implement relationship editing interfaces
+Build relationship visualization components
+
+Feature 5.2: Source Citation System
+
+Create source management database schema
+Implement source entry and management UI
+Build citation linking to people, events, and relationships
+Add support for document uploads and citation
+Implement verification levels based on sources
+Create source verification workflow
+Build notification system for verification requests
+
+Feature 5.3: Collaborative Editing
+
+Implement operational transformation system
+Create conflict-free replicated data type (CRDT) implementation
+Build real-time editing indicators
+Create comment/discussion system
+Add granular permissions system
+Implement invitation system for tree sharing
+Build change tracking and history
+
+EPIC 6: Search & Advanced Features
+Feature 6.1: Advanced Search & Filtering
+
+Implement soundex and fuzzy name matching
+Create advanced search form with multiple criteria
+Add support for date range searches
+Implement location-based searches with SP-GiST indexes
+Create search query processor
+Build search suggestions and autocomplete
+Implement saved searches functionality
+
+Feature 6.2: GEDCOM Support
+
+Create GEDCOM parser
+Implement GEDCOM import functionality
+Build GEDCOM export capability
+Create merge strategy for imported data
+Add validation for GEDCOM format compliance
+
+Feature 6.3: Reports & Exports
+
+Create report builder interface
+Implement print layouts for trees
+Add PDF generation for family trees
+Build custom report generation
+Create sharing options for reports
+Implement data export in multiple formats
+
+EPIC 7: User Experience & Mobile Support
+Feature 7.1: User Profiles & Preferences
+
+Implement user profile management
+Create user preferences for visualization
+Add favorite/recent people tracking
+Implement notification system for changes
+Create activity feed for tree changes
+Build user activity dashboard
+Add email notifications for important changes
+
+Feature 7.2: Onboarding & Help
+
+Create guided tours for new users
+Implement contextual help system
+Add tooltips for complex features
+Create knowledge base and FAQ
+Build help content management system
+
+Feature 7.3: Mobile Optimization
+
+Implement responsive design for all views
+Create touch-friendly controls for tree navigation
+Add gesture support for common actions
+Implement offline capability for mobile
+Build progressive web app functionality
+Create mobile-specific layout optimizations
+
+Feature 7.4: Accessibility & Internationalization
+
+Implement proper ARIA attributes
+Create keyboard navigation support
+Add high contrast mode
+Implement screen reader optimization
+Create translation system
+Implement locale-specific formatting
+Add RTL support for applicable languages
+Create culture-specific relationship terms
+
+EPIC 8: Testing & Deployment
+Feature 8.1: Testing Infrastructure
+
+Set up unit testing framework for backend
+Create integration tests for API endpoints
+Build load testing with simulated large trees
+Implement security penetration testing
+Set up component unit tests with React Testing Library
+Create end-to-end tests with Cypress
+Implement visual regression testing
+Build cross-browser compatibility testing
+
+Feature 8.2: CI/CD & Deployment
+
+Create Docker containers for backend and frontend
+Set up CI/CD pipeline for automated testing
+Implement feature branch deployments
+Build review apps for PR testing
+Set up scalable cloud hosting (AWS/Azure/GCP)
+Implement database replication for read performance
+Set up CDN for static assets
+Create monitoring and alerting system
+
+Feature 8.3: Performance Monitoring
+
+Add instrumentation for query performance
+Implement dynamic query optimization based on tree size
+Create monitoring endpoints for system health
+Add performance logging for analysis
+Build frontend metrics collection system
+Implement performance threshold alerts
+Create performance dashboards
+
+EPIC 1: Database Migration & Core Infrastructure
+
+Feature 1.1: Database Schema & Migration (High Priority)
+
+
+
+Feature 1.2: Caching Implementation (High Priority)
+
+
+
+Feature 1.3: Authentication & Security (High Priority)
+
+
+
+EPIC 2: Tree Traversal & Visualization
+
+Feature 2.1: Advanced Tree Traversal Algorithms (High Priority)
+
+
+
+Feature 2.2: Panning View API (High Priority)
+
+
+
+Feature 2.3: Tree Layout Calculation (Medium Priority)
+
+
+
+Feature 2.4: Frontend Viewport Management (Low Priority)
+
+
+
+EPIC 3: React Flow Enhancement & Frontend Architecture
+
+Feature 3.1: State Management & React Flow (Medium Priority)
+
+
+
+Feature 3.2: Performance Optimization (Low Priority)
+
+
+
+Feature 3.3: API Communication Layer (Medium Priority)
+
+
+
+EPIC 4: Advanced Person Management
+
+Feature 4.1: Person Detail Enhancement (Medium Priority)
+
+
+
+Feature 4.2: Media Management (Low Priority)
+
+
+
+Feature 4.3: Form Components (Low Priority)
+
+
+
+EPIC 5: Advanced Relationship Management
+
+Feature 5.1: Relationship Enhancement (Medium Priority)
+
+
+
+Feature 5.2: Source Citation System (Low Priority)
+
+
+
+Feature 5.3: Collaborative Editing (Low Priority)
+
+
+
+EPIC 6: Search & Advanced Features
+
+Feature 6.1: Advanced Search & Filtering (Low Priority)
+
+
+
+Feature 6.2: GEDCOM Support (Low Priority)
+
+
+
+Feature 6.3: Reports & Exports (Low Priority)
+
+
+
+EPIC 7: User Experience & Mobile Support
+
+Feature 7.1: User Profiles & Preferences (Low Priority)
+
+
+
+Feature 7.2: Onboarding & Help (Low Priority)
+
+
+
+Feature 7.3: Mobile Optimization (Low Priority)
+
+
+
+Feature 7.4: Accessibility & Internationalization (Low Priority)
+
+
+
+EPIC 8: Testing & Deployment
+
+Feature 8.1: Testing Infrastructure (Medium Priority)
+
+
+
+Feature 8.2: CI/CD & Deployment (Low Priority)
+
+
+
+Feature 8.3: Performance Monitoring (Low Priority)
+
+
+
