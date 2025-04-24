@@ -27,3 +27,4 @@ itsdangerous # Required by Flask for session signing, and used for tokens
 pytest
 pytest-cov
 flake8
+httpx
