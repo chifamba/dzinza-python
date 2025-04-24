@@ -26,11 +26,11 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
 # Copy the tests folder
-COPY tests /app/tests
+# COPY tests /app/tests
 
 # Copy all files
 COPY backend .
-
+RUN ls -l /app
 # Make port 8090 available to the world outside this container
 EXPOSE 8090
 
