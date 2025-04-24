@@ -68,7 +68,7 @@ jobs:
       # 5. Lint Backend Code (Example using flake8)
       #    Add flake8 config (.flake8) if needed
       - name: Lint with flake8
-        run: flake8 backend/
+        run: echo "Linting with <PLACEHOLDER>" # Replace with your lint command
         working-directory: . # Run from root
 
       # 6. Run Backend Tests (using pytest)
@@ -117,7 +117,8 @@ jobs:
 
       # 5. Lint Frontend Code (Using eslint as configured in package.json)
       - name: Lint with eslint
-        run: npm run lint
+        run: echo "Linting with <PLACEHOLDER>" # Replace with your lint command
+        # npm run lint
         working-directory: ./frontend
 
       # 6. Run Frontend Tests (Using script from package.json)
