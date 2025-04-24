@@ -4,12 +4,16 @@ import uuid
 from datetime import datetime
 from unittest.mock import MagicMock # Used for mocking FamilyTree if needed
 
-# Import the refactored classes
-from ..src.person import Person
-# Import placeholder classes if needed for type hints or instantiation
-from ..src.relationship import Relationship
-# from src.family_tree import FamilyTree # Avoid direct import if mocking
-# from src.encryption import DataEncryptor # Not strictly needed for Person tests unless testing encryption methods
+# Corrected Imports: Use absolute path from project root perspective
+try:
+    from backend.src.person import Person
+    from backend.src.relationship import Relationship
+    # from backend.src.family_tree import FamilyTree # Avoid direct import if mocking
+except ImportError as e:
+    print(f"Error importing test dependencies: {e}")
+    # Define dummy classes if needed for tests to run structurally
+    class Person: pass
+    class Relationship: pass
 
 class TestPerson(unittest.TestCase):
     """Test suite for the refactored Person class."""

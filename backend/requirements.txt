@@ -1,11 +1,14 @@
 # backend/requirements.txt
 
-# Web Framework
+# Web Framework & Server
 Flask
 Flask-Cors # Added for API Cross-Origin Resource Sharing
+fastapi   # Added for API endpoints
+uvicorn[standard] # Added ASGI server for FastAPI
 
-# Database (If you were using TinyDB, keep it, otherwise remove if not used)
-# tinydb
+# Database
+SQLAlchemy
+psycopg2-binary # Added PostgreSQL driver
 
 # Password Hashing
 bcrypt
@@ -20,8 +23,7 @@ pycryptodome
 yagmail
 itsdangerous # Required by Flask for session signing, and used for tokens
 
-# For testing
+# For testing & Linting
 pytest
-flake8
 pytest-cov
-psycopg2-binary
+flake8

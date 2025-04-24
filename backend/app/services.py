@@ -1,27 +1,25 @@
 # backend/app/services.py
-import logging # Keep logging for now, might be used in unshown parts
+import logging
 from urllib.parse import urljoin
 from sqlalchemy.orm import Session, load_only, joinedload
 from sqlalchemy.exc import SQLAlchemyError, NoResultFound
-from sqlalchemy import or_, and_, desc, asc # Removed unused Column
+from sqlalchemy import or_, and_, desc, asc
 from typing import Optional, List, Dict, Any
-from datetime import date # Removed unused datetime
+from datetime import date
 from fastapi import Request, HTTPException
 
-# Import models using relative paths (adjust if structure differs)
+# Import models using relative paths
 try:
-    # Import specific models needed by functions shown
     from .models.user import User
     from .models.person import Person
     from .models.person_attribute import PersonAttribute
-    from .models.relationship import Relationship as RelationshipModel # Alias
+    from .models.relationship import Relationship as RelationshipModel
     from .models.relationship_attribute import RelationshipAttribute
     from .models.media import Media
     from .models.event import Event
     from .models.source import Source
     from .models.citation import Citation
 except ImportError as e:
-    # Using root logger configured in app.py
     logging.critical(f"Failed to import models in services: {e}")
     raise
 
@@ -49,7 +47,7 @@ def get_user_by_id(db: Session, user_id: int) -> User:
 def create_user(db: Session, user_data: dict) -> User:
     """Creates a new user."""
     try:
-        # Password hashing should be handled elsewhere (e.g., UserManagement)
+        # Password hashing should be handled elsewhere
         new_user = User(**user_data)
         db.add(new_user)
         db.commit()
@@ -59,7 +57,7 @@ def create_user(db: Session, user_data: dict) -> User:
         db.rollback()
         logging.error(f"Database error creating user: {e}", exc_info=True)
         if "UNIQUE constraint failed" in str(e):
-             raise HTTPException(status_code=409, detail="Username already exists.")
+            raise HTTPException(status_code=409, detail="Username already exists.")
         raise HTTPException(status_code=500, detail="Database error creating user.")
 
 # --- Person Services ---
@@ -91,27 +89,20 @@ def get_all_people_db(db: Session, page: int = 1, page_size: int = 10, order_by:
 
         # Sorting
         valid_order_by_columns = ['id', 'first_name', 'last_name', 'gender', 'birth_date', 'death_date']
-        if order_by in valid_order_by_columns:
-            order_column = getattr(Person, order_by)
-            if order_direction == 'desc':
-                query = query.order_by(desc(order_column))
-            else:
-                query = query.order_by(asc(order_column))
-        else:
-            query = query.order_by(Person.id.asc())
+        sort_column_name = order_by if order_by in valid_order_by_columns else 'id'
+        order_column = getattr(Person, sort_column_name)
+        query = query.order_by(desc(order_column) if order_direction == 'desc' else asc(order_column))
 
         # Field selection
-        load_options = None
+        final_fields = None
         if fields:
             try:
-                # Ensure primary key is always included if selecting fields
                 required_fields = {'id'}
                 final_fields = list(set(fields) | required_fields)
-                load_options = load_only(*final_fields)
-                query = query.options(load_options)
+                query = query.options(load_only(*final_fields))
             except Exception as e:
-                 logging.warning(f"Invalid fields requested for Person: {fields}. Error: {e}. Ignoring field selection.")
-                 fields = None # Reset fields if invalid
+                 logging.warning(f"Invalid fields requested for Person: {fields}. Error: {e}. Ignoring.")
+                 final_fields = None # Ignore field selection on error
 
         # Pagination
         offset = (page - 1) * page_size
@@ -120,14 +111,13 @@ def get_all_people_db(db: Session, page: int = 1, page_size: int = 10, order_by:
         # Prepare response
         results_list = []
         for item in results_orm:
-             if fields:
+             if final_fields:
                  item_data = {field: getattr(item, field, None) for field in final_fields}
              else:
-                 item_data = item.to_dict() # Assuming Person has to_dict()
+                 item_data = item.to_dict()
                  if "_sa_instance_state" in item_data:
                      del item_data["_sa_instance_state"]
              results_list.append(item_data)
-
 
         total_pages = (total_items + page_size - 1) // page_size
         return {
@@ -151,25 +141,22 @@ def get_person_by_id_db(db: Session, person_id: int, fields: Optional[List[str]]
     try:
         query = db.query(Person).filter(Person.id == person_id)
 
-        load_options = None
+        final_fields = None
         if fields:
             try:
-                # Ensure primary key is always included if selecting fields
                 required_fields = {'id'}
                 final_fields = list(set(fields) | required_fields)
-                load_options = load_only(*final_fields)
-                query = query.options(load_options)
+                query = query.options(load_only(*final_fields))
             except Exception as e:
-                 logging.warning(f"Invalid fields requested for Person ID {person_id}: {fields}. Error: {e}. Ignoring field selection.")
-                 fields = None # Reset fields if invalid
+                 logging.warning(f"Invalid fields requested for Person ID {person_id}: {fields}. Error: {e}. Ignoring.")
+                 final_fields = None
 
         person_obj = query.first()
 
         if person_obj is None:
             raise HTTPException(status_code=404, detail="Person not found")
 
-        # Convert to dictionary, handling selected fields
-        if fields:
+        if final_fields:
             response_data = {field: getattr(person_obj, field, None) for field in final_fields}
         else:
             response_data = person_obj.to_dict()
@@ -199,7 +186,7 @@ def create_person_db(db: Session, person_data: dict) -> Person:
         db.rollback()
         logging.error(f"Database error creating person: {e}", exc_info=True)
         if "UNIQUE constraint failed" in str(e) or "duplicate key value violates unique constraint" in str(e):
-             raise HTTPException(status_code=409, detail="Person creation conflict (e.g., duplicate identifier).")
+             raise HTTPException(status_code=409, detail="Person creation conflict.")
         elif "NOT NULL constraint failed" in str(e) or "null value in column" in str(e):
              raise HTTPException(status_code=400, detail=f"Missing required field for person: {e}")
         raise HTTPException(status_code=500, detail="Database error creating person.")
@@ -215,7 +202,7 @@ def get_all_relationships(db: Session, request: Request, page: int = 1, page_siz
                           include_person1: bool = False, include_person2: bool = False) -> Dict[str, Any]:
     """Retrieves relationships with pagination, filtering, sorting, field selection, and optional includes."""
     try:
-        query = db.query(RelationshipModel) # Use alias
+        query = db.query(RelationshipModel)
 
         # Filtering
         if type:
@@ -229,11 +216,9 @@ def get_all_relationships(db: Session, request: Request, page: int = 1, page_siz
 
         # Sorting
         valid_order_by_columns = ['id', 'rel_type', 'person1_id', 'person2_id']
-        if order_by in valid_order_by_columns:
-            order_column = getattr(RelationshipModel, order_by)
-            query = query.order_by(desc(order_column) if order_direction == 'desc' else asc(order_column))
-        else:
-            query = query.order_by(RelationshipModel.id.asc())
+        sort_column_name = order_by if order_by in valid_order_by_columns else 'id'
+        order_column = getattr(RelationshipModel, sort_column_name)
+        query = query.order_by(desc(order_column) if order_direction == 'desc' else asc(order_column))
 
         # Includes
         load_options = []
@@ -244,7 +229,6 @@ def get_all_relationships(db: Session, request: Request, page: int = 1, page_siz
         if load_options:
              query = query.options(*load_options)
 
-
         # Field selection
         final_fields = None
         if fields:
@@ -253,10 +237,8 @@ def get_all_relationships(db: Session, request: Request, page: int = 1, page_siz
             try:
                 query = query.options(load_only(*final_fields))
             except Exception as e:
-                 logging.warning(f"Invalid fields requested for Relationship: {fields}. Error: {e}. Ignoring field selection.")
-                 fields = None # Reset fields
+                 logging.warning(f"Invalid fields requested for Relationship: {fields}. Error: {e}. Ignoring.")
                  final_fields = None
-
 
         # Pagination
         offset = (page - 1) * page_size
@@ -272,14 +254,12 @@ def get_all_relationships(db: Session, request: Request, page: int = 1, page_siz
                 item_data = item.to_dict()
                 if "_sa_instance_state" in item_data: del item_data["_sa_instance_state"]
 
-            # Add links
             item_data["_links"] = {
                 "self": urljoin(base_url, f"/api/relationships/{item.id}"),
                 "person1": urljoin(base_url, f"/api/people/{item.person1_id}"),
                 "person2": urljoin(base_url, f"/api/people/{item.person2_id}"),
             }
 
-            # Add included data
             if include_person1 and hasattr(item, 'person1') and item.person1:
                 item_data["person1"] = item.person1.to_dict()
                 if "_sa_instance_state" in item_data["person1"]: del item_data["person1"]["_sa_instance_state"]
@@ -308,7 +288,7 @@ def get_all_relationships(db: Session, request: Request, page: int = 1, page_siz
 # --- Add get_relationship_by_id, create_relationship, update_relationship, delete_relationship ---
 
 # --- Relationship Attribute Services ---
-# --- Implement similarly to Person Attribute Services, using RelationshipAttribute model ---
+# --- Implement similarly ---
 
 # --- Person Attribute Services ---
 
@@ -334,11 +314,9 @@ def get_all_person_attributes(db: Session, page: int = 1, page_size: int = 10,
 
         # Sorting
         valid_order_by_columns = ['id', 'key', 'value', 'person_id']
-        if order_by in valid_order_by_columns:
-            order_column = getattr(PersonAttribute, order_by)
-            query = query.order_by(desc(order_column) if order_direction == 'desc' else asc(order_column))
-        else:
-            query = query.order_by(PersonAttribute.id.asc())
+        sort_column_name = order_by if order_by in valid_order_by_columns else 'id'
+        order_column = getattr(PersonAttribute, sort_column_name)
+        query = query.order_by(desc(order_column) if order_direction == 'desc' else asc(order_column))
 
         # Includes
         load_options = []
@@ -355,8 +333,7 @@ def get_all_person_attributes(db: Session, page: int = 1, page_size: int = 10,
              try:
                  query = query.options(load_only(*final_fields))
              except Exception as e:
-                 logging.warning(f"Invalid fields requested for PersonAttribute: {fields}. Error: {e}. Ignoring field selection.")
-                 fields = None # Reset
+                 logging.warning(f"Invalid fields requested for PersonAttribute: {fields}. Error: {e}. Ignoring.")
                  final_fields = None
 
         # Pagination
@@ -372,7 +349,6 @@ def get_all_person_attributes(db: Session, page: int = 1, page_size: int = 10,
                 item_data = item.to_dict()
                 if "_sa_instance_state" in item_data: del item_data["_sa_instance_state"]
 
-            # Add included data
             if include_person and hasattr(item, 'person') and item.person:
                 item_data["person"] = item.person.to_dict()
                 if "_sa_instance_state" in item_data["person"]: del item_data["person"]["_sa_instance_state"]
@@ -415,23 +391,20 @@ def get_person_attribute(db: Session, person_attribute_id: int,
              try:
                  query = query.options(load_only(*final_fields))
              except Exception as e:
-                 logging.warning(f"Invalid fields requested for PersonAttribute ID {person_attribute_id}: {fields}. Error: {e}. Ignoring field selection.")
-                 fields = None # Reset
+                 logging.warning(f"Invalid fields requested for PersonAttribute ID {person_attribute_id}: {fields}. Error: {e}. Ignoring.")
                  final_fields = None
 
         attr_obj = query.first()
 
         if attr_obj is None:
-            return None # Let route handler raise 404
+            return None
 
-        # Prepare response data
         if final_fields:
             item_data = {field: getattr(attr_obj, field, None) for field in final_fields}
         else:
             item_data = attr_obj.to_dict()
             if "_sa_instance_state" in item_data: del item_data["_sa_instance_state"]
 
-        # Add included data
         if include_person and hasattr(attr_obj, 'person') and attr_obj.person:
             item_data["person"] = attr_obj.person.to_dict()
             if "_sa_instance_state" in item_data["person"]: del item_data["person"]["_sa_instance_state"]
@@ -449,77 +422,7 @@ def get_person_attribute(db: Session, person_attribute_id: int,
 # --- Add create, update, delete for person attributes ---
 
 # --- Media, Event, Source, Citation Services ---
-# --- Implement similarly, following the pattern for pagination, filtering, sorting, field selection, includes ---
-# --- Example for get_all_media ---
-
-def get_all_media(db: Session, page: int = 1, page_size: int = 10, order_by: str = 'id',
-                  order_direction: str = 'asc', file_name: Optional[str] = None,
-                  file_type: Optional[str] = None, description: Optional[str] = None,
-                  fields: Optional[List[str]] = None) -> Dict[str, Any]:
-    """Retrieves media with pagination, filtering, sorting, and field selection."""
-    try:
-        query = db.query(Media)
-
-        # Filtering
-        if file_name:
-            query = query.filter(Media.file_name.ilike(f"%{file_name}%"))
-        if file_type:
-            query = query.filter(Media.media_type == file_type) # Assuming media_type field
-        if description:
-            query = query.filter(Media.description.ilike(f"%{description}%"))
-
-        total_items = query.count()
-
-        # Sorting
-        valid_order_by_columns = ['id', 'file_name', 'media_type', 'title', 'person_id', 'event_id'] # Adjust as per model
-        if order_by in valid_order_by_columns:
-            order_column = getattr(Media, order_by)
-            query = query.order_by(desc(order_column) if order_direction == 'desc' else asc(order_column))
-        else:
-            query = query.order_by(Media.id.asc())
-
-        # Field selection
-        final_fields = None
-        if fields:
-             required_fields = {'id', 'person_id', 'event_id'} # Keep keys
-             final_fields = list(set(fields) | required_fields)
-             try:
-                 query = query.options(load_only(*final_fields))
-             except Exception as e:
-                 logging.warning(f"Invalid fields requested for Media: {fields}. Error: {e}. Ignoring field selection.")
-                 fields = None # Reset
-                 final_fields = None
-
-        # Pagination
-        offset = (page - 1) * page_size
-        results_orm = query.offset(offset).limit(page_size).all()
-
-        # Prepare response
-        results_list = []
-        for item in results_orm:
-            if final_fields:
-                item_data = {field: getattr(item, field, None) for field in final_fields}
-            else:
-                item_data = item.to_dict() # Assuming model has to_dict()
-                if "_sa_instance_state" in item_data: del item_data["_sa_instance_state"]
-            results_list.append(item_data)
-
-        total_pages = (total_items + page_size - 1) // page_size
-        return {
-            "results": results_list,
-            "total_items": total_items,
-            "page": page,
-            "page_size": page_size,
-            "total_pages": total_pages
-        }
-    except SQLAlchemyError as e:
-        logging.error(f"Database error fetching media: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Database error fetching media.")
-    except Exception as e:
-        logging.error(f"Error processing media request: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Error processing media request.")
-
-# --- Implement other CRUD services for Media, Event, Source, Citation ---
+# --- Implement similarly ---
 
 # --- Tree Traversal Services ---
 
@@ -527,7 +430,7 @@ def get_ancestors(db: Session, person_id: int, depth: int) -> List[Person]:
     """Retrieves ancestors using an iterative approach."""
     ancestors = []
     queue = [(person_id, 0)]
-    visited_ids = {person_id} # Keep track of visited IDs to prevent cycles
+    visited_ids = {person_id}
 
     while queue:
         current_id, current_depth = queue.pop(0)
@@ -535,11 +438,10 @@ def get_ancestors(db: Session, person_id: int, depth: int) -> List[Person]:
         if current_depth >= depth:
             continue
 
-        # Find parent relationships where the current person is person2 (the child)
         parent_rels = db.query(RelationshipModel).filter(
             RelationshipModel.person2_id == current_id,
-            RelationshipModel.rel_type == 'parent' # Assuming 'parent' means person1 is parent of person2
-        ).options(joinedload(RelationshipModel.person1)).all() # Eager load the parent (person1)
+            RelationshipModel.rel_type == 'parent'
+        ).options(joinedload(RelationshipModel.person1)).all()
 
         for rel in parent_rels:
             parent = rel.person1
@@ -547,7 +449,6 @@ def get_ancestors(db: Session, person_id: int, depth: int) -> List[Person]:
                 ancestors.append(parent)
                 visited_ids.add(parent.id)
                 queue.append((parent.id, current_depth + 1))
-
     return ancestors
 
 def get_descendants(db: Session, person_id: int, depth: int) -> List[Person]:
@@ -562,11 +463,10 @@ def get_descendants(db: Session, person_id: int, depth: int) -> List[Person]:
         if current_depth >= depth:
             continue
 
-        # Find child relationships where the current person is person1 (the parent)
         child_rels = db.query(RelationshipModel).filter(
             RelationshipModel.person1_id == current_id,
-            RelationshipModel.rel_type == 'parent' # Assuming 'parent' means person1 is parent of person2
-        ).options(joinedload(RelationshipModel.person2)).all() # Eager load the child (person2)
+            RelationshipModel.rel_type == 'parent'
+        ).options(joinedload(RelationshipModel.person2)).all()
 
         for rel in child_rels:
             child = rel.person2
@@ -574,12 +474,10 @@ def get_descendants(db: Session, person_id: int, depth: int) -> List[Person]:
                 descendants.append(child)
                 visited_ids.add(child.id)
                 queue.append((child.id, current_depth + 1))
-
     return descendants
 
 
 # --- Implement get_extended_family, get_related, get_partial_tree, get_branch similarly ---
-# --- These might require more complex logic combining ancestor/descendant searches ---
 
 # --- Search Service ---
 def search_people(db: Session, name: Optional[str] = None, birth_date: Optional[date] = None,
@@ -611,15 +509,13 @@ def search_people(db: Session, name: Optional[str] = None, birth_date: Optional[
         if notes:
             query = query.filter(Person.notes.ilike(f"%{notes}%"))
 
-        # Join with attributes if searching by attribute
         if attribute_key or attribute_value:
-            # Ensure the relationship name matches your Person model
+            # Assuming Person model has relationship named 'attributes' to PersonAttribute
             query = query.join(Person.attributes)
             if attribute_key:
                 query = query.filter(PersonAttribute.key == attribute_key)
             if attribute_value:
                 query = query.filter(PersonAttribute.value.ilike(f"%{attribute_value}%"))
-            # Ensure distinct results if joining
             query = query.distinct()
 
         return query.all()
@@ -631,45 +527,38 @@ def search_people(db: Session, name: Optional[str] = None, birth_date: Optional[
 def get_person_relationships_and_attributes(db: Session, person_id: int) -> Dict[str, Any]:
     """Retrieves relationships and attributes for a specific person."""
     try:
-        # Fetch the person to ensure they exist
         person_obj = db.query(Person).filter(Person.id == person_id).first()
         if not person_obj:
             raise HTTPException(status_code=404, detail="Person not found")
 
-        # Fetch attributes for the person
         person_attrs = db.query(PersonAttribute)\
                          .filter(PersonAttribute.person_id == person_id)\
                          .all()
 
-        # Fetch relationships where the person is either person1 or person2
         person_rels_orm = db.query(RelationshipModel)\
                             .filter(or_(RelationshipModel.person1_id == person_id,
                                         RelationshipModel.person2_id == person_id))\
-                            .options(joinedload(RelationshipModel.attributes), # Include relationship attributes
-                                     joinedload(RelationshipModel.person1),   # Include related person 1
-                                     joinedload(RelationshipModel.person2)).all()   # Include related person 2
-                            
+                            .options(joinedload(RelationshipModel.attributes),
+                                     joinedload(RelationshipModel.person1),
+                                     joinedload(RelationshipModel.person2))\
+                            .all()
 
-        # Format the results
         person_attributes_data = [attr.to_dict() for attr in person_attrs]
         relationships_data = []
         for rel in person_rels_orm:
             rel_data = rel.to_dict()
             if "_sa_instance_state" in rel_data: del rel_data["_sa_instance_state"]
 
-            # Ensure relationship attributes are included and formatted
             rel_data['attributes'] = [rel_attr.to_dict() for rel_attr in rel.attributes]
             for attr_dict in rel_data['attributes']:
-                if "_sa_instance_state" in attr_dict: del attr_dict["_sa_instance_state"]
+                 if "_sa_instance_state" in attr_dict: del attr_dict["_sa_instance_state"]
 
-
-            # Add related person info (handling potential None if relationship is broken)
             if rel.person1:
                 p1_data = rel.person1.to_dict()
                 if "_sa_instance_state" in p1_data: del p1_data["_sa_instance_state"]
                 rel_data['person1'] = p1_data
             else:
-                rel_data['person1'] = None
+                 rel_data['person1'] = None
 
             if rel.person2:
                 p2_data = rel.person2.to_dict()
@@ -680,11 +569,16 @@ def get_person_relationships_and_attributes(db: Session, person_id: int) -> Dict
 
             relationships_data.append(rel_data)
 
-        return {"person_attributes": person_attributes_data,
-                "relationships": relationships_data}
-
+        # Corrected indentation for the return statement
+        return {
+            "person_attributes": person_attributes_data,
+            "relationships": relationships_data
+        }
+    # Correct indentation for the except blocks
     except NoResultFound:
         raise HTTPException(status_code=404, detail="Person not found")
     except SQLAlchemyError as e:
         logging.error(f"Database error fetching relationships/attributes for person {person_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Database error fetching relationships/attributes.")
+
+# Ensure no trailing code or incorrect indentation below this line

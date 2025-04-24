@@ -16,10 +16,10 @@ def _get_encryption_instance():
             from .encryption import Encryption
             _encryption_instance = Encryption()
         except ImportError as e:
-            logging.critical(f"Failed to import Encryption class: {e}. Encrypted operations will fail.", exc_info=True)
+            logging.critical(f"Failed to import Encryption class: {e}. Encrypted ops fail.", exc_info=True)
             _encryption_instance = None
         except ValueError as e:
-            logging.critical(f"Failed to initialize Encryption instance: {e}. Encrypted operations will fail.")
+            logging.critical(f"Failed to initialize Encryption instance: {e}. Encrypted ops fail.")
             _encryption_instance = None
     return _encryption_instance
 
@@ -39,7 +39,7 @@ def load_data(file_path, default=None, is_encrypted=False):
     if is_encrypted:
         encryption = _get_encryption_instance()
         if not encryption:
-            logging.error(f"load_data: Cannot load encrypted file {file_path}, Encryption service not available.")
+            logging.error(f"load_data: Cannot load encrypted file {file_path}, Encryption service unavailable.")
             return default if default is not None else {}
 
     if not os.path.exists(file_path):
@@ -55,14 +55,16 @@ def load_data(file_path, default=None, is_encrypted=False):
 
             if is_encrypted:
                 if not encryption:
-                     logging.error(f"load_data: Encryption instance not available for decryption of {file_path}.")
-                     return default if default is not None else {}
+                    logging.error(f"load_data: Encryption instance not available for decryption of {file_path}.")
+                    return default if default is not None else {}
                 decrypted_data_str = encryption.decrypt(raw_data)
                 if decrypted_data_str is None:
                     logging.error(f"load_data: Failed to decrypt data from {file_path}. Returning default.")
                     return default if default is not None else {}
+                # Correct indentation for json.loads
                 data = json.loads(decrypted_data_str)
             else:
+                # Correct indentation for json.loads
                 data = json.loads(raw_data)
         return data
 
@@ -75,16 +77,12 @@ def load_data(file_path, default=None, is_encrypted=False):
     except TypeError as e:
         logging.error(f"load_data: Type error while processing data from {file_path}: {e}", exc_info=True)
         return default if default is not None else {}
-    # --- MODIFIED EXCEPTION LOGGING ---
     except Exception as e:
-        # Check if it's a RecursionError to avoid deep traceback logging
         if isinstance(e, RecursionError):
              logging.error(f"load_data: RecursionError occurred while loading data from {file_path}: {e}")
         else:
-             # Log other exceptions with full traceback
-             logging.error(f"load_data: An unexpected error occurred while loading data from {file_path}: {e}", exc_info=True)
+             logging.error(f"load_data: An unexpected error occurred loading data from {file_path}: {e}", exc_info=True)
         return default if default is not None else {}
-    # --- END MODIFIED EXCEPTION LOGGING ---
 
 def save_data(file_path, data, is_encrypted=False, append=False):
     """
@@ -125,19 +123,20 @@ def save_data(file_path, data, is_encrypted=False, append=False):
                     if encrypted_data_str is None:
                         logging.error(f"save_data: Failed to encrypt data for {file_path}.")
                         return
+                    # Correct indentation for f.write
                     f.write(encrypted_data_str)
                 else:
+                    # Correct indentation for json.dump
                     json.dump(data, f, indent=4)
 
     except TypeError as e:
-        logging.error(f"save_data: TypeError saving data to {file_path} (is data JSON serializable?): {e}", exc_info=True)
+        logging.error(f"save_data: TypeError saving data to {file_path}: {e}", exc_info=True)
     except OSError as e:
         logging.error(f"save_data: OSError saving data to {file_path}: {e}", exc_info=True)
-    # --- MODIFIED EXCEPTION LOGGING ---
     except Exception as e:
          if isinstance(e, RecursionError):
               logging.error(f"save_data: RecursionError occurred while saving data to {file_path}: {e}")
          else:
               logging.error(f"save_data: An unexpected error occurred saving data to {file_path}: {e}", exc_info=True)
-    # --- END MODIFIED EXCEPTION LOGGING ---
 
+# Ensure no trailing blank lines or code below this line
