@@ -1,3 +1,6 @@
+from urllib.parse import urljoin
+
+
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import or_, and_
@@ -11,6 +14,9 @@ from typing import Optional
 from datetime import date, datetime
 from sqlalchemy import String
 from app.models import user, person, person_attribute, relationship, relationship_attribute, media, event, source, citation, relationship
+from urllib.parse import urljoin
+from fastapi import Request
+
 from fastapi import HTTPException
 
 
@@ -565,6 +571,16 @@ def get_all_citations(db: Session, page: int = 1, page_size: int = 10, order_by:
             {field: getattr(item, field) for field in fields if hasattr(item, field)}
             for item in results
             ]
+        else:
+          results = query.offset(offset).limit(page_size).all()
+
+        for item in results:
+          if not isinstance(item, dict):
+            item.__dict__["_links"] = {
+                "source": urljoin(str(request.base_url), f"/api/sources/{item.source_id}"),
+                "person": urljoin(str(request.base_url), f"/api/people/{item.person_id}"),
+            for item in results
+            ]
 
         return {
             "results": results,
@@ -685,6 +701,7 @@ def get_all_sources(db: Session, page: int = 1, page_size: int = 10, order_by: s
         else:
             # Default sort is by id ascending
             query = query.order_by(source.Source.id.asc())        
+
         results = query.offset(offset).limit(page_size).all()
         return {
             "results": [
@@ -708,6 +725,8 @@ def get_all_sources(db: Session, page: int = 1, page_size: int = 10, order_by: s
 def get_source_by_id(db: Session, source_id: int):
     
     try:
+
+
         query = db.query(source.Source).filter(source.Source.id == source_id)
         if fields:
             query = query.options(load_only(*fields))
@@ -715,6 +734,8 @@ def get_source_by_id(db: Session, source_id: int):
             source.Source.id == source_id
         ).first()
         if source_obj is None:
+            raise HTTPException(status_code=404, detail="Source not found")
+        source_obj.__dict__["_links"] = {}
             raise HTTPException(status_code=404, detail="Source not found")
         return source_obj
     except SQLAlchemyError as e:
@@ -823,6 +844,7 @@ def get_all_media(db: Session, page: int = 1, page_size: int = 10, order_by: str
         results = query.offset(offset).limit(page_size).all()
 
         if fields:
+            
             results = [
                 {field: getattr(item, field) for field in fields if hasattr(item, field)}
                 for item in results
@@ -834,6 +856,7 @@ def get_all_media(db: Session, page: int = 1, page_size: int = 10, order_by: str
             "page": page,
             "page_size": page_size,
         }
+        
     except SQLAlchemyError as e:
 
         raise HTTPException(status_code=500, detail=str(e))
@@ -850,6 +873,9 @@ def get_media_by_id(db: Session, media_id: int, fields: list = None):
             raise HTTPException(status_code=404, detail="Media not found")
         if fields:
             return {field: getattr(media_obj, field) for field in fields if hasattr(media_obj, field)}
+        media_obj.__dict__["_links"] = {}
+
+        
         return media_obj
     except SQLAlchemyError as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -869,7 +895,7 @@ def create_media(db: Session, media_data: dict):
 
 
 def update_media(db: Session, media_id: int, media_data: dict, fields: list = None):
-    try:
+    try:        
         db.query(media.Media).filter(media.Media.id == media_id).update(media_data)
         db.commit()
         return get_media_by_id(db, media_id, fields)
@@ -889,7 +915,7 @@ def delete_media(db: Session, media_id: int):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def get_all_relationships(db: Session, page: int = 1, page_size: int = 10, order_by: str = 'id', order_direction: str = 'asc', type: str = None, person1_id: int = None, person2_id: int = None, fields: list = None):
+def get_all_relationships(db: Session, request: Request, page: int = 1, page_size: int = 10, order_by: str = 'id', order_direction: str = 'asc', type: str = None, person1_id: int = None, person2_id: int = None, fields: list = None):
     """
     Retrieves all relationships from the database with pagination.
     
@@ -924,6 +950,15 @@ def get_all_relationships(db: Session, page: int = 1, page_size: int = 10, order
           query = query.options(load_only(*fields))
         
 
+        results = query.offset(offset).limit(page_size).all()
+
+        # adding the _links in the results
+        for item in results:
+            item.__dict__["_links"] = {
+                "person1": urljoin(str(request.base_url), f"/api/people/{item.person1_id}"),
+                "person2": urljoin(str(request.base_url), f"/api/people/{item.person2_id}"),
+            }
+
         if type:
             query = query.filter(relationship.Relationship.rel_type == type)
         if person1_id:
@@ -942,8 +977,6 @@ def get_all_relationships(db: Session, page: int = 1, page_size: int = 10, order
           else:
             query = query.order_by(asc(order_column))
         
-        results = query.offset(offset).limit(page_size).all()
-        
         if fields:
           results = [
             {field: getattr(item, field) for field in fields if hasattr(item, field)}
@@ -961,15 +994,24 @@ def get_all_relationships(db: Session, page: int = 1, page_size: int = 10, order
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def get_relationship_by_id(db: Session, relationship_id: int, fields: list = None):
+def get_relationship_by_id(db: Session, request: Request, relationship_id: int, fields: list = None):
     """Retrieves a relationship by its ID."""
     
     try:
         query = db.query(relationship.Relationship).filter(relationship.Relationship.id == relationship_id)
+
+
         if fields:
           query = query.options(load_only(*fields))
         relationship_obj = query.first()
         if not relationship_obj:
+        # adding the _links
+        relationship_obj.__dict__["_links"] = {
+            "person1": urljoin(
+                str(request.base_url), f"/api/people/{relationship_obj.person1_id}"
+            ),
+            "person2": urljoin(str(request.base_url), f"/api/people/{relationship_obj.person2_id}"),
+        }
           raise HTTPException(status_code=404, detail="Relationship not found")
         if fields:
             return {field: getattr(relationship_obj, field) for field in fields if hasattr(relationship_obj, field)}
@@ -977,8 +1019,6 @@ def get_relationship_by_id(db: Session, relationship_id: int, fields: list = Non
         except SQLAlchemyError as e:
             db.rollback()
             raise HTTPException(status_code=500, detail=str(e))
-        
-        if fields: return {field: getattr(relationship_obj, field) for field in fields if hasattr(relationship_obj, field)}
 
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1000,7 +1040,7 @@ def update_relationship(db: Session, relationship_id: int, relationship_data: di
     try:
         db.query(relationship.Relationship).filter(relationship.Relationship.id == relationship_id).update(relationship_data)
         db.commit()
-        return get_relationship_by_id(db, relationship_id, fields=[])
+        return get_relationship_by_id(db, request, relationship_id, fields=[])
     except SQLAlchemyError as e:
 
         db.rollback()
@@ -1069,6 +1109,9 @@ def get_all_relationship_attributes(db: Session, page: int = 1, page_size: int =
       results = query.offset(offset).limit(page_size).all()
       
       if fields:
+          results = [
+            {field: getattr(item, field) for field in fields if hasattr(item, field)}
+            for item in results]
         results = [
             {field: getattr(item, field) for field in fields if hasattr(item, field)}
             for item in results
@@ -1082,10 +1125,17 @@ def get_all_relationship_attributes(db: Session, page: int = 1, page_size: int =
             "total_pages": total_pages
         }    
         
+        for item in results:
+            if not isinstance(item, dict):
+              item.__dict__["_links"] = {
+                  "relationship": f"/api/relationships/{item.relationship_id}"
+              }
+            else: item["_links"] = {
+                  "relationship": f"/api/relationships/{item.get('relationship_id')}"
+            }
     except SQLAlchemyError as e:
 
         raise HTTPException(status_code=500, detail=str(e))
-
 
 def get_relationship_attribute_by_id(db: Session, relationship_attribute_id: int, fields: list = None):
 
@@ -1100,9 +1150,12 @@ def get_relationship_attribute_by_id(db: Session, relationship_attribute_id: int
 
         if relationship_attribute_obj is None:
             raise HTTPException(status_code=404, detail="Relationship attribute not found")
-
+        
         if fields:
-            return {field: getattr(relationship_attribute_obj, field) for field in fields if hasattr(relationship_attribute_obj, field)}
+            return {field: getattr(relationship_attribute_obj, field) for field in fields if hasattr(relationship_attribute_obj, field)}        
+        
+        relationship_attribute_obj.__dict__["_links"] = {"relationship": f"/api/relationships/{relationship_attribute_obj.relationship_id}"}
+
 
         return relationship_attribute_obj
     except SQLAlchemyError as e:
@@ -1200,6 +1253,15 @@ def get_all_person_attributes(db: Session, page: int = 1, page_size: int = 10, o
                 for item in query.offset(offset).limit(page_size).all()
             ]
         else: results = query.offset(offset).limit(page_size).all()
+
+        for item in results:
+            if not isinstance(item, dict):
+                item.__dict__.pop('_sa_instance_state', None)
+                
+            item_id = item["id"] if isinstance(item, dict) else item.id
+            if not "_links" in item:
+                item["_links"] = {"person": f"/api/people/{item.person_id}"}
+
         return {
             "results": results,
             "total_items": total_items,
@@ -1220,6 +1282,12 @@ def get_person_attribute(db: Session, person_attribute_id: int, fields: list = N
         person_attribute_obj = query.first()
         if not person_attribute_obj:
             raise HTTPException(status_code=404, detail="Person attribute not found")
+
+        if not isinstance(person_attribute_obj, dict):
+            person_attribute_obj.__dict__.pop('_sa_instance_state', None)
+        if not "_links" in person_attribute_obj.__dict__:
+            person_attribute_obj.__dict__["_links"] = {"person": f"/api/people/{person_attribute_obj.person_id}"}
+
         if fields: return {field: getattr(person_attribute_obj, field) for field in fields if hasattr(person_attribute_obj, field)}
         return person_attribute_obj
     except SQLAlchemyError as e:
@@ -1331,6 +1399,10 @@ def get_all_events(db: Session, page: int = 1, page_size: int = 10, order_by: st
             ]
         else:
             results = query.offset(offset).limit(page_size).all()
+
+        for item in results:
+            item.__dict__["_links"] = {}
+
         return {
             "results": results,
             "total_items": total_items,
@@ -1356,6 +1428,7 @@ def get_event_by_id(db: Session, event_id: int):
         if fields:
             return {field: getattr(event_obj, field) for field in fields if hasattr(event_obj, field)}
         else:
+            event_obj.__dict__["_links"] = {}
             return event_obj
     except SQLAlchemyError as e:
 
@@ -1471,12 +1544,14 @@ def get_all_people(db: Session, page: int = 1, page_size: int = 10, order_by: st
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def get_person_by_id(db: Session, person_id: int):
+def get_person_by_id(db: Session, person_id: int, fields: list = None):
     try:
         person_obj = db.query(person.Person).filter(person.Person.id == person_id).first()
         if person_obj is None:
             raise HTTPException(status_code=404, detail="Person not found")
         return person_obj
+
+
 
 
     except SQLAlchemyError as e:
@@ -1496,16 +1571,33 @@ def create_person(db: Session, person_data: dict):
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 def get_person(db: Session, person_id: int, fields: list = None):
-    try:
+  try:
+      person_obj = db.query(person.Person).filter(person.Person.id == person_id).first()
+      if person_obj is None:
+          raise HTTPException(status_code=404, detail="Person not found")
 
-        query = db.query(person.Person).filter(person.Person.id == person_id)        
-        if fields:
-            query = query.options(load_only(*fields))
-        person_obj = query.first()
-        if person_obj is None:
-            raise HTTPException(status_code=404, detail="Person not found")
-        return person_obj
-    except SQLAlchemyError as e:
+      response_data = {field: getattr(person_obj, field) for field in fields} if fields else person_obj.__dict__
+      
+      if "_sa_instance_state" in response_data:
+          del response_data["_sa_instance_state"]
 
-        db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+      # Add links to related resources
+      response_data["_links"] = {
+          "relationships": f"/api/relationships?person_id={person_id}",
+          "attributes": f"/api/person_attributes?person_id={person_id}",
+      }
+      return response_data
+
+  except SQLAlchemyError as e:
+      db.rollback()
+      raise HTTPException(status_code=500, detail=str(e))
+
+
+
+
+
+
+
+
+
+
