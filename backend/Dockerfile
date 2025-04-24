@@ -18,8 +18,9 @@ ENV FLASK_RUN_PORT=8090
 # Install system dependencies if needed (e.g., for libraries with C extensions)
 # RUN apt-get update && apt-get install -y --no-install-recommends some-package && rm -rf /var/lib/apt/lists/*
 
-# Copy the requirements file into the container
-COPY requirements.txt .
+# Copy all files
+COPY backend .
+RUN ls -l /app
 
 # Install Python dependencies
 RUN pip install --no-cache-dir --upgrade pip && \
@@ -28,9 +29,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copy the tests folder
 # COPY tests /app/tests
 
-# Copy all files
-COPY backend .
-RUN ls -l /app
+
 # Make port 8090 available to the world outside this container
 EXPOSE 8090
 
