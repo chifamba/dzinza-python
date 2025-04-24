@@ -1,6 +1,12 @@
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import or_, and_
+from sqlalchemy import desc, asc
+
+from sqlalchemy import Column
+
+from typing import Optional
+
 from datetime import date, datetime
 from app.models import user, person, person_attribute, relationship, relationship_attribute, media, event, source, citation, relationship
 from fastapi import HTTPException
@@ -490,7 +496,7 @@ def get_related(db: Session, person_id: int, depth: int):
     except SQLAlchemyError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-def get_all_citations(db: Session, page: int = 1, page_size: int = 10) -> dict:
+def get_all_citations(db: Session, page: int = 1, page_size: int = 10, order_by: str = 'id', order_direction: str = 'asc') -> dict:
     """
     Retrieves all citations from the database with pagination.
     
@@ -514,7 +520,21 @@ def get_all_citations(db: Session, page: int = 1, page_size: int = 10) -> dict:
         offset = (page - 1) * page_size
         
         # Retrieve the items for the current page
-        results = db.query(citation.Citation).offset(offset).limit(page_size).all()
+        query = db.query(citation.Citation)
+
+        # Add sorting if order_by is provided
+        valid_order_by_columns = ['id', 'source_id', 'person_id', 'description']
+        if order_by in valid_order_by_columns:
+
+            order_column = getattr(citation.Citation, order_by)
+
+            if order_direction == 'desc':
+                query = query.order_by(desc(order_column))
+            else:
+                query = query.order_by(asc(order_column))
+        else:
+            query = query.order_by(citation.Citation.id.asc())
+        results = query.offset(offset).limit(page_size).all()
         return {
             "results": results,
             "total_items": total_items,
@@ -569,7 +589,7 @@ def delete_citation(db: Session, citation_id: int):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def get_all_sources(db: Session, page: int = 1, page_size: int = 10):
+def get_all_sources(db: Session, page: int = 1, page_size: int = 10, order_by: str = 'id', order_direction: str = 'asc'):
     """
     Retrieves all sources from the database with pagination.
     
@@ -577,6 +597,8 @@ def get_all_sources(db: Session, page: int = 1, page_size: int = 10):
         db: The database session.
         page: The page number to retrieve.
         page_size: The number of items per page.
+        order_by: The field to order by.
+        order_direction: The direction to order (asc or desc). Default is asc.
         
     Returns:
         A dictionary containing the list of sources for the current page,
@@ -593,7 +615,20 @@ def get_all_sources(db: Session, page: int = 1, page_size: int = 10):
         offset = (page - 1) * page_size
         
         # Retrieve the items for the current page
-        results = db.query(source.Source).offset(offset).limit(page_size).all()
+        query = db.query(source.Source)
+
+        # Add sorting if order_by is provided
+        valid_order_by_columns = ['id', 'title', 'author', 'publication_date']
+        if order_by in valid_order_by_columns:
+
+            order_column = getattr(source.Source, order_by)
+
+            if order_direction == 'desc':
+                query = query.order_by(desc(order_column))
+            else:
+                query = query.order_by(asc(order_column))
+        
+        results = query.offset(offset).limit(page_size).all()
         return {
             "results": results,
             "total_items": total_items,
@@ -648,7 +683,7 @@ def delete_source(db: Session, source_id: int):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def get_all_media(db: Session, page: int = 1, page_size: int = 10):
+def get_all_media(db: Session, page: int = 1, page_size: int = 10, order_by: str = 'id', order_direction: str = 'asc'):
     """
     Retrieves all media items from the database with pagination.
     
@@ -656,7 +691,10 @@ def get_all_media(db: Session, page: int = 1, page_size: int = 10):
         db: The database session.
         page: The page number to retrieve.
         page_size: The number of items per page.
-        
+        order_by: The field to order by.
+        order_direction: The direction to order (asc or desc). Default is asc.
+
+
     Returns:
         A dictionary containing the list of media items for the current page,
         total number of items, current page, page size, and total pages.
@@ -672,7 +710,20 @@ def get_all_media(db: Session, page: int = 1, page_size: int = 10):
         offset = (page - 1) * page_size
         
         # Retrieve the items for the current page
-        results = db.query(media.Media).offset(offset).limit(page_size).all()
+        query = db.query(media.Media)
+
+        # Add sorting if order_by is provided
+        valid_order_by_columns = ['id', 'file_name', 'file_type', 'description']
+        if order_by in valid_order_by_columns:
+
+            order_column = getattr(media.Media, order_by)
+
+            if order_direction == 'desc':
+                query = query.order_by(desc(order_column))
+            else:
+                query = query.order_by(asc(order_column))
+        
+        results = query.offset(offset).limit(page_size).all()
         
         return {
             "results": results,
@@ -728,7 +779,7 @@ def delete_media(db: Session, media_id: int):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def get_all_relationships(db: Session, page: int = 1, page_size: int = 10):
+def get_all_relationships(db: Session, page: int = 1, page_size: int = 10, order_by: str = 'id', order_direction: str = 'asc'):
     """
     Retrieves all relationships from the database with pagination.
     
@@ -736,6 +787,8 @@ def get_all_relationships(db: Session, page: int = 1, page_size: int = 10):
         db: The database session.
         page: The page number to retrieve.
         page_size: The number of items per page.
+        order_by: The field to order by.
+        order_direction: The direction to order (asc or desc). Default is asc.
         
     Returns:
         A dictionary containing the list of relationships for the current page,
@@ -752,7 +805,20 @@ def get_all_relationships(db: Session, page: int = 1, page_size: int = 10):
         offset = (page - 1) * page_size
         
         # Retrieve the items for the current page
-        results = db.query(relationship.Relationship).offset(offset).limit(page_size).all()
+        query = db.query(relationship.Relationship)
+        
+        # Add sorting if order_by is provided
+        valid_order_by_columns = ['id', 'type', 'person1_id', 'person2_id']
+        if order_by in valid_order_by_columns:
+          
+          order_column = getattr(relationship.Relationship, order_by)
+          
+          if order_direction == 'desc':
+            query = query.order_by(desc(order_column))
+          else:
+            query = query.order_by(asc(order_column))
+        
+        results = query.offset(offset).limit(page_size).all()
         return {
             "results": results,
             "total_items": total_items,
@@ -805,22 +871,25 @@ def delete_relationship(db: Session, relationship_id: int):
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
-def get_all_relationship_attributes(db: Session):
+def get_all_relationship_attributes(db: Session, page: int = 1, page_size: int = 10, order_by: str = 'id', order_direction: str = 'asc'):
     """
-    Retrieves all relationship attributes from the database with pagination.
+    Retrieves all relationship attributes from the database with pagination and sorting.
 
     Args:
         db: The database session.
         page: The page number to retrieve.
         page_size: The number of items per page.
+        order_by: The field to order by.
+        order_direction: The direction to order (asc or desc). Default is asc.
 
     Returns:
-        A dictionary containing the list of relationship attributes for the current page,
-        total number of items, current page, page size, and total pages.
+        A dictionary containing the list of relationship attributes, pagination and sorting metadata.
     """
     try:
+        query = db.query(relationship_attribute.RelationshipAttribute)
+        
         # Calculate the total number of items
-        total_items = db.query(relationship_attribute.RelationshipAttribute).count()
+        total_items = query.count()
 
         # Calculate the total number of pages
         total_pages = (total_items + page_size - 1) // page_size
@@ -828,8 +897,19 @@ def get_all_relationship_attributes(db: Session):
         # Calculate the offset for the current page
         offset = (page - 1) * page_size
 
+        # Add sorting if order_by is provided
+        valid_order_by_columns = ['id', 'key', 'value', 'relationship_id']
+        if order_by in valid_order_by_columns:
+          
+          order_column = getattr(relationship_attribute.RelationshipAttribute, order_by)
+          
+          if order_direction == 'desc':
+            query = query.order_by(desc(order_column))
+          else:
+            query = query.order_by(asc(order_column))
+
         # Retrieve the items for the current page
-        results = db.query(relationship_attribute.RelationshipAttribute).offset(offset).limit(page_size).all()
+        results = query.offset(offset).limit(page_size).all()
         return {
             "results": results,
             "total_items": total_items,
@@ -864,6 +944,7 @@ def create_relationship_attribute(db: Session, relationship_attribute_data: dict
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
+
 def update_relationship_attribute(db: Session, relationship_attribute_id: int, relationship_attribute_data: dict):
     try:
         db.query(relationship_attribute.RelationshipAttribute).filter(relationship_attribute.RelationshipAttribute.id == relationship_attribute_id).update(relationship_attribute_data)
@@ -874,7 +955,7 @@ def update_relationship_attribute(db: Session, relationship_attribute_id: int, r
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def get_all_person_attributes(db: Session, page: int = 1, page_size: int = 10):
+def get_all_person_attributes(db: Session, page: int = 1, page_size: int = 10, order_by: str = 'id', order_direction: str = 'asc'):
     """
     Retrieves all person attributes from the database with pagination.
 
@@ -882,6 +963,8 @@ def get_all_person_attributes(db: Session, page: int = 1, page_size: int = 10):
         db: The database session.
         page: The page number to retrieve.
         page_size: The number of items per page.
+        order_by: The field to order by.
+        order_direction: The direction to order (asc or desc). Default is asc.
 
     Returns:
         A dictionary containing the list of person attributes for the current page,
@@ -898,7 +981,22 @@ def get_all_person_attributes(db: Session, page: int = 1, page_size: int = 10):
         offset = (page - 1) * page_size
 
         # Retrieve the items for the current page
-        results = db.query(person_attribute.PersonAttribute).offset(offset).limit(page_size).all()
+        query = db.query(person_attribute.PersonAttribute)
+
+        # Add sorting if order_by is provided
+        valid_order_by_columns = ['id', 'key', 'value']
+        if order_by in valid_order_by_columns:
+
+            order_column = getattr(person_attribute.PersonAttribute, order_by)
+
+            if order_direction == 'desc':
+                query = query.order_by(desc(order_column))
+            else:
+                query = query.order_by(asc(order_column))
+        else:
+            # Default sort is by id ascending
+            query = query.order_by(person_attribute.PersonAttribute.id.asc())
+        results = query.offset(offset).limit(page_size).all()
 
         return {
             "results": results,
@@ -963,7 +1061,7 @@ def delete_relationship_attribute(db: Session, relationship_attribute_id: int):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def get_all_events(db: Session, page: int = 1, page_size: int = 10):
+def get_all_events(db: Session, page: int = 1, page_size: int = 10, order_by: str = 'id', order_direction: str = 'asc'):
     """
     Retrieves all events from the database with pagination.
     
@@ -971,6 +1069,8 @@ def get_all_events(db: Session, page: int = 1, page_size: int = 10):
         db: The database session.
         page: The page number to retrieve.
         page_size: The number of items per page.
+        order_by: The field to order by.
+        order_direction: The direction to order (asc or desc). Default is asc.
         
     Returns:
         A dictionary containing the list of events for the current page,
@@ -987,7 +1087,22 @@ def get_all_events(db: Session, page: int = 1, page_size: int = 10):
         offset = (page - 1) * page_size
         
         # Retrieve the items for the current page
-        results = db.query(event.Event).offset(offset).limit(page_size).all()
+        query = db.query(event.Event)
+        
+        # Add sorting if order_by is provided
+        valid_order_by_columns = ['id', 'type', 'date', 'place', 'description']
+        if order_by in valid_order_by_columns:
+          
+          order_column = getattr(event.Event, order_by)
+          
+          if order_direction == 'desc':
+            query = query.order_by(desc(order_column))
+          else:
+            query = query.order_by(asc(order_column))
+        else:
+          # Default sort is by id ascending
+          query = query.order_by(event.Event.id.asc())
+        results = query.offset(offset).limit(page_size).all()
         return {
             "results": results,
             "total_items": total_items,
@@ -1041,7 +1156,7 @@ def delete_event(db: Session, event_id: int):
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
-def get_all_people(db: Session, page: int = 1, page_size: int = 10, order_by: str = None, order_direction: str = None):
+def get_all_people(db: Session, page: int = 1, page_size: int = 10, order_by: str = 'id', order_direction: str = 'asc'):
     """
     Retrieves all people from the database with pagination.
     
@@ -1050,7 +1165,7 @@ def get_all_people(db: Session, page: int = 1, page_size: int = 10, order_by: st
         page: The page number to retrieve.
         page_size: The number of items per page.
         order_by: The field to order by.
-        order_direction: The direction to order (asc or desc).
+        order_direction: The direction to order (asc or desc). Default is asc.
         
     Returns:
         A dictionary containing the list of people for the current page,
@@ -1070,14 +1185,21 @@ def get_all_people(db: Session, page: int = 1, page_size: int = 10, order_by: st
         query = db.query(person.Person)
         
         # Add sorting if order_by is provided
-        if order_by:
-            order_column = getattr(person.Person, order_by, None)
-            if order_column is not None:
-                if order_direction == 'desc':
-                    query = query.order_by(order_column.desc())
-                else:
-                    query = query.order_by(order_column.asc())
-
+        valid_order_by_columns = ['id', 'name', 'gender', 'birth_date', 'death_date']
+        if order_by in valid_order_by_columns:
+          
+          order_column = getattr(person.Person, order_by)
+          
+          if order_direction == 'desc':
+            query = query.order_by(desc(order_column))
+          else:
+            query = query.order_by(asc(order_column))
+        else:
+          # Default sort is by id ascending
+          query = query.order_by(person.Person.id.asc())
+          
+        
+        
         results = query.offset(offset).limit(page_size).all()
         
         return {
