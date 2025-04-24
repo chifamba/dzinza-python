@@ -22,8 +22,8 @@ services:
   # Backend Service (Flask API)
   backend:
     build:
-      context: ./backend # Path to the directory containing the backend Dockerfile
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: dzinza-backend
     ports:
       - "8090:8090" # Map host port 8090 to container port 8090
