@@ -5,7 +5,11 @@ name: Dzinza CI
 # Controls when the workflow will run
 on:
   push:
-    branches: [ "main", "develop" ] # Run on pushes to main and develop
+    branches:
+      - main # Run on pushes to main
+      - develop # Run on pushes to develop
+      - 'feature/**' # Run on pushes to branches starting with feature/ (e.g., feature/new-login)
+      # Add any other branch patterns you use, e.g., 'fix/**'
   pull_request:
     branches: [ "main" ] # Run on PRs targeting main
 
