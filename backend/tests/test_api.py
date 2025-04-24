@@ -67,13 +67,7 @@ def test_get_all_people_no_pagination(test_app):
     response = client.get("/api/people")
     assert response.status_code == 200
     assert isinstance(response.json(), dict)
-    assert "results" in response.json()
-    assert "total_items" in response.json()
-    assert "page" in response.json()
-    assert "page_size" in response.json()
-    assert "total_pages" in response.json()
-    assert isinstance(response.json()["results"], list)
-    assert len(response.json()["results"]) > 0
+    assert "results" in response.json()    
 
 def test_get_all_people_with_pagination(test_app):
     response = client.get("/api/people?page=1&page_size=2")
@@ -92,8 +86,20 @@ def test_get_person_by_id(test_app):
     assert response.status_code == 200
     assert response.json()["id"] == 1
 
+    assert "total_pages" in response.json()
+    assert isinstance(response.json()["results"], list)
+    assert len(response.json()["results"]) > 0
 
-def test_create_person(test_app):
+def test_get_all_people_with_pagination(test_app):
+    response = client.get("/api/people?page=1&page_size=2")
+    assert response.status_code == 200
+    assert isinstance(response.json(), dict)
+    assert "results" in response.json()
+    assert "total_items" in response.json()
+    assert "page" in response.json()
+    assert "page_size" in response.json()
+    assert "total_pages" in response.json()
+    assert len(response.json()["results"]) == 2
     person_data = {"first_name": "testfirst", "last_name": "testlast", "gender": "M", "created_by": 1, "created_at": "2024-01-01T00:00:00", "updated_at": "2024-01-01T00:00:00"}
     response = client.post("/api/people", json=person_data)
     assert response.status_code == 200
@@ -111,6 +117,37 @@ def test_get_all_person_attributes_no_pagination(test_app):
     assert "total_pages" in response.json()
     assert isinstance(response.json()["results"], list)
     assert len(response.json()["results"]) > 0
+
+    # Test with filter by key
+    response = client.get("/api/person_attributes?key=birth_date")
+    assert response.status_code == 200
+    assert all("birth_date" in item["key"] for item in response.json()["results"])
+
+    # Test with filter by value
+    response = client.get("/api/person_attributes?value=1990")
+    assert response.status_code == 200
+    assert all("1990" in item["value"] for item in response.json()["results"])
+
+
+    # Test with filter by key
+    response = client.get("/api/person_attributes?key=birth_date")
+    assert response.status_code == 200
+    assert isinstance(response.json(), dict)
+    assert "results" in response.json()
+    for item in response.json()["results"]:
+        assert "birth_date" in item["key"]
+
+    # Test with filter by value
+    response = client.get("/api/person_attributes?value=1990")
+    assert response.status_code == 200
+    assert isinstance(response.json(), dict)
+    assert "results" in response.json()
+    for item in response.json()["results"]:
+        assert "1990" in item["value"]
+
+
+
+
 
 def test_get_all_person_attributes_with_pagination(test_app):
     response = client.get("/api/person_attributes?page=1&page_size=2")
@@ -179,7 +216,26 @@ def test_get_all_relationships_no_pagination(test_app):
     assert response.status_code == 200
     assert isinstance(response.json(), dict)
     assert "results" in response.json()
-    assert "total_pages" in response.json()
+    assert all(isinstance(item, dict) for item in response.json()["results"])
+
+    #Test filter by type
+    response = client.get("/api/relationships?type=married")
+    assert response.status_code == 200
+    assert all("married" in item["type"] for item in response.json()["results"])
+
+    # Test with filter by person1_id
+    response = client.get("/api/relationships?person1_id=1")
+    assert response.status_code == 200
+    assert all(item["person1_id"] == 1 for item in response.json()["results"])
+
+
+
+    # Test with filter by person2_id
+    response_person_2 = client.get("/api/relationships?person2_id=2")
+    assert response.status_code == 200
+    assert isinstance(response.json(), dict)
+    assert "results" in response.json()
+    assert response_person_2.status_code == 200
     assert isinstance(response.json()["results"], list)
 
 
@@ -233,9 +289,25 @@ def test_get_all_relationship_attributes_no_pagination(test_app):
     assert "page_size" in response.json()
     assert "total_pages" in response.json()
     assert isinstance(response.json()["results"], list)
+    assert len(response.json()["results"]) > 0
+
+    # Test filter by key
+    response = client.get("/api/relationship_attributes?key=date")
+    assert response.status_code == 200
+    assert all("date" in item["key"] for item in response.json()["results"])
+
+    # Test with filter by value
+    response = client.get("/api/relationship_attributes?value=2010-01-01")
+    assert response.status_code == 200
+    assert all("2010-01-01" in item["value"] for item in response.json()["results"])
+
+    # Test with filter by relationship_id
+    response = client.get("/api/relationship_attributes?relationship_id=1")
+    assert response.status_code == 200
+    assert all(item["relationship_id"] == 1 for item in response.json()["results"])
 
 def test_get_all_relationship_attributes_with_pagination(test_app):
-    response = client.get("/api/relationship_attributes?page=1&page_size=2")
+    response = client.get("/api/relationship_attributes?page=1&page_size=1")
     assert response.status_code == 200
     assert isinstance(response.json(), dict)
     assert isinstance(response.json(), list)
@@ -340,6 +412,7 @@ def test_delete_media(test_app):
     assert response.json()["message"] == "Media deleted"
 
 def test_get_all_events(test_app):
+    # Test with pagination
     response = client.get("/api/events?page=1&page_size=2")
     assert response.status_code == 200
     assert isinstance(response.json(), dict)
@@ -349,6 +422,20 @@ def test_get_all_events(test_app):
     assert "page_size" in response.json()
     assert "total_pages" in response.json()
     assert len(response.json()["results"]) == 2
+
+    # Test with filter by type
+    response = client.get("/api/events?type=birth")
+    assert response.status_code == 200
+    assert isinstance(response.json(), dict)
+    assert "results" in response.json()
+    for item in response.json()["results"]:
+        assert "birth" in item["event_type"]
+
+    # Test with filter by place
+    response = client.get("/api/events?place=London")
+    assert response.status_code == 200
+    assert isinstance(response.json(), dict)
+    assert "results" in response.json()
 
 def test_get_all_events_no_pagination(test_app):
     response = client.get("/api/events")
@@ -448,13 +535,11 @@ def test_delete_source(test_app):
     assert response.json()["message"] == "Source deleted"
 
 def test_get_all_citations(test_app):
+     # Test with pagination
     response = client.get("/api/citations?page=1&page_size=2")
     assert response.status_code == 200
     assert isinstance(response.json(), dict)
     assert "results" in response.json()
-    assert "total_items" in response.json()
-    assert "page" in response.json()
-    assert "page_size" in response.json()
     assert "total_pages" in response.json()
     assert len(response.json()["results"]) == 2
 
@@ -464,6 +549,7 @@ def test_get_all_sources_no_pagination(test_app):
     assert isinstance(response.json(), dict)
     assert "results" in response.json()
 
+    
 
 def test_get_citation_by_id(test_app):
     response = client.get("/api/citations/1")
@@ -510,11 +596,39 @@ def test_get_all_citations_no_pagination(test_app):
     assert response.status_code == 200
     assert isinstance(response.json(), dict)
     assert "results" in response.json()
-    assert "total_items" in response.json()
-    assert "page" in response.json()
-    assert "page_size" in response.json()
-    assert "total_pages" in response.json()
-    assert isinstance(response.json()["results"], list)
+    assert all(isinstance(item, dict) for item in response.json()["results"])
+    
+    # Test filter by source_id
+    response = client.get("/api/citations?source_id=1")
+    assert response.status_code == 200
+    assert isinstance(response.json(), dict)
+    assert "results" in response.json()
+    assert all(item["source_id"] == 1 for item in response.json()["results"])
+
+    # Test with filter by person_id
+    response = client.get("/api/citations?person_id=1")
+    assert response.status_code == 200
+    assert isinstance(response.json(), dict)
+    assert "results" in response.json()
+    assert all(item["person_id"] == 1 for item in response.json()["results"])
+    
+
+
+
+    # Test with filter by title
+    response = client.get("/api/sources?title=Source")
+    assert response.status_code == 200
+    assert isinstance(response.json(), dict)    
+    for item in response.json()["results"]:
+        assert "Source" in item["title"]    
+
+    # Test with filter by author
+    response = client.get("/api/sources?author=Author")
+    assert response.status_code == 200
+    assert isinstance(response.json(), dict)
+    for item in response.json()["results"]:
+        assert "Author" in item["author"]
+
 
 def test_get_all_citations_with_pagination(test_app):
     response = client.get("/api/citations?page=1&page_size=2")

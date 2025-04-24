@@ -8,6 +8,7 @@ from sqlalchemy import Column
 from typing import Optional
 
 from datetime import date, datetime
+from sqlalchemy import String
 from app.models import user, person, person_attribute, relationship, relationship_attribute, media, event, source, citation, relationship
 from fastapi import HTTPException
 
@@ -496,26 +497,37 @@ def get_related(db: Session, person_id: int, depth: int):
     except SQLAlchemyError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-def get_all_citations(db: Session, page: int = 1, page_size: int = 10, order_by: str = 'id', order_direction: str = 'asc') -> dict:
+def get_all_citations(db: Session, page: int = 1, page_size: int = 10, order_by: str = 'id', order_direction: str = 'asc', source_id: int = None, person_id: int = None, description: str = None):
     """
-    Retrieves all citations from the database with pagination.
-    
+    Retrieves all citations from the database with pagination, sorting and filtering.
+
     Args:
         db: The database session.
         page: The page number to retrieve.
         page_size: The number of items per page.
-        
+        order_by: The field to order by.
+        order_direction: The direction to order (asc or desc). Default is asc.
+        source_id: Filter by source ID.
+        person_id: Filter by person ID.
+        description: Filter by description (partial match).
+
     Returns:
         A dictionary containing the list of citations for the current page,
         total number of items, current page, page size, and total pages.
     """
     try:
         # Calculate the total number of items
-        total_items = db.query(citation.Citation).count()
-        
-        # Calculate the total number of pages
-        total_pages = (total_items + page_size - 1) // page_size
-        
+        query = db.query(citation.Citation)
+
+        if source_id:
+            query = query.filter(citation.Citation.source_id == source_id)
+        if person_id:
+            query = query.filter(citation.Citation.person_id == person_id)
+        if description:
+            query = query.filter(citation.Citation.description.ilike(f"%{description}%"))
+
+        total_items = query.count()
+
         # Calculate the offset for the current page
         offset = (page - 1) * page_size
         
@@ -523,15 +535,15 @@ def get_all_citations(db: Session, page: int = 1, page_size: int = 10, order_by:
         query = db.query(citation.Citation)
 
         # Add sorting if order_by is provided
-        valid_order_by_columns = ['id', 'source_id', 'person_id', 'description']
+        valid_order_by_columns = ['id', 'source_id', 'person_id', 'description'] # Update the valid columns
         if order_by in valid_order_by_columns:
-
             order_column = getattr(citation.Citation, order_by)
 
             if order_direction == 'desc':
                 query = query.order_by(desc(order_column))
             else:
                 query = query.order_by(asc(order_column))
+
         else:
             query = query.order_by(citation.Citation.id.asc())
         results = query.offset(offset).limit(page_size).all()
@@ -589,7 +601,7 @@ def delete_citation(db: Session, citation_id: int):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def get_all_sources(db: Session, page: int = 1, page_size: int = 10, order_by: str = 'id', order_direction: str = 'asc'):
+def get_all_sources(db: Session, page: int = 1, page_size: int = 10, order_by: str = 'id', order_direction: str = 'asc', title: str = None, author: str = None):
     """
     Retrieves all sources from the database with pagination.
     
@@ -598,6 +610,10 @@ def get_all_sources(db: Session, page: int = 1, page_size: int = 10, order_by: s
         page: The page number to retrieve.
         page_size: The number of items per page.
         order_by: The field to order by.
+        name: Filter by name (partial match).
+        gender: Filter by gender.
+        birth_date: Filter by birth date.
+        death_date: Filter by death date.
         order_direction: The direction to order (asc or desc). Default is asc.
         
     Returns:
@@ -616,8 +632,13 @@ def get_all_sources(db: Session, page: int = 1, page_size: int = 10, order_by: s
         
         # Retrieve the items for the current page
         query = db.query(source.Source)
+        
+        if title:
+            query = query.filter(source.Source.title.ilike(f"%{title}%"))
+        if author:
+            query = query.filter(source.Source.author.ilike(f"%{author}%"))        
 
-        # Add sorting if order_by is provided
+        # Add sorting if order_by is provided 
         valid_order_by_columns = ['id', 'title', 'author', 'publication_date']
         if order_by in valid_order_by_columns:
 
@@ -627,7 +648,9 @@ def get_all_sources(db: Session, page: int = 1, page_size: int = 10, order_by: s
                 query = query.order_by(desc(order_column))
             else:
                 query = query.order_by(asc(order_column))
-        
+        else:
+            # Default sort is by id ascending
+            query = query.order_by(source.Source.id.asc())        
         results = query.offset(offset).limit(page_size).all()
         return {
             "results": results,
@@ -683,7 +706,7 @@ def delete_source(db: Session, source_id: int):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def get_all_media(db: Session, page: int = 1, page_size: int = 10, order_by: str = 'id', order_direction: str = 'asc'):
+def get_all_media(db: Session, page: int = 1, page_size: int = 10, order_by: str = 'id', order_direction: str = 'asc', file_name: str = None, file_type: str = None, description: str = None):
     """
     Retrieves all media items from the database with pagination.
     
@@ -711,6 +734,18 @@ def get_all_media(db: Session, page: int = 1, page_size: int = 10, order_by: str
         
         # Retrieve the items for the current page
         query = db.query(media.Media)
+        
+        # Add filtering
+        if file_name:
+            query = query.filter(media.Media.file_name.ilike(f"%{file_name}%"))
+
+
+        if file_name:
+            query = query.filter(media.Media.file_name.ilike(f"%{file_name}%"))
+        if file_type:
+            query = query.filter(media.Media.file_type.ilike(f"%{file_type}%"))
+        if description:
+            query = query.filter(media.Media.description.ilike(f"%{description}%"))
 
         # Add sorting if order_by is provided
         valid_order_by_columns = ['id', 'file_name', 'file_type', 'description']
@@ -722,6 +757,7 @@ def get_all_media(db: Session, page: int = 1, page_size: int = 10, order_by: str
                 query = query.order_by(desc(order_column))
             else:
                 query = query.order_by(asc(order_column))
+        else: query = query.order_by(media.Media.id.asc())
         
         results = query.offset(offset).limit(page_size).all()
         
@@ -779,7 +815,7 @@ def delete_media(db: Session, media_id: int):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def get_all_relationships(db: Session, page: int = 1, page_size: int = 10, order_by: str = 'id', order_direction: str = 'asc'):
+def get_all_relationships(db: Session, page: int = 1, page_size: int = 10, order_by: str = 'id', order_direction: str = 'asc', type: str = None, person1_id: int = None, person2_id: int = None):
     """
     Retrieves all relationships from the database with pagination.
     
@@ -789,6 +825,9 @@ def get_all_relationships(db: Session, page: int = 1, page_size: int = 10, order
         page_size: The number of items per page.
         order_by: The field to order by.
         order_direction: The direction to order (asc or desc). Default is asc.
+        type: filter by relationship type
+        person1_id: filter by person 1 id
+        person2_id: filter by person 2 id
         
     Returns:
         A dictionary containing the list of relationships for the current page,
@@ -806,6 +845,14 @@ def get_all_relationships(db: Session, page: int = 1, page_size: int = 10, order
         
         # Retrieve the items for the current page
         query = db.query(relationship.Relationship)
+        
+
+        if type:
+            query = query.filter(relationship.Relationship.rel_type == type)
+        if person1_id:
+            query = query.filter(relationship.Relationship.person1_id == person1_id)
+        if person2_id:
+            query = query.filter(relationship.Relationship.person2_id == person2_id)
         
         # Add sorting if order_by is provided
         valid_order_by_columns = ['id', 'type', 'person1_id', 'person2_id']
@@ -871,7 +918,7 @@ def delete_relationship(db: Session, relationship_id: int):
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
-def get_all_relationship_attributes(db: Session, page: int = 1, page_size: int = 10, order_by: str = 'id', order_direction: str = 'asc'):
+def get_all_relationship_attributes(db: Session, page: int = 1, page_size: int = 10, order_by: str = 'id', order_direction: str = 'asc', key: str = None, value: str = None, relationship_id: int = None):
     """
     Retrieves all relationship attributes from the database with pagination and sorting.
 
@@ -886,12 +933,20 @@ def get_all_relationship_attributes(db: Session, page: int = 1, page_size: int =
         A dictionary containing the list of relationship attributes, pagination and sorting metadata.
     """
     try:
-        query = db.query(relationship_attribute.RelationshipAttribute)
+      query = db.query(relationship_attribute.RelationshipAttribute)
+
+      if key:
+          query = query.filter(relationship_attribute.RelationshipAttribute.key.ilike(f"%{key}%"))
+      if value:
+          query = query.filter(relationship_attribute.RelationshipAttribute.value.ilike(f"%{value}%"))
+      if relationship_id:
+          query = query.filter(relationship_attribute.RelationshipAttribute.relationship_id == relationship_id)
         
         # Calculate the total number of items
         total_items = query.count()
 
         # Calculate the total number of pages
+        
         total_pages = (total_items + page_size - 1) // page_size
 
         # Calculate the offset for the current page
@@ -955,7 +1010,7 @@ def update_relationship_attribute(db: Session, relationship_attribute_id: int, r
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def get_all_person_attributes(db: Session, page: int = 1, page_size: int = 10, order_by: str = 'id', order_direction: str = 'asc'):
+def get_all_person_attributes(db: Session, page: int = 1, page_size: int = 10, order_by: str = 'id', order_direction: str = 'asc', key: str = None, value: str = None):
     """
     Retrieves all person attributes from the database with pagination.
 
@@ -974,6 +1029,11 @@ def get_all_person_attributes(db: Session, page: int = 1, page_size: int = 10, o
         # Calculate the total number of items
         total_items = db.query(person_attribute.PersonAttribute).count()
 
+        if key:
+            query = query.filter(person_attribute.PersonAttribute.key.ilike(f"%{key}%"))
+        if value:
+            query = query.filter(person_attribute.PersonAttribute.value.ilike(f"%{value}%"))
+
         # Calculate the total number of pages
         total_pages = (total_items + page_size - 1) // page_size
 
@@ -981,7 +1041,7 @@ def get_all_person_attributes(db: Session, page: int = 1, page_size: int = 10, o
         offset = (page - 1) * page_size
 
         # Retrieve the items for the current page
-        query = db.query(person_attribute.PersonAttribute)
+
 
         # Add sorting if order_by is provided
         valid_order_by_columns = ['id', 'key', 'value']
@@ -1061,7 +1121,7 @@ def delete_relationship_attribute(db: Session, relationship_attribute_id: int):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def get_all_events(db: Session, page: int = 1, page_size: int = 10, order_by: str = 'id', order_direction: str = 'asc'):
+def get_all_events(db: Session, page: int = 1, page_size: int = 10, order_by: str = 'id', order_direction: str = 'asc', type: str = None, place: str = None, description: str = None):
     """
     Retrieves all events from the database with pagination.
     
@@ -1089,6 +1149,14 @@ def get_all_events(db: Session, page: int = 1, page_size: int = 10, order_by: st
         # Retrieve the items for the current page
         query = db.query(event.Event)
         
+        if type:
+            query = query.filter(event.Event.type == type)
+        if place:
+            query = query.filter(event.Event.place.ilike(f"%{place}%"))
+        if description:
+            query = query.filter(event.Event.description.ilike(f"%{description}%"))
+        
+
         # Add sorting if order_by is provided
         valid_order_by_columns = ['id', 'type', 'date', 'place', 'description']
         if order_by in valid_order_by_columns:
@@ -1102,6 +1170,7 @@ def get_all_events(db: Session, page: int = 1, page_size: int = 10, order_by: st
         else:
           # Default sort is by id ascending
           query = query.order_by(event.Event.id.asc())
+
         results = query.offset(offset).limit(page_size).all()
         return {
             "results": results,
@@ -1156,7 +1225,7 @@ def delete_event(db: Session, event_id: int):
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
-def get_all_people(db: Session, page: int = 1, page_size: int = 10, order_by: str = 'id', order_direction: str = 'asc'):
+def get_all_people(db: Session, page: int = 1, page_size: int = 10, order_by: str = 'id', order_direction: str = 'asc', name: str = None, gender: str = None, birth_date: date = None, death_date: date = None):
     """
     Retrieves all people from the database with pagination.
     
@@ -1185,7 +1254,10 @@ def get_all_people(db: Session, page: int = 1, page_size: int = 10, order_by: st
         query = db.query(person.Person)
         
         # Add sorting if order_by is provided
+        
         valid_order_by_columns = ['id', 'name', 'gender', 'birth_date', 'death_date']
+        
+
         if order_by in valid_order_by_columns:
           
           order_column = getattr(person.Person, order_by)
@@ -1196,6 +1268,14 @@ def get_all_people(db: Session, page: int = 1, page_size: int = 10, order_by: st
             query = query.order_by(asc(order_column))
         else:
           # Default sort is by id ascending
+          if name:
+              query = query.filter(person.Person.name.ilike(f"%{name}%") )
+          if gender:
+              query = query.filter(person.Person.gender == gender)
+          if birth_date:
+              query = query.filter(person.Person.birth_date == birth_date)
+          if death_date:
+              query = query.filter(person.Person.death_date == death_date)
           query = query.order_by(person.Person.id.asc())
           
         
