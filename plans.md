@@ -1,21 +1,78 @@
-Development Planning Document for Dzinza Family Tree Application
+## Development Plan for Dzinza Family Tree Application
 
-1. Backend Development Plan
-1.1 Data Storage & Performance Optimization
-Current State Assessment
+This document outlines the development plan for the Dzinza Family Tree application, focusing on the backend architecture, database implementation, and key features.
 
-The backend currently uses JSON files for data storage (users.json, family_tree.json)
-Encryption is implemented for data at rest
-Performance may be limited with large datasets (thousands of entries)
+### Key Technologies
 
-Database Migration Strategy
+*   **Backend:** Python 3.11
+*   **Database:** PostgreSQL
+* **Database migration tool:** Liquibase
+*   **ORM:** SQLAlchemy
+* **Caching:** Redis
 
-Replace JSON Storage with Database
+## PostgreSQL Database Implementation
 
-Implement SQLAlchemy ORM for Python Backend
-Create proper schema for Users, People, Relationships
-Design database schema with proper indexes for query optimization
-Add foreign key constraints for data integrity
+This section details the plan for implementing PostgreSQL as the primary database for the Dzinza Family Tree application. We will use Liquibase to manage the database schema.
+
+### Rationale
+
+*   **Relational Model:** PostgreSQL's relational model is well-suited for the complex relationships in family tree data.
+*   **Data Integrity:** Constraints, triggers, and other features will ensure data consistency.
+*   **Performance:** Indexes, connection pooling, and query optimization will be used to enhance performance.
+*   **Scalability:** Techniques like database replication will improve performance and availability.
+*   **Data Backup:** Robust backup and restore strategies will be implemented.
+
+### Database Schema
+
+The database schema will consist of the following tables:
+
+*   **Users:** (id, username, password_hash, role, created_at, last_login)
+*   **People:** (id, first_name, last_name, nickname, gender, birth_date, death_date, place_of_birth, place_of_death, notes, created_by, created_at, updated_at)
+*   **PersonAttributes:** (id, person_id, key, value) - for extensible custom attributes
+*   **Relationships:** (id, person1_id, person2_id, rel_type, created_at, updated_at)
+*   **RelationshipAttributes:** (id, relationship_id, key, value) - for extensible custom attributes
+*   **Media:** (id, person_id, media_type, file_path, title, description, uploaded_at)
+*   **Events:** (id, person_id, event_type, date, place, description, created_at)
+*   **Sources:** (id, title, author, publication_info, url, notes, created_at)
+*   **Citations:** (id, source_id, person_id, event_id, citation_text, page_number, created_at)
+
+### Liquibase Configuration and Usage
+
+We will use Liquibase to manage database schema changes. This will allow us to:
+
+*   **Version Control:** Track changes to the database schema over time.
+*   **Incremental Updates:** Apply schema changes incrementally.
+* **Rollbacks:** Roll back to previous schema versions if necessary.
+
+#### Steps
+
+1.  **Add Liquibase Dependency:** Add the Liquibase package for Python to the `.idx/dev.nix` file.
+2.  **Create Liquibase Configuration:** Create a `liquibase.properties` file in the `backend` directory.
+3.  **Update `app.py`:** Modify `app.py` to initialize and use Liquibase.
+4.  **Create Initial Changelog:** Create a changelog file (e.g., `db.changelog-master.yaml`) in the `backend` directory.
+5.  **Define Database Schema:** Define the initial database schema (tables, columns, constraints) in the changelog file using Liquibase's YAML format.
+6. **Apply Changelog:** Use the Liquibase command-line interface (or integrate it into `app.py`) to apply the changelog to the database.
+7. **Create the initial data population script:** Create a script in the backend directory to populate the database with the initial data.
+
+### PostgreSQL Configuration
+
+*   We will use a Docker image for our database.
+*   We will use 10GB of PVC to store the data.
+*   The data will be replicated in another database for improved performance.
+
+## Backend Development
+
+### High-Performance Data Architecture
+
+#### PostgreSQL Optimization
+
+*   Implement connection pooling using pgBouncer with three pools:
+    *   20 connections for CRUD operations
+    *   50 connections for read-heavy tree traversals
+    *   10 connections for admin operations
+*   Database schema with advanced indexing:
+
+    
 
 
 Database Tables

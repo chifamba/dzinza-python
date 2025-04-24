@@ -93,12 +93,14 @@
 
 ## Feature 8: PostgreSQL Database
 
--   [ ] Update `docker-compose.yml` to use a PostgreSQL database image.
--   [ ] Configure `docker-compose.yml` to use a 10GB Persistent Volume Claim (PVC) for PostgreSQL data.
+-   [x] Update `docker-compose.yml` to use a PostgreSQL database image.
+-   [x] Configure `docker-compose.yml` to use a 10GB Persistent Volume Claim (PVC) for PostgreSQL data.
 -   [ ] Add PostgreSQL as the database to the backend.
--   [ ] Create the base database schema for the family tree application.
--   [ ] Set up Alembic for database schema management.
--   [ ] Create the first Alembic migration to initialize the database schema.
+-   [x] Remove alembic configurations.
 -   [ ] Implement database replication to improve performance.
+- [ ] Update app.py to connect to the database.
+- [ ] Create the database models in app.py.
+- [ ] Create the database schema programatically in app.py.
+-   [ ] create an initial job to populate the database with the base schema and initial structure. this should run once only.
 
 

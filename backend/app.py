@@ -1,20 +1,26 @@
-# backend/app.py
 import os
 import logging
 from functools import wraps
 from flask import Flask, request, session, jsonify, abort, current_app
-from flask_cors import CORS
-# Assuming user_management, family_tree etc. are correctly imported from src
-from src.user_management import UserManagement, VALID_ROLES # Import VALID_ROLES
-from src.family_tree import FamilyTree
-from src.relationship import Relationship, VALID_RELATIONSHIP_TYPES # Import Relationship for type hints if needed
+from flask_cors import CORS, cross_origin
+from src.user_management import VALID_ROLES # Import VALID_ROLES
+from src.relationship import Relationship, VALID_RELATIONSHIP_TYPES, RelationshipModel # Import Relationship for type hints if needed
 from src.audit_log import log_audit
-from logging.handlers import RotatingFileHandler
-# Correct import for date AND timedelta
+from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
 from datetime import date, timedelta
-# Import HTTPException to catch specific aborts if needed, but better to let them propagate
+from src.user_management import UserManagement  # Import UserManagement class
+from src.family_tree import FamilyTree  # Import FamilyTree class
+from sqlalchemy.exc import SQLAlchemyError
 from werkzeug.exceptions import HTTPException, Unauthorized, InternalServerError, NotFound, BadRequest, Forbidden
+from sqlalchemy import create_engine, Column, Integer, String, Date, ForeignKey
+from sqlalchemy.orm import declarative_base, relationship, sessionmaker
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError
+from sqlalchemy.orm import sessionmaker
 
+
+# --- Database Setup ---
+Base = declarative_base()
+db_engine = None
 # --- Configuration ---
 SECRET_KEY = os.environ.get('FLASK_SECRET_KEY', 'a_very_strong_dev_secret_key_39$@5_v2')
 if SECRET_KEY == 'a_very_strong_dev_secret_key_39$@5_v2':
@@ -22,13 +28,64 @@ if SECRET_KEY == 'a_very_strong_dev_secret_key_39$@5_v2':
 
 APP_ROOT = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(APP_ROOT)
-DATA_DIR = os.path.join(APP_ROOT, 'data') # Standardize data dir
 LOG_DIR = os.path.join(PROJECT_ROOT, 'logs', 'backend')
 
-USERS_FILE = os.path.join(DATA_DIR, 'users.json')
-FAMILY_TREE_FILE = os.path.join(DATA_DIR, 'family_tree.json')
-
 AUDIT_LOG_FILE = os.path.join(LOG_DIR, 'audit.log')
+
+DATABASE_URL = os.environ.get('DATABASE_URL')
+if not DATABASE_URL:
+    logging.critical("DATABASE_URL environment variable not set. Exiting.")
+    exit(1)
+
+# --- Database Models ---
+class User(Base):
+    __tablename__ = 'users'
+    user_id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String, unique=True, nullable=False)
+    password_hash_b64 = Column(String, nullable=False)  # Store password hash as base64 string
+    role = Column(String, nullable=False, default='basic')  # Add the role column
+
+    def to_dict(self):
+        """Convert the user object to a dictionary."""
+        return {
+            "user_id": self.user_id,
+            "username": self.username,
+            "password_hash_b64": self.password_hash_b64,
+            "role": self.role
+        }
+
+class Person(Base):
+    __tablename__ = 'people'
+    person_id = Column(Integer, primary_key=True, autoincrement=True)
+    first_name = Column(String, nullable=False)
+    last_name = Column(String)  # Allow NULL for last_name
+    nickname = Column(String)
+    birth_date = Column(Date)
+    death_date = Column(Date)
+    gender = Column(String)
+    place_of_birth = Column(String)
+    place_of_death = Column(String)
+    notes = Column(String)
+    user_id = Column(Integer, ForeignKey('users.user_id'))
+
+class RelationshipModel(Base):
+    __tablename__ = 'relationships'
+    rel_id = Column(Integer, primary_key=True, autoincrement=True)
+    person1_id = Column(Integer, ForeignKey('people.person_id'), nullable=False)
+    person2_id = Column(Integer, ForeignKey('people.person_id'), nullable=False)
+    rel_type = Column(String)
+    start_date = Column(Date)
+    end_date = Column(Date)
+    added_by = Column(String)
+    edited_by = Column(String)
+    deleted_by = Column(String)
+    # Define relationships (optional for SQLAlchemy ORM)
+    person1 = relationship("Person", foreign_keys=[person1_id])
+    person2 = relationship("Person", foreign_keys=[person2_id])
+
+
+# --- Logging Setup ---
+    
 APP_LOG_FILE = os.path.join(LOG_DIR, 'app.log')
 
 # --- Application Setup ---
@@ -46,7 +103,7 @@ app.config.update(
 
 # --- Configure CORS ---
 # Adjust origins for your specific development and production frontend URLs
-CORS(app, supports_credentials=True, origins=["http://localhost:5173", "http://127.0.0.1:5173"]) # Added default Vite port
+CORS(app, supports_credentials=True, origins=["http://localhost:5173", "http://127.0.0.1:5173"])  # Added default Vite port
 logging.info("CORS configured for development origins.")
 
 # --- Configure Logging ---
@@ -73,17 +130,57 @@ app.logger.setLevel(logging.DEBUG if os.environ.get('FLASK_DEBUG') == '1' else l
 app.logger.info("Flask application starting up...")
 
 
+# --- Database Session Setup ---
+
+try:
+    db_engine = create_engine(DATABASE_URL)
+    Base.metadata.create_all(db_engine)
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=db_engine)
+    
+    app.logger.info("Database engine created successfully.")
+    db_session = SessionLocal()
+except SQLAlchemyError as e:
+    app.logger.critical(f"CRITICAL ERROR: Database engine creation failed: {e}", exc_info=True)
+    logging.exception("Failed to create database engine")
+    exit(1)
+
 # --- Initialize Core Components ---
-os.makedirs(DATA_DIR, exist_ok=True)
 user_manager = None
 family_tree = None
-try:
-    user_manager = UserManagement(USERS_FILE, AUDIT_LOG_FILE)
-    family_tree = FamilyTree(FAMILY_TREE_FILE, AUDIT_LOG_FILE)
+try:   
+    user_manager = UserManagement(db_session, AUDIT_LOG_FILE)
+    family_tree = FamilyTree(db_session_factory, AUDIT_LOG_FILE)
+
     app.logger.info("User manager and family tree initialized successfully.")
 except Exception as e:
     app.logger.critical(f"CRITICAL ERROR: Failed to initialize core components: {e}", exc_info=True)
+    logging.exception("Failed to initialize application")
     # App might be unusable, endpoints using these will fail later with 503 checks
+
+
+# --- Initial data ---
+def populate_database(db_session):
+    """Populates the database with initial data if it's empty."""
+    # Check if there are any users
+    existing_users = db_session.query(User).count()
+    if existing_users == 0:
+        app.logger.info("Database is empty, populating with initial data.")
+        # Create an initial admin user
+        admin_user = User(username='admin', password_hash_b64=user_manager.hash_password('admin'), role='admin')
+        db_session.add(admin_user)
+        
+        # Create some initial people
+        person1 = Person(first_name='John', last_name='Doe', birth_date=date(1980, 1, 1), user_id=admin_user.user_id)
+        person2 = Person(first_name='Jane', last_name='Doe', birth_date=date(1982, 5, 5), user_id=admin_user.user_id)
+        db_session.add_all([person1, person2])
+
+        # Create some initial relationships
+        relationship1 = RelationshipModel(person1_id=person1.person_id, person2_id=person2.person_id, rel_type='married')
+        db_session.add_all([relationship1])
+
+        db_session.commit()
+        app.logger.info("Database populated with initial data.")
+
 
 # --- Validation Helper ---
 def validate_person_data(data, is_edit=False):
@@ -264,6 +361,7 @@ def api_login():
         username = data['username'].strip()
         username_for_log = username # Update for logging
         password = data['password']
+
         current_app.logger.debug(f"API Login attempt for username: '{username}'")
 
         user = user_manager.login_user(username, password)
@@ -278,7 +376,7 @@ def api_login():
             session['user_role'] = user.role
             current_app.logger.info(f"API Login Successful: User '{username}' (Role: {user.role}) logged in from IP {request.remote_addr}.")
             # Audit log handled by user_manager
-            return jsonify({"message": "Login successful!", "user": {"id": user.user_id, "username": user.username, "role": user.role}}), 200
+            return jsonify({"message": "Login successful!", "user": {"id": user.id, "username": user.username, "role": user.role}}), 200
         else:
             # User not found or invalid password (already logged by user_manager)
             current_app.logger.warning(f"API Login Failed for username '{username}' from IP {request.remote_addr}.")
@@ -327,11 +425,11 @@ def api_register():
             log_audit(AUDIT_LOG_FILE, username, 'api_register_attempt', 'failure - username exists')
             # Use 409 Conflict for existing resource
             return jsonify({"error": f"Username '{username}' is already taken."}), 409
-
+        
         user = user_manager.register_user(username, password) # Default role 'basic'
 
         if user:
-            current_app.logger.info(f"API Registration Successful: User '{username}' (Role: {user.role}) registered from IP {request.remote_addr}.")
+            current_app.logger.info(f"API Registration Successful: User '{username}' (Role: {user.role}) registered from IP {request.remote_addr}.")           
             # Audit log handled by user_manager
             return jsonify({"message": "Registration successful!", "user": {"id": user.user_id, "username": user.username, "role": user.role}}), 201 # 201 Created
         else:
@@ -498,14 +596,14 @@ def api_get_all_users():
         if not user_manager: abort(503, description="User management service unavailable.")
 
         all_users = user_manager.get_all_users()
-        # Return user data excluding sensitive info
-        users_list = [
-            {k: v for k, v in u.to_dict().items() if k != 'password_hash_b64'}
-            for u in all_users if isinstance(u, object) # Ensure 'u' is an object
-        ]
-        current_app.logger.debug(f"Retrieved {len(users_list)} users for admin '{admin_username}'.")
-        return jsonify(users_list), 200
-    except HTTPException as http_ex:
+        all_users_list = []
+        for user in all_users:
+            user_data = {"id": user.user_id, "username": user.username, "role": user.role}
+            all_users_list.append(user_data)
+
+        return jsonify(all_users_list), 200
+    except HTTPException as e:
+        print(e)
         raise http_ex
     except Exception as e:
         current_app.logger.exception(f"API Get All Users Error: Failed for admin '{admin_username}'.")
@@ -531,7 +629,7 @@ def api_admin_delete_user(user_id):
             log_audit(AUDIT_LOG_FILE, admin_username, 'api_delete_user', f'failure - admin self-deletion attempt for {user_id}')
             abort(403, description="Administrators cannot delete their own account.")
 
-        user_to_delete = user_manager.find_user_by_id(user_id)
+        user_to_delete = db_session.query(User).filter(User.user_id == user_id).first()
         if not user_to_delete:
             current_app.logger.warning(f"API Delete User Failed: User ID '{user_id}' not found by admin '{admin_username}'.")
             abort(404, description="User not found.")
@@ -577,12 +675,12 @@ def api_admin_set_user_role(user_id):
         if new_role not in VALID_ROLES:
             abort(400, description=f"Invalid role '{new_role}'. Valid roles are: {', '.join(VALID_ROLES)}")
 
-        user_to_modify = user_manager.find_user_by_id(user_id)
+        user_to_modify = db_session.query(User).filter(User.user_id == user_id).first()
         if not user_to_modify:
             current_app.logger.warning(f"API Set Role Failed: User ID '{user_id}' not found by admin '{admin_username}'.")
             abort(404, description="User not found.")
-
         # Optional: Prevent changing own role?
+
         # if session.get('user_id') == user_id:
         #     abort(403, description="Administrators cannot change their own role via this endpoint.")
 
@@ -590,7 +688,7 @@ def api_admin_set_user_role(user_id):
         success = user_manager.set_user_role(user_id, new_role, actor_username=admin_username)
 
         if success:
-            # Fetch user again to confirm change and return updated info
+            # Fetch user again to confirm change and return updated info         
             updated_user = user_manager.find_user_by_id(user_id)
             current_app.logger.info(f"API Set Role Successful: Role for user '{user_to_modify.username}' (ID: {user_id}) changed from '{original_role}' to '{new_role}' by admin '{admin_username}'.")
             # Audit log handled by user_manager.set_user_role
@@ -619,13 +717,21 @@ def get_all_people():
     current_app.logger.debug(f"API Get All People requested by '{username}'.")
     if not family_tree: abort(503, description="Family tree service unavailable.")
     try:
-        people_list = [person.to_dict() for person in family_tree.people.values() if isinstance(person, object)]
+        # Get all people from the database
+        people = db_session.query(Person).all()
+        # Convert people to a list of dictionaries
+        people_list = []
+        for person in people:
+            person_dict = {"id": person.person_id, "first_name": person.first_name, "last_name":person.last_name, "birth_date": str(person.birth_date), "death_date": str(person.death_date), "notes": person.notes}
+            people_list.append(person_dict)
+
         current_app.logger.info(f"API Get All People: Retrieved {len(people_list)} people for user '{username}'.")
+
         return jsonify(people_list)
     except Exception as e:
         current_app.logger.exception(f"API Get All People Error: Failed to retrieve people data for user '{username}'.")
         abort(500)
-
+        
 @app.route('/api/people/<person_id>', methods=['GET'])
 @api_login_required
 def get_person(person_id):
@@ -634,10 +740,19 @@ def get_person(person_id):
     current_app.logger.debug(f"API Get Person requested by '{username}' for ID: {person_id}.")
     if not family_tree: abort(503, description="Family tree service unavailable.")
     try:
-        person = family_tree.find_person(person_id=person_id)
+        # Get person from the database
+        person = db_session.query(Person).filter(Person.person_id == person_id).first()
+
         if person:
-            current_app.logger.info(f"API Get Person: Retrieved person '{person.get_display_name()}' (ID: {person_id}) for user '{username}'.")
-            return jsonify(person.to_dict())
+            current_app.logger.info(f"API Get Person: Retrieved person (ID: {person_id}) for user '{username}'.")
+            person_dict = {
+                "id": person.person_id,
+                "first_name": person.first_name,
+                "last_name": person.last_name,
+                "birth_date": str(person.birth_date) if person.birth_date else None,
+                "death_date": str(person.death_date) if person.death_date else None,
+                "notes": person.notes}
+            return jsonify(person_dict)
         else:
             current_app.logger.warning(f"API Get Person Failed: Person ID '{person_id}' not found for user '{username}'.")
             abort(404, description="Person not found.")
@@ -672,20 +787,23 @@ def api_add_person():
         pob = str(data.get('place_of_birth', '')).strip() or None
         pod = str(data.get('place_of_death', '')).strip() or None
         notes = str(data.get('notes', '')).strip() or None
-        attributes = data.get('attributes', {})
 
-        person = family_tree.add_person(
-            first_name=first_name, last_name=last_name, nickname=nickname,
-            dob=dob, dod=dod, gender=gender, pob=pob, pod=pod, notes=notes,
-            added_by=username, **attributes
-        )
+        try:
+            # Create a new Person object
+            new_person = Person(first_name=first_name, last_name=last_name, nickname=nickname, birth_date=dob, death_date=dod, gender=gender, place_of_birth=pob, place_of_death=pod, notes=notes, user_id=session.get('user_id'))
+            # Add the new Person to the session
+            db_session.add(new_person)
+            db_session.commit()
+            current_app.logger.info(f"API Add Person Successful: Person (ID: {new_person.person_id}) added by '{username}'.")
+            log_audit(AUDIT_LOG_FILE, username, 'api_add_person', f'success - id: {new_person.person_id}, name: {new_person.first_name}')
 
-        if person:
-            current_app.logger.info(f"API Add Person Successful: Person '{person.get_display_name()}' (ID: {person.person_id}) added by '{username}'.")
-            log_audit(AUDIT_LOG_FILE, username, 'api_add_person', f'success - id: {person.person_id}, name: {person.get_full_name()}')
-            return jsonify(person.to_dict()), 201
-        else:
-            current_app.logger.error(f"API Add Person Failed: family_tree.add_person returned None for user '{username}' after validation.")
+            # Return the added person data as JSON
+            return jsonify({"id": new_person.person_id, "first_name": new_person.first_name, "last_name": new_person.last_name, "birth_date": str(new_person.birth_date), "death_date": str(new_person.death_date), "notes": new_person.notes}), 201
+        except IntegrityError as e:
+            db_session.rollback()
+            current_app.logger.error(f"API Add Person Failed: Integrity error while adding person: {e}.")
+            abort(409, description="Failed to add person due to a database integrity error.")
+        except Exception as e:
             abort(500, description="Failed to add person due to an internal error after validation.")
 
     except HTTPException as http_ex:
@@ -706,12 +824,12 @@ def api_edit_person(person_id):
         data = request.get_json()
         if not data: abort(400, description="Request body must be valid JSON.")
 
-        person = family_tree.find_person(person_id=person_id)
+        person = db_session.query(Person).filter(Person.person_id == person_id).first()
         if not person:
             current_app.logger.warning(f"API Edit Person Failed: Person ID '{person_id}' not found for user '{username}'.")
             abort(404, description="Person not found.")
 
-        validation_errors = validate_person_data(data, is_edit=True)
+        validation_errors = validate_person_data(data, is_edit=True)     
         if validation_errors:
             current_app.logger.warning(f"API Edit Person Validation Failed for user '{username}', ID '{person_id}': {validation_errors}")
             abort(400, description=validation_errors)
@@ -726,15 +844,27 @@ def api_edit_person(person_id):
             current_app.logger.info(f"API Edit Person: No update data provided by '{username}' for ID '{person_id}'.")
             return jsonify({"message": "No update data provided, no changes made."}), 200
 
-        original_name = person.get_display_name()
-        success = family_tree.edit_person(person_id, updated_data, edited_by=username)
+        # Update fields from updated_data
+        for key, value in updated_data.items():
+            if hasattr(person, key):
+                setattr(person, key, value)
 
-        if success:
-            updated_person = family_tree.find_person(person_id=person_id)
-            current_app.logger.info(f"API Edit Person Successful: Person '{original_name}' (ID: {person_id}) updated to '{updated_person.get_display_name()}' by '{username}'.")
-            return jsonify(updated_person.to_dict()), 200
-        else:
-            current_app.logger.info(f"API Edit Person: No effective changes made by '{username}' for ID '{person_id}'.")
+        try:
+            db_session.commit()
+
+            current_app.logger.info(f"API Edit Person Successful: Person (ID: {person_id}) updated by '{username}'.")
+            # Return the updated person data as JSON
+            person_dict = {
+                "id": person.person_id,
+                "first_name": person.first_name,
+                "last_name": person.last_name,
+                "birth_date": str(person.birth_date) if person.birth_date else None,
+                "death_date": str(person.death_date) if person.death_date else None,
+                "notes": person.notes}
+            return jsonify(person_dict), 200
+        except IntegrityError as e:
+            db_session.rollback()
+            current_app.logger.error(f"API Edit Person Failed: Integrity error while updating person: {e}.")
             return jsonify({"message": "No effective changes detected or update failed internally."}), 200
 
     except HTTPException as http_ex:
@@ -752,14 +882,16 @@ def api_delete_person(person_id):
     current_app.logger.debug(f"API Delete Person attempt by '{username}' for ID: {person_id}.")
     if not family_tree: abort(503, description="Family tree service unavailable.")
     try:
-        person = family_tree.find_person(person_id=person_id)
+        person = db_session.query(Person).filter(Person.person_id == person_id).first()
         if not person:
             current_app.logger.warning(f"API Delete Person Failed: Person ID '{person_id}' not found for user '{username}'.")
             abort(404, description="Person not found.")
+        
+        db_session.delete(person)
+        db_session.commit()
+        success = True
 
-        person_name = person.get_display_name()
-        success = family_tree.delete_person(person_id, deleted_by=username)
-
+        person_name = person.first_name
         if success:
             current_app.logger.info(f"API Delete Person Successful: Person '{person_name}' (ID: {person_id}) deleted by '{username}'.")
             return '', 204
@@ -783,7 +915,15 @@ def get_all_relationships():
     current_app.logger.debug(f"API Get All Relationships requested by '{username}'.")
     if not family_tree: abort(503, description="Family tree service unavailable.")
     try:
-        relationships_list = [rel.to_dict() for rel in family_tree.relationships.values() if isinstance(rel, object)]
+        # Get all relationships from the database
+        relationships = db_session.query(RelationshipModel).all()
+        # Convert relationships to a list of dictionaries
+        relationships_list = []
+        for rel in relationships:
+            rel_dict = {"id": rel.rel_id, "person1_id": rel.person1_id, "person2_id": rel.person2_id, "relationship_type": rel.rel_type, "start_date": str(rel.start_date), "end_date": str(rel.end_date)}
+            relationships_list.append(rel_dict)
+
+
         current_app.logger.info(f"API Get All Relationships: Retrieved {len(relationships_list)} relationships for user '{username}'.")
         return jsonify(relationships_list)
     except Exception as e:
@@ -821,11 +961,12 @@ def api_add_relationship():
         person1, person2 = None, None
         if person1_id and 'person1' not in errors:
             person1 = family_tree.find_person(person_id=person1_id)
+            person1 = db_session.query(Person).filter(Person.person_id == person1_id).first()
             if not person1: errors['person1'] = f"Person with ID {person1_id} not found."
         if person2_id and 'person2' not in errors:
             person2 = family_tree.find_person(person_id=person2_id)
+            person2 = db_session.query(Person).filter(Person.person_id == person2_id).first()
             if not person2: errors['person2'] = f"Person with ID {person2_id} not found."
-
         if errors:
             current_app.logger.warning(f"API Add Relationship Validation Failed for user '{username}': {errors}")
             abort(400, description=errors)
@@ -833,13 +974,23 @@ def api_add_relationship():
         relationship = family_tree.add_relationship(
             person1_id=person1_id, person2_id=person2_id,
             relationship_type=rel_type, attributes=attributes, added_by=username
-        )
+        )    
 
-        if relationship:
-            p1_name = person1.get_display_name() if person1 else person1_id
-            p2_name = person2.get_display_name() if person2 else person2_id
-            current_app.logger.info(f"API Add Relationship Successful: Relationship '{rel_type}' (ID: {relationship.rel_id}) added between '{p1_name}' and '{p2_name}' by '{username}'.")
-            return jsonify(relationship.to_dict()), 201
+        try:
+            new_relationship = RelationshipModel(person1_id=person1_id, person2_id=person2_id, rel_type=rel_type)
+            db_session.add(new_relationship)
+            db_session.commit()
+            p1_name = person1.first_name if person1 else person1_id
+            p2_name = person2.first_name if person2 else person2_id
+            current_app.logger.info(f"API Add Relationship Successful: Relationship '{rel_type}' (ID: {new_relationship.rel_id}) added between '{p1_name}' and '{p2_name}' by '{username}'.")
+            # Return the added relationship data as JSON
+            return jsonify({"id": new_relationship.rel_id, "person1_id": new_relationship.person1_id, "person2_id": new_relationship.person2_id, "relationship_type": new_relationship.rel_type, "start_date": str(new_relationship.start_date), "end_date": str(new_relationship.end_date)}), 201
+
+        except IntegrityError as e:
+            db_session.rollback()
+            current_app.logger.error(f"API Add Relationship Failed: Integrity error while adding relationship: {e}.")
+            abort(409, description="Failed to add relationship due to a database integrity error.")
+
         else:
             current_app.logger.error(f"API Add Relationship Failed: family_tree.add_relationship returned None for user '{username}' after validation.")
             abort(409, description="Failed to add relationship. It might already exist or an internal error occurred.")
@@ -862,7 +1013,8 @@ def api_edit_relationship(relationship_id):
         data = request.get_json()
         if not data: abort(400, description="Request body must be valid JSON.")
 
-        rel = family_tree.relationships.get(relationship_id)
+
+        rel = db_session.query(RelationshipModel).filter(RelationshipModel.rel_id == relationship_id).first()
         if not rel:
             current_app.logger.warning(f"API Edit Relationship Failed: Relationship ID '{relationship_id}' not found for user '{username}'.")
             abort(404, description="Relationship not found.")
@@ -916,13 +1068,23 @@ def api_edit_relationship(relationship_id):
         original_p1 = rel.person1_id
         original_p2 = rel.person2_id
         success = family_tree.edit_relationship(relationship_id, updated_data, edited_by=username)
+        if updated_data:
+            # Update fields from updated_data
+            for key, value in updated_data.items():
+                if hasattr(rel, key):
+                    setattr(rel, key, value)
 
-        if success:
-            updated_rel = family_tree.relationships.get(relationship_id)
-            current_app.logger.info(f"API Edit Relationship Successful: Relationship ID '{relationship_id}' (Type: {original_type} -> {updated_rel.rel_type}, P1: {original_p1}->{updated_rel.person1_id}, P2: {original_p2}->{updated_rel.person2_id}) updated by '{username}'.")
-            return jsonify(updated_rel.to_dict()), 200
-        else:
-            current_app.logger.info(f"API Edit Relationship: No effective changes made by '{username}' for ID '{relationship_id}'.")
+        try:
+            db_session.commit()
+            current_app.logger.info(f"API Edit Relationship Successful: Relationship (ID: {relationship_id}) updated by '{username}'.")
+             # Return the updated relationship data as JSON
+            return jsonify({"id": rel.rel_id, "person1_id": rel.person1_id, "person2_id": rel.person2_id, "relationship_type": rel.rel_type, "start_date": str(rel.start_date), "end_date": str(rel.end_date)}), 200
+
+        except IntegrityError as e:
+            db_session.rollback()
+            current_app.logger.error(f"API Edit Relationship Failed: Integrity error while updating relationship: {e}.")
+            return jsonify({"message": "Failed to update relationship due to a database integrity error."}), 409
+        except Exception as e:
             return jsonify({"message": "No effective changes detected or update failed internally."}), 200
 
     except HTTPException as http_ex:
@@ -941,7 +1103,7 @@ def api_delete_relationship(relationship_id):
     current_app.logger.debug(f"API Delete Relationship attempt by '{username}' for ID: {relationship_id}.")
     if not family_tree: abort(503, description="Family tree service unavailable.")
     try:
-        rel = family_tree.relationships.get(relationship_id)
+        rel = db_session.query(RelationshipModel).filter(RelationshipModel.rel_id == relationship_id).first()
         if not rel:
             current_app.logger.warning(f"API Delete Relationship Failed: Relationship ID '{relationship_id}' not found for user '{username}'.")
             abort(404, description="Relationship not found.")
@@ -949,6 +1111,9 @@ def api_delete_relationship(relationship_id):
         rel_type = rel.rel_type
         p1_id = rel.person1_id
         p2_id = rel.person2_id
+
+        db_session.delete(rel)
+        db_session.commit()
         success = family_tree.delete_relationship(relationship_id, deleted_by=username)
 
         if success:
@@ -1002,12 +1167,14 @@ def tree_data():
         log_audit(AUDIT_LOG_FILE, username, 'get_tree_data', f'error generating data: {e}')
         abort(500)
 
+        
 
 # --- Main Execution ---
 if __name__ == '__main__':
     # Check for admin user only if user_manager initialized successfully
     if user_manager:
-        try:
+        # check if there are initial users
+        try:            
             # Check if ANY admin user exists
             has_admin = any(isinstance(user, object) and getattr(user, 'role', None) == 'admin'
                             for user in user_manager.users.values())
@@ -1015,16 +1182,20 @@ if __name__ == '__main__':
             if user_manager.users and not has_admin:
                 first_user_id = next(iter(user_manager.users)) # Get the first user ID
                 user = user_manager.users[first_user_id]
-                if isinstance(user, object): # Check if it's a valid user object
-                    first_username = getattr(user, 'username', 'unknown')
-                    app.logger.warning(f"No admin user found. Making first user '{first_username}' (ID: {first_user_id}) an admin for initial setup.")
-                    user_manager.set_user_role(first_user_id, 'admin', actor_username='system_startup')
-                else:
-                    app.logger.error(f"First item in user manager (ID: {first_user_id}) is not a valid user object. Cannot promote to admin.")
+                if isinstance(user, object):
+                    first_username = getattr(user, 'username', 'unknown')                    
+                    # user_manager.set_user_role(first_user_id, 'admin', actor_username='system_startup')
+                    app.logger.warning(f"No admin user found. The first user is '{first_username}' (ID: {first_user_id}).")                                           
             elif not user_manager.users:
                 app.logger.info("No users found in user file. First registered user may need manual promotion to admin if required.")
             else:
                  app.logger.info("Admin user(s) found.")
+             
+            with SessionLocal() as session:
+                populate_database(session)
+                
+
+
         except StopIteration:
              app.logger.info("User file exists but contains no users.")
         except Exception as admin_err:

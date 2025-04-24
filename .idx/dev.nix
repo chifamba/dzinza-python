@@ -5,9 +5,9 @@
   channel = "stable-24.11"; # or "unstable"
   # Use https://search.nixos.org/packages to find packages
   packages = [
+    pkgs.python3Packages.psycopg2-binary
     pkgs.docker
     pkgs.docker-compose  # Added Docker Compose
-    pkgs.python3
     pkgs.python3Packages.transformers
     pkgs.python3Packages.numpy
     pkgs.python3Packages.requests
@@ -18,8 +18,7 @@
     pkgs.tree-sitter
     pkgs.black
     pkgs.vim
-    pkgs.git
-  ];
+  ]; 
   
   services = {
     docker = {
@@ -32,7 +31,7 @@
     extensions = [ 
       "ms-python.python" 
       "ms-azuretools.vscode-docker"  # Added Docker/Docker Compose extension
-    ];
+    ]; 
     workspace = {
       # Runs when a workspace is first created with this `dev.nix` file
       onCreate = {
