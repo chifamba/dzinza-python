@@ -1,7 +1,8 @@
 # backend/app/db_init.py
-import datetime
 import logging
+from datetime import date # Import date
 from sqlalchemy.orm import sessionmaker, Session as DbSession # Rename to avoid conflict
+from sqlalchemy.exc import IntegrityError # Import IntegrityError
 
 # Assuming engine is created in app.py and passed or imported
 # For standalone script, you might need to create engine here
@@ -36,7 +37,7 @@ def create_tables(engine):
         logging.error(f"Error creating database tables: {e}", exc_info=True)
         raise
 
-def populate_db(db: DbSession):
+def populate_database(db: DbSession): # Renamed from populate_db for clarity
     """Populates the database with initial sample data if empty."""
     try:
         # Check if data already exists (e.g., check for any user)
@@ -58,38 +59,38 @@ def populate_db(db: DbSession):
         # Create people (Ensure created_by uses the flushed user IDs)
         person1 = Person(first_name="John", last_name="Doe", gender="Male",
                          birth_date=date(1900, 1, 1), death_date=date(1980, 12, 31),
-                         created_by=user1.user_id) # Use actual ID
+                         created_by=user1.id) # Use actual ID (assuming it's 'id')
         person2 = Person(first_name="Jane", last_name="Doe", gender="Female",
                          birth_date=date(1905, 2, 15), death_date=date(1985, 10, 20),
-                         created_by=user1.user_id)
+                         created_by=user1.id)
         person3 = Person(first_name="Peter", last_name="Smith", gender="Male",
                          birth_date=date(1902, 3, 10), death_date=date(1975, 5, 5),
-                         created_by=user1.user_id)
+                         created_by=user1.id)
         person4 = Person(first_name="Alice", last_name="Smith", gender="Female",
-                         birth_date=date(1930, 4, 22), created_by=user1.user_id)
+                         birth_date=date(1930, 4, 22), created_by=user1.id)
         person5 = Person(first_name="Bob", last_name="Smith", gender="Male",
-                         birth_date=date(1935, 6, 18), created_by=user1.user_id)
+                         birth_date=date(1935, 6, 18), created_by=user1.id)
         person6 = Person(first_name="Mike", last_name="Doe", gender="Male",
                          birth_date=date(1932, 8, 1), death_date=date(2000, 9, 12),
-                         created_by=user1.user_id)
+                         created_by=user1.id)
         db.add_all([person1, person2, person3, person4, person5, person6])
         db.flush() # Flush to get person IDs
 
         # Create person attributes
-        person_attribute1 = PersonAttribute(person_id=person1.person_id, key="Occupation", value="Farmer")
+        person_attribute1 = PersonAttribute(person_id=person1.id, key="Occupation", value="Farmer") # Use actual ID
         db.add(person_attribute1)
         db.flush()
 
         # Create relationships (Use RelationshipModel alias)
-        relationship1 = RelationshipModel(person1_id=person2.person_id, person2_id=person3.person_id, rel_type="spouse")
-        relationship2 = RelationshipModel(person1_id=person2.person_id, person2_id=person4.person_id, rel_type="parent") # Jane is parent of Alice
-        relationship3 = RelationshipModel(person1_id=person2.person_id, person2_id=person5.person_id, rel_type="parent") # Jane is parent of Bob
-        relationship4 = RelationshipModel(person1_id=person1.person_id, person2_id=person6.person_id, rel_type="parent") # John is parent of Mike
+        relationship1 = RelationshipModel(person1_id=person2.id, person2_id=person3.id, rel_type="spouse") # Use actual IDs
+        relationship2 = RelationshipModel(person1_id=person2.id, person2_id=person4.id, rel_type="parent") # Jane is parent of Alice
+        relationship3 = RelationshipModel(person1_id=person2.id, person2_id=person5.id, rel_type="parent") # Jane is parent of Bob
+        relationship4 = RelationshipModel(person1_id=person1.id, person2_id=person6.id, rel_type="parent") # John is parent of Mike
         db.add_all([relationship1, relationship2, relationship3, relationship4])
         db.flush() # Flush to get relationship IDs
 
         # Create relationship attributes
-        relationship_attribute1 = RelationshipAttribute(relationship_id=relationship1.rel_id, key="wedding_date", value="1925-05-10")
+        relationship_attribute1 = RelationshipAttribute(relationship_id=relationship1.id, key="wedding_date", value="1925-05-10") # Use actual ID
         db.add(relationship_attribute1)
         db.flush()
 
@@ -100,22 +101,22 @@ def populate_db(db: DbSession):
         db.flush() # Flush to get source IDs
 
         # Create events
-        event1 = Event(person_id=person1.person_id, event_type="birth", date=date(1900, 1, 1), place="New York")
-        event2 = Event(person_id=person2.person_id, event_type="birth", date=date(1905, 2, 15), place="Boston")
+        event1 = Event(person_id=person1.id, event_type="birth", date=date(1900, 1, 1), place="New York") # Use actual ID
+        event2 = Event(person_id=person2.id, event_type="birth", date=date(1905, 2, 15), place="Boston") # Use actual ID
         # ... add other events ...
         db.add_all([event1, event2]) # Add more events here
         db.flush() # Flush to get event IDs if needed for citations
 
         # Create citations (Ensure IDs from flushed objects are used)
-        citation1 = Citation(source_id=source1.id, person_id=person1.person_id, citation_text="Listed in household", page_number="12")
-        citation2 = Citation(source_id=source2.id, person_id=person2.person_id, citation_text="Birth certificate", page_number="1")
+        citation1 = Citation(source_id=source1.id, person_id=person1.id, citation_text="Listed in household", page_number="12") # Use actual IDs
+        citation2 = Citation(source_id=source2.id, person_id=person2.id, citation_text="Birth certificate", page_number="1") # Use actual IDs
         # ... add other citations ...
         db.add_all([citation1, citation2]) # Add more citations here
         db.flush()
 
         # Create media
-        media1 = Media(person_id=person1.person_id, media_type="image", file_path="person1.jpg", title="Person 1 Image")
-        media2 = Media(person_id=person2.person_id, media_type="image", file_path="person2.jpg", title="Person 2 Image")
+        media1 = Media(person_id=person1.id, media_type="image", file_path="person1.jpg", title="Person 1 Image") # Use actual ID
+        media2 = Media(person_id=person2.id, media_type="image", file_path="person2.jpg", title="Person 2 Image") # Use actual ID
         db.add_all([media1, media2])
         db.flush()
 
@@ -138,8 +139,9 @@ def populate_db(db: DbSession):
 #         SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=db_engine)
 #         db = SessionLocal()
 #         try:
-#             populate_db(db)
+#             populate_database(db)
 #         finally:
 #             db.close()
 #     else:
 #         logging.critical("Cannot run db_init standalone without a configured db_engine.")
+
