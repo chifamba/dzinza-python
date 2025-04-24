@@ -22,7 +22,3 @@ itsdangerous # Required by Flask for session signing, and used for tokens
 
 # For testing
 pytest
-
-flake8
-pytest-cov
-psycopg2-binary
