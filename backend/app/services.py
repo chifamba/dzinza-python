@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import or_, and_
+from sqlalchemy.orm import load_only
 from sqlalchemy import desc, asc
 
 from sqlalchemy import Column
@@ -11,6 +12,7 @@ from datetime import date, datetime
 from sqlalchemy import String
 from app.models import user, person, person_attribute, relationship, relationship_attribute, media, event, source, citation, relationship
 from fastapi import HTTPException
+
 
 def get_all_users(db: Session):
     try:
@@ -25,6 +27,7 @@ def get_user_by_id(db: Session, user_id: int):
             raise HTTPException(status_code=404, detail="User not found")
         return user_obj
     except SQLAlchemyError as e:
+
         raise HTTPException(status_code=500, detail=str(e))
 
 def get_person_relationships_and_attributes(db: Session, person_id: int):
@@ -203,6 +206,7 @@ def get_ancestors(db: Session, person_id: int, depth: int):
         return ancestors
 
     except SQLAlchemyError as e:
+
         raise HTTPException(status_code=500, detail=str(e))
 
 def get_branch(db: Session, person_id: int, depth: int):
@@ -252,6 +256,7 @@ def get_branch(db: Session, person_id: int, depth: int):
                 queue.append((rel.person2_id, current_depth + 1))
         return branch
     except SQLAlchemyError as e:
+
         raise HTTPException(status_code=500, detail=str(e))
 
 def get_partial_tree(db: Session, person_id: int, depth: int, only_ancestors: bool = False, only_descendants: bool = False):
@@ -315,6 +320,7 @@ def get_partial_tree(db: Session, person_id: int, depth: int, only_ancestors: bo
             )
         return partial_tree
     except SQLAlchemyError as e:
+
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -370,6 +376,7 @@ def get_descendants(db: Session, person_id: int, depth: int):
         return descendants
 
     except SQLAlchemyError as e:
+
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -432,6 +439,7 @@ def get_extended_family(db: Session, person_id: int, depth: int):
         return [get_person_by_id(db, ancestor_id) for ancestor_id in ancestors]
 
     except SQLAlchemyError as e:
+
         raise HTTPException(status_code=500, detail=str(e))
 
 def get_related(db: Session, person_id: int, depth: int):
@@ -495,9 +503,10 @@ def get_related(db: Session, person_id: int, depth: int):
         return related_people
 
     except SQLAlchemyError as e:
+
         raise HTTPException(status_code=500, detail=str(e))
 
-def get_all_citations(db: Session, page: int = 1, page_size: int = 10, order_by: str = 'id', order_direction: str = 'asc', source_id: int = None, person_id: int = None, description: str = None):
+def get_all_citations(db: Session, page: int = 1, page_size: int = 10, order_by: str = 'id', order_direction: str = 'asc', source_id: int = None, person_id: int = None, description: str = None, fields: list = None):
     """
     Retrieves all citations from the database with pagination, sorting and filtering.
 
@@ -518,6 +527,9 @@ def get_all_citations(db: Session, page: int = 1, page_size: int = 10, order_by:
     try:
         # Calculate the total number of items
         query = db.query(citation.Citation)
+
+        if fields:
+            query = query.options(load_only(*fields))
 
         if source_id:
             query = query.filter(citation.Citation.source_id == source_id)
@@ -547,14 +559,23 @@ def get_all_citations(db: Session, page: int = 1, page_size: int = 10, order_by:
         else:
             query = query.order_by(citation.Citation.id.asc())
         results = query.offset(offset).limit(page_size).all()
+
+        if fields:
+          results = [
+            {field: getattr(item, field) for field in fields if hasattr(item, field)}
+            for item in results
+            ]
+
         return {
             "results": results,
             "total_items": total_items,
             "page": page,
             "page_size": page_size,
-            "total_pages": total_pages
+            "total_pages": (total_items + page_size - 1) // page_size
         }
     except SQLAlchemyError as e:
+
+        db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -564,9 +585,16 @@ def get_citation_by_id(db: Session, citation_id: int):
             citation.Citation.id == citation_id
         ).first()
         if citation_obj is None:
+
             raise HTTPException(status_code=404, detail="Citation not found")
+        query = db.query(citation.Citation).filter(citation.Citation.id == citation_id)
+        if fields:
+            query = query.options(load_only(*fields))
+        citation_obj = query.first()
+        if fields: return {field: getattr(citation_obj, field) for field in fields if hasattr(citation_obj, field)}
         return citation_obj
     except SQLAlchemyError as e:
+
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -578,16 +606,18 @@ def create_citation(db: Session, citation_data: dict):
         db.refresh(new_citation)
         return new_citation
     except SQLAlchemyError as e:
+
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def update_citation(db: Session, citation_id: int, citation_data: dict):
+def update_citation(db: Session, citation_id: int, citation_data: dict, fields: list = None):
     try:
         db.query(citation.Citation).filter(citation.Citation.id == citation_id).update(citation_data)
         db.commit()
         return get_citation_by_id(db, citation_id)
     except SQLAlchemyError as e:
+
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -597,11 +627,12 @@ def delete_citation(db: Session, citation_id: int):
         db.query(citation.Citation).filter(citation.Citation.id == citation_id).delete()
         db.commit()
     except SQLAlchemyError as e:
+
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def get_all_sources(db: Session, page: int = 1, page_size: int = 10, order_by: str = 'id', order_direction: str = 'asc', title: str = None, author: str = None):
+def get_all_sources(db: Session, page: int = 1, page_size: int = 10, order_by: str = 'id', order_direction: str = 'asc', title: str = None, author: str = None, fields: list = None):
     """
     Retrieves all sources from the database with pagination.
     
@@ -626,9 +657,12 @@ def get_all_sources(db: Session, page: int = 1, page_size: int = 10, order_by: s
         
         # Calculate the total number of pages
         total_pages = (total_items + page_size - 1) // page_size
-        
         # Calculate the offset for the current page
-        offset = (page - 1) * page_size
+        offset = (page - 1) * page_size        
+
+        # Add the fields param to the query
+        if fields:
+            query = query.options(load_only(*fields))
         
         # Retrieve the items for the current page
         query = db.query(source.Source)
@@ -653,18 +687,30 @@ def get_all_sources(db: Session, page: int = 1, page_size: int = 10, order_by: s
             query = query.order_by(source.Source.id.asc())        
         results = query.offset(offset).limit(page_size).all()
         return {
+            "results": [
+                {field: getattr(item, field) for field in fields if hasattr(item, field)}
+                for item in results
+            ] if fields else results,
             "results": results,
             "total_items": total_items,
             "page": page,
             "page_size": page_size,
             "total_pages": total_pages
         }
+
+        
+
     except SQLAlchemyError as e:
+
         raise HTTPException(status_code=500, detail=str(e))
 
 
 def get_source_by_id(db: Session, source_id: int):
+    
     try:
+        query = db.query(source.Source).filter(source.Source.id == source_id)
+        if fields:
+            query = query.options(load_only(*fields))
         source_obj = db.query(source.Source).filter(
             source.Source.id == source_id
         ).first()
@@ -672,10 +718,10 @@ def get_source_by_id(db: Session, source_id: int):
             raise HTTPException(status_code=404, detail="Source not found")
         return source_obj
     except SQLAlchemyError as e:
+
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def create_source(db: Session, source_data: dict):
     try:
         new_source = source.Source(**source_data)
         db.add(new_source)
@@ -683,8 +729,20 @@ def create_source(db: Session, source_data: dict):
         db.refresh(new_source)
         return new_source
     except SQLAlchemyError as e:
+
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+        
+    except SQLAlchemyError as e:
+
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def create_source(db: Session, source_data: dict):
+
+    try:
+        new_source = source.Source(**source_data)
+        db.add(new_source)
 
 
 def update_source(db: Session, source_id: int, source_data: dict):
@@ -693,6 +751,7 @@ def update_source(db: Session, source_id: int, source_data: dict):
         db.commit()
         return get_source_by_id(db, source_id)
     except SQLAlchemyError as e:
+
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -702,11 +761,12 @@ def delete_source(db: Session, source_id: int):
         db.query(source.Source).filter(source.Source.id == source_id).delete()
         db.commit()
     except SQLAlchemyError as e:
+
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def get_all_media(db: Session, page: int = 1, page_size: int = 10, order_by: str = 'id', order_direction: str = 'asc', file_name: str = None, file_type: str = None, description: str = None):
+def get_all_media(db: Session, page: int = 1, page_size: int = 10, order_by: str = 'id', order_direction: str = 'asc', file_name: str = None, file_type: str = None, description: str = None, fields: list = None):
     """
     Retrieves all media items from the database with pagination.
     
@@ -734,6 +794,7 @@ def get_all_media(db: Session, page: int = 1, page_size: int = 10, order_by: str
         
         # Retrieve the items for the current page
         query = db.query(media.Media)
+            query = query.options(load_only(*fields))
         
         # Add filtering
         if file_name:
@@ -760,25 +821,35 @@ def get_all_media(db: Session, page: int = 1, page_size: int = 10, order_by: str
         else: query = query.order_by(media.Media.id.asc())
         
         results = query.offset(offset).limit(page_size).all()
-        
+
+        if fields:
+            results = [
+                {field: getattr(item, field) for field in fields if hasattr(item, field)}
+                for item in results
+            ]
+
         return {
             "results": results,
             "total_items": total_items,
             "page": page,
             "page_size": page_size,
-            "total_pages": total_pages
         }
     except SQLAlchemyError as e:
+
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def get_media_by_id(db: Session, media_id: int):
+def get_media_by_id(db: Session, media_id: int, fields: list = None):
     try:
-        media_obj = db.query(media.Media).filter(
-            media.Media.id == media_id
-        ).first()
+        query = db.query(media.Media).filter(media.Media.id == media_id)
+        if fields:
+            query = query.options(load_only(*fields))
+
+        media_obj = query.first()
         if media_obj is None:
             raise HTTPException(status_code=404, detail="Media not found")
+        if fields:
+            return {field: getattr(media_obj, field) for field in fields if hasattr(media_obj, field)}
         return media_obj
     except SQLAlchemyError as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -792,16 +863,18 @@ def create_media(db: Session, media_data: dict):
         db.refresh(new_media)
         return new_media
     except SQLAlchemyError as e:
+
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def update_media(db: Session, media_id: int, media_data: dict):
+def update_media(db: Session, media_id: int, media_data: dict, fields: list = None):
     try:
         db.query(media.Media).filter(media.Media.id == media_id).update(media_data)
         db.commit()
-        return get_media_by_id(db, media_id)
+        return get_media_by_id(db, media_id, fields)
     except SQLAlchemyError as e:
+
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -811,11 +884,12 @@ def delete_media(db: Session, media_id: int):
         db.query(media.Media).filter(media.Media.id == media_id).delete()
         db.commit()
     except SQLAlchemyError as e:
+
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def get_all_relationships(db: Session, page: int = 1, page_size: int = 10, order_by: str = 'id', order_direction: str = 'asc', type: str = None, person1_id: int = None, person2_id: int = None):
+def get_all_relationships(db: Session, page: int = 1, page_size: int = 10, order_by: str = 'id', order_direction: str = 'asc', type: str = None, person1_id: int = None, person2_id: int = None, fields: list = None):
     """
     Retrieves all relationships from the database with pagination.
     
@@ -845,6 +919,9 @@ def get_all_relationships(db: Session, page: int = 1, page_size: int = 10, order
         
         # Retrieve the items for the current page
         query = db.query(relationship.Relationship)
+
+        if fields:
+          query = query.options(load_only(*fields))
         
 
         if type:
@@ -866,26 +943,43 @@ def get_all_relationships(db: Session, page: int = 1, page_size: int = 10, order
             query = query.order_by(asc(order_column))
         
         results = query.offset(offset).limit(page_size).all()
+        
+        if fields:
+          results = [
+            {field: getattr(item, field) for field in fields if hasattr(item, field)}
+            for item in results
+            ]
         return {
             "results": results,
             "total_items": total_items,
             "page": page,
             "page_size": page_size,
-            "total_pages": total_pages
+            "total_pages": total_pages,
         }
     except SQLAlchemyError as e:
+
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def get_relationship_by_id(db: Session, relationship_id: int):
+def get_relationship_by_id(db: Session, relationship_id: int, fields: list = None):
+    """Retrieves a relationship by its ID."""
+    
     try:
-        relationship_obj = db.query(relationship.Relationship).filter(
-            relationship.Relationship.id == relationship_id
-        ).first()
-        if relationship_obj is None:
-            raise HTTPException(status_code=404, detail="Relationship not found")
+        query = db.query(relationship.Relationship).filter(relationship.Relationship.id == relationship_id)
+        if fields:
+          query = query.options(load_only(*fields))
+        relationship_obj = query.first()
+        if not relationship_obj:
+          raise HTTPException(status_code=404, detail="Relationship not found")
+        if fields:
+            return {field: getattr(relationship_obj, field) for field in fields if hasattr(relationship_obj, field)}
         return relationship_obj
-    except SQLAlchemyError as e:
+        except SQLAlchemyError as e:
+            db.rollback()
+            raise HTTPException(status_code=500, detail=str(e))
+        
+        if fields: return {field: getattr(relationship_obj, field) for field in fields if hasattr(relationship_obj, field)}
+
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -897,6 +991,7 @@ def create_relationship(db: Session, relationship_data: dict):
         db.refresh(new_relationship)
         return new_relationship
     except SQLAlchemyError as e:
+
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -905,8 +1000,9 @@ def update_relationship(db: Session, relationship_id: int, relationship_data: di
     try:
         db.query(relationship.Relationship).filter(relationship.Relationship.id == relationship_id).update(relationship_data)
         db.commit()
-        return get_relationship_by_id(db, relationship_id)
+        return get_relationship_by_id(db, relationship_id, fields=[])
     except SQLAlchemyError as e:
+
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -915,11 +1011,12 @@ def delete_relationship(db: Session, relationship_id: int):
         db.query(relationship.Relationship).filter(relationship.Relationship.id == relationship_id).delete()
         db.commit()
     except SQLAlchemyError as e:
+
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
-def get_all_relationship_attributes(db: Session, page: int = 1, page_size: int = 10, order_by: str = 'id', order_direction: str = 'asc', key: str = None, value: str = None, relationship_id: int = None):
-    """
+def get_all_relationship_attributes(db: Session, page: int = 1, page_size: int = 10, order_by: str = 'id', order_direction: str = 'asc', key: str = None, value: str = None, relationship_id: int = None, fields: list = None):
+   """
     Retrieves all relationship attributes from the database with pagination and sorting.
 
     Args:
@@ -933,10 +1030,15 @@ def get_all_relationship_attributes(db: Session, page: int = 1, page_size: int =
         A dictionary containing the list of relationship attributes, pagination and sorting metadata.
     """
     try:
+
       query = db.query(relationship_attribute.RelationshipAttribute)
+      
+      if fields:
+          query = query.options(load_only(*fields))
 
       if key:
           query = query.filter(relationship_attribute.RelationshipAttribute.key.ilike(f"%{key}%"))
+          
       if value:
           query = query.filter(relationship_attribute.RelationshipAttribute.value.ilike(f"%{value}%"))
       if relationship_id:
@@ -963,29 +1065,50 @@ def get_all_relationship_attributes(db: Session, page: int = 1, page_size: int =
           else:
             query = query.order_by(asc(order_column))
 
-        # Retrieve the items for the current page
-        results = query.offset(offset).limit(page_size).all()
+
+      results = query.offset(offset).limit(page_size).all()
+      
+      if fields:
+        results = [
+            {field: getattr(item, field) for field in fields if hasattr(item, field)}
+            for item in results
+        ]
         return {
+
             "results": results,
             "total_items": total_items,
             "page": page,
             "page_size": page_size,
             "total_pages": total_pages
-        }
+        }    
+        
     except SQLAlchemyError as e:
+
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def get_relationship_attribute_by_id(db: Session, relationship_attribute_id: int):
+def get_relationship_attribute_by_id(db: Session, relationship_attribute_id: int, fields: list = None):
+
+    
     try:
-        relationship_attribute_obj = db.query(relationship_attribute.RelationshipAttribute).filter(
-            relationship_attribute.RelationshipAttribute.id == relationship_attribute_id
-        ).first()
+        query = db.query(relationship_attribute.RelationshipAttribute).filter(relationship_attribute.RelationshipAttribute.id == relationship_attribute_id)
+
+        if fields:
+            query = query.options(load_only(*fields))
+
+        relationship_attribute_obj = query.first()
+
         if relationship_attribute_obj is None:
             raise HTTPException(status_code=404, detail="Relationship attribute not found")
+
+        if fields:
+            return {field: getattr(relationship_attribute_obj, field) for field in fields if hasattr(relationship_attribute_obj, field)}
+
         return relationship_attribute_obj
     except SQLAlchemyError as e:
+
         raise HTTPException(status_code=500, detail=str(e))
+
 
 
 def create_relationship_attribute(db: Session, relationship_attribute_data: dict):
@@ -996,25 +1119,37 @@ def create_relationship_attribute(db: Session, relationship_attribute_data: dict
         db.refresh(new_relationship_attribute)
         return new_relationship_attribute
     except SQLAlchemyError as e:
+
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
 
 def update_relationship_attribute(db: Session, relationship_attribute_id: int, relationship_attribute_data: dict):
-    try:
+    
+        db.query(relationship_attribute.RelationshipAttribute).filter(
+            relationship_attribute.RelationshipAttribute.id == relationship_attribute_id).update(relationship_attribute_data)
         db.query(relationship_attribute.RelationshipAttribute).filter(relationship_attribute.RelationshipAttribute.id == relationship_attribute_id).update(relationship_attribute_data)
-        db.commit()
-        return get_relationship_attribute_by_id(db, relationship_attribute_id)
+        db.commit()    
     except SQLAlchemyError as e:
+
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def get_all_person_attributes(db: Session, page: int = 1, page_size: int = 10, order_by: str = 'id', order_direction: str = 'asc', key: str = None, value: str = None):
+def get_all_person_attributes(db: Session, page: int = 1, page_size: int = 10, order_by: str = 'id', order_direction: str = 'asc', key: str = None, value: str = None, fields: list = None):
     """
     Retrieves all person attributes from the database with pagination.
 
     Args:
+    Retrieves all person attributes from the database with pagination, sorting and filtering.
+
+    Args:
+        db: The database session.
+        page: The page number to retrieve.
+        page_size: The number of items per page.
+        order_by: The field to order by.
+        order_direction: The direction to order (asc or desc). Default is asc.
+        key: filter by key (partial match).
         db: The database session.
         page: The page number to retrieve.
         page_size: The number of items per page.
@@ -1026,13 +1161,16 @@ def get_all_person_attributes(db: Session, page: int = 1, page_size: int = 10, o
         total number of items, current page, page size, and total pages.
     """
     try:
-        # Calculate the total number of items
-        total_items = db.query(person_attribute.PersonAttribute).count()
+        query = db.query(person_attribute.PersonAttribute)
 
+        if fields:
+            query = query.options(load_only(*fields))
         if key:
             query = query.filter(person_attribute.PersonAttribute.key.ilike(f"%{key}%"))
         if value:
             query = query.filter(person_attribute.PersonAttribute.value.ilike(f"%{value}%"))
+        # Calculate the total number of items
+        total_items = query.count()
 
         # Calculate the total number of pages
         total_pages = (total_items + page_size - 1) // page_size
@@ -1056,26 +1194,33 @@ def get_all_person_attributes(db: Session, page: int = 1, page_size: int = 10, o
         else:
             # Default sort is by id ascending
             query = query.order_by(person_attribute.PersonAttribute.id.asc())
-        results = query.offset(offset).limit(page_size).all()
-
+        if fields:
+            results = [
+                {field: getattr(item, field) for field in fields if hasattr(item, field)}
+                for item in query.offset(offset).limit(page_size).all()
+            ]
+        else: results = query.offset(offset).limit(page_size).all()
         return {
             "results": results,
             "total_items": total_items,
             "page": page,
             "page_size": page_size,
+def get_person_attribute(db: Session, person_attribute_id: int, fields: list = None):
+    try:
+        query = db.query(person_attribute.PersonAttribute).filter(person_attribute.PersonAttribute.id == person_attribute_id)
+        if fields:
+            query = query.options(load_only(*fields))
             "total_pages": total_pages
         }
     except SQLAlchemyError as e:
+
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def get_person_attribute_by_id(db: Session, person_attribute_id: int):
-    try:
-        person_attribute_obj = db.query(person_attribute.PersonAttribute).filter(
-            person_attribute.PersonAttribute.id == person_attribute_id
-        ).first()
-        if person_attribute_obj is None:
+        person_attribute_obj = query.first()
+        if not person_attribute_obj:
             raise HTTPException(status_code=404, detail="Person attribute not found")
+        if fields: return {field: getattr(person_attribute_obj, field) for field in fields if hasattr(person_attribute_obj, field)}
         return person_attribute_obj
     except SQLAlchemyError as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -1089,6 +1234,7 @@ def create_person_attribute(db: Session, person_attribute_data: dict):
         db.refresh(new_person_attribute)
         return new_person_attribute
     except SQLAlchemyError as e:
+
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1098,17 +1244,20 @@ def update_person_attribute(db: Session, person_attribute_id: int, person_attrib
         db.query(person_attribute.PersonAttribute).filter(
             person_attribute.PersonAttribute.id == person_attribute_id
         ).update(person_attribute_data)
-        db.commit()
+        db.commit()    
         return get_person_attribute_by_id(db, person_attribute_id)
     except SQLAlchemyError as e:
+
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+
 
 def delete_person_attribute(db: Session, person_attribute_id: int):
     try:
         db.query(person_attribute.PersonAttribute).filter(person_attribute.PersonAttribute.id == person_attribute_id).delete()
         db.commit()
     except SQLAlchemyError as e:
+
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 def delete_relationship_attribute(db: Session, relationship_attribute_id: int):
@@ -1117,11 +1266,12 @@ def delete_relationship_attribute(db: Session, relationship_attribute_id: int):
             relationship_attribute.RelationshipAttribute.id == relationship_attribute_id).delete()
         db.commit()
     except SQLAlchemyError as e:
+
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def get_all_events(db: Session, page: int = 1, page_size: int = 10, order_by: str = 'id', order_direction: str = 'asc', type: str = None, place: str = None, description: str = None):
+def get_all_events(db: Session, page: int = 1, page_size: int = 10, order_by: str = 'id', order_direction: str = 'asc', type: str = None, place: str = None, description: str = None, fields: list = None):
     """
     Retrieves all events from the database with pagination.
     
@@ -1148,6 +1298,9 @@ def get_all_events(db: Session, page: int = 1, page_size: int = 10, order_by: st
         
         # Retrieve the items for the current page
         query = db.query(event.Event)
+
+        if fields:
+            query = query.options(load_only(*fields))
         
         if type:
             query = query.filter(event.Event.type == type)
@@ -1171,27 +1324,41 @@ def get_all_events(db: Session, page: int = 1, page_size: int = 10, order_by: st
           # Default sort is by id ascending
           query = query.order_by(event.Event.id.asc())
 
-        results = query.offset(offset).limit(page_size).all()
+        if fields:
+            results = [
+                {field: getattr(item, field) for field in fields if hasattr(item, field)}
+                for item in query.offset(offset).limit(page_size).all()
+            ]
+        else:
+            results = query.offset(offset).limit(page_size).all()
         return {
             "results": results,
             "total_items": total_items,
             "page": page,
             "page_size": page_size,
             "total_pages": total_pages
+
         }
     except SQLAlchemyError as e:
+
         raise HTTPException(status_code=500, detail=str(e))
 
 
 def get_event_by_id(db: Session, event_id: int):
+
     try:
-        event_obj = db.query(event.Event).filter(
-            event.Event.id == event_id
-        ).first()
+        query = db.query(event.Event).filter(event.Event.id == event_id)
+        if fields:
+            query = query.options(load_only(*fields))
+        event_obj = query.first()
         if event_obj is None:
             raise HTTPException(status_code=404, detail="Event not found")
-        return event_obj
+        if fields:
+            return {field: getattr(event_obj, field) for field in fields if hasattr(event_obj, field)}
+        else:
+            return event_obj
     except SQLAlchemyError as e:
+
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1203,16 +1370,18 @@ def create_event(db: Session, event_data: dict):
         db.refresh(new_event)
         return new_event
     except SQLAlchemyError as e:
+
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def update_event(db: Session, event_id: int, event_data: dict):
+def update_event(db: Session, event_id: int, event_data: dict, fields: list = None):
     try:
         db.query(event.Event).filter(event.Event.id == event_id).update(event_data)
         db.commit()
         return get_event_by_id(db, event_id)
     except SQLAlchemyError as e:
+
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1222,10 +1391,11 @@ def delete_event(db: Session, event_id: int):
         db.query(event.Event).filter(event.Event.id == event_id).delete()
         db.commit()
     except SQLAlchemyError as e:
+
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
-def get_all_people(db: Session, page: int = 1, page_size: int = 10, order_by: str = 'id', order_direction: str = 'asc', name: str = None, gender: str = None, birth_date: date = None, death_date: date = None):
+def get_all_people(db: Session, page: int = 1, page_size: int = 10, order_by: str = 'id', order_direction: str = 'asc', name: str = None, gender: str = None, birth_date: date = None, death_date: date = None, fields: list = None):
     """
     Retrieves all people from the database with pagination.
     
@@ -1242,23 +1412,23 @@ def get_all_people(db: Session, page: int = 1, page_size: int = 10, order_by: st
     """
     try:
         # Calculate the total number of items
-        total_items = db.query(person.Person).count()
+        query = db.query(person.Person)
+
+        if fields:
+            query = query.options(load_only(*fields))
+        total_items = query.count()
         
         # Calculate the total number of pages
         total_pages = (total_items + page_size - 1) // page_size
-        
-        # Calculate the offset for the current page
-        offset = (page - 1) * page_size
+        offset = (page - 1) * page_size 
         
         # Retrieve the items for the current page
         query = db.query(person.Person)
-        
-        # Add sorting if order_by is provided
-        
-        valid_order_by_columns = ['id', 'name', 'gender', 'birth_date', 'death_date']
-        
 
-        if order_by in valid_order_by_columns:
+        # Add sorting if order_by is provided
+        valid_order_by_columns = ['id', 'name', 'gender', 'birth_date', 'death_date']
+
+        if order_by in valid_order_by_columns:    
           
           order_column = getattr(person.Person, order_by)
           
@@ -1267,30 +1437,39 @@ def get_all_people(db: Session, page: int = 1, page_size: int = 10, order_by: st
           else:
             query = query.order_by(asc(order_column))
         else:
-          # Default sort is by id ascending
-          if name:
-              query = query.filter(person.Person.name.ilike(f"%{name}%") )
-          if gender:
-              query = query.filter(person.Person.gender == gender)
-          if birth_date:
-              query = query.filter(person.Person.birth_date == birth_date)
-          if death_date:
-              query = query.filter(person.Person.death_date == death_date)
-          query = query.order_by(person.Person.id.asc())
-          
+            # Default sort is by id ascending
+            if name:
+                query = query.filter(person.Person.name.ilike(f"%{name}%") )
+            if gender:
+                query = query.filter(person.Person.gender == gender)
+            if birth_date:
+                query = query.filter(person.Person.birth_date == birth_date)
+            if death_date:
+                query = query.filter(person.Person.death_date == death_date)
+            query = query.order_by(person.Person.id.asc())
+            
+        if fields:
+          results = [
+            {field: getattr(item, field) for field in fields if hasattr(item, field)}
+            for item in query.offset(offset).limit(page_size).all()
+            ]
+        else:
+          results = query.offset(offset).limit(page_size).all()
         
-        
-        results = query.offset(offset).limit(page_size).all()
-        
-        return {
-            "results": results,
-            "total_items": total_items,
+        return { "results": results, "total_items": total_items,
             "page": page,
             "page_size": page_size,
-            "total_pages": total_pages
         }
+
+
+
+
+
+
+
     except SQLAlchemyError as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 def get_person_by_id(db: Session, person_id: int):
     try:
@@ -1298,8 +1477,12 @@ def get_person_by_id(db: Session, person_id: int):
         if person_obj is None:
             raise HTTPException(status_code=404, detail="Person not found")
         return person_obj
+
+
     except SQLAlchemyError as e:
-        raise HTTPException(status_code=500, detail=str(e))
+
+
+
 
 def create_person(db: Session, person_data: dict):
     try:
@@ -1309,5 +1492,20 @@ def create_person(db: Session, person_data: dict):
         db.refresh(new_person)
         return new_person
     except SQLAlchemyError as e:
+
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+def get_person(db: Session, person_id: int, fields: list = None):
+    try:
+
+        query = db.query(person.Person).filter(person.Person.id == person_id)        
+        if fields:
+            query = query.options(load_only(*fields))
+        person_obj = query.first()
+        if person_obj is None:
+            raise HTTPException(status_code=404, detail="Person not found")
+        return person_obj
+    except SQLAlchemyError as e:
+
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
