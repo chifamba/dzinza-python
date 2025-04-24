@@ -91,16 +91,14 @@
 - [ ] Test UI on different mobile devices.
 - [ ] optimize performance for mobile devices.
 
-## Feature 8: PostgreSQL Database
+## Feature 8: PostgreSQL Database (Completed)
 
 -   [x] Update `docker-compose.yml` to use a PostgreSQL database image.
 -   [x] Configure `docker-compose.yml` to use a 10GB Persistent Volume Claim (PVC) for PostgreSQL data.
--   [ ] Add PostgreSQL as the database to the backend.
 -   [x] Remove alembic configurations.
 -   [ ] Implement database replication to improve performance.
-- [ ] Update app.py to connect to the database.
-- [ ] Create the database models in app.py.
-- [ ] Create the database schema programatically in app.py.
--   [ ] create an initial job to populate the database with the base schema and initial structure. this should run once only.
-
-
+-   [x] Update app.py to connect to the database.
+-   [x] Create the database models in app.py.
+-   [x] Create the database schema programatically in app.py.
+-   [x] Create an initial job to populate the database with the base schema and initial structure. this should run once only.
+- [x] Add PostgreSQL as the database to the backend.

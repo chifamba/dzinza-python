@@ -1,13 +1,37 @@
 <!doctype html>
 <html lang="en">
-  <head>
+<head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vite + React</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
+    <title>Dashboard</title>
+    <style>
+        .recent-activity, .favorites, .research-suggestions, .tree-statistics, .tree-health {
+            border: 1px solid #ccc;
+            margin: 10px;
+            padding: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Dashboard</h1>
+    <div class="recent-activity">
+        <h2>Recent Activity</h2>
+    </div>
+    <div class="favorites">
+        <h2>Favorites</h2>
+    </div>
+    <div class="research-suggestions">
+        <h2>Research Suggestions</h2>
+    </div>
+    <div class="tree-statistics">
+        <h2>Tree Statistics</h2>
+    </div>
+    <div class="tree-health">
+        <h2>Tree Health</h2>
+    </div>
+    <div class="search-people">
+        <h2>Search for people</h2>
+        <input type="text" placeholder="Search for people">
+        <button>Create person</button>
+    </div>
+</body>
 </html>
