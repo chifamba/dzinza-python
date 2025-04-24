@@ -1565,7 +1565,14 @@ def delete_media_api(id: int):
 def get_events_api():
     """Get all events."""
     db = get_db_session(db_session_factory)
-    return get_all_events(db)
+    page = request.args.get('page', 1, type=int)
+    page_size = request.args.get('page_size', 10, type=int)
+
+    if page < 1 or page_size < 1:
+        abort(400, description="Page and page_size must be positive integers.")
+
+    return get_all_events(db, page, page_size)
+
 
 @app.get("/api/events/{id}")
 def get_event_api(id: int):

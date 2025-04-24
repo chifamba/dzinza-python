@@ -340,9 +340,21 @@ def test_delete_media(test_app):
     assert response.json()["message"] == "Media deleted"
 
 def test_get_all_events(test_app):
+    response = client.get("/api/events?page=1&page_size=2")
+    assert response.status_code == 200
+    assert isinstance(response.json(), dict)
+    assert "results" in response.json()
+    assert "total_items" in response.json()
+    assert "page" in response.json()
+    assert "page_size" in response.json()
+    assert "total_pages" in response.json()
+    assert len(response.json()["results"]) == 2
+
+def test_get_all_events_no_pagination(test_app):
     response = client.get("/api/events")
     assert response.status_code == 200
-    assert isinstance(response.json(), list)
+    assert isinstance(response.json(), dict)
+    assert "results" in response.json()
 
 
 def test_get_event_by_id(test_app):

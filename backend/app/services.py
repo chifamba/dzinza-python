@@ -905,9 +905,38 @@ def delete_relationship_attribute(db: Session, relationship_attribute_id: int):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def get_all_events(db: Session):
+def get_all_events(db: Session, page: int = 1, page_size: int = 10):
+    """
+    Retrieves all events from the database with pagination.
+    
+    Args:
+        db: The database session.
+        page: The page number to retrieve.
+        page_size: The number of items per page.
+        
+    Returns:
+        A dictionary containing the list of events for the current page,
+        total number of items, current page, page size, and total pages.
+    """
     try:
-        return db.query(event.Event).all()
+        # Calculate the total number of items
+        total_items = db.query(event.Event).count()
+        
+        # Calculate the total number of pages
+        total_pages = (total_items + page_size - 1) // page_size
+        
+        # Calculate the offset for the current page
+        offset = (page - 1) * page_size
+        
+        # Retrieve the items for the current page
+        results = db.query(event.Event).offset(offset).limit(page_size).all()
+        return {
+            "results": results,
+            "total_items": total_items,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages
+        }
     except SQLAlchemyError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
