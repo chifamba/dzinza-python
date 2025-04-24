@@ -490,9 +490,38 @@ def get_related(db: Session, person_id: int, depth: int):
     except SQLAlchemyError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-def get_all_citations(db: Session):
+def get_all_citations(db: Session, page: int = 1, page_size: int = 10) -> dict:
+    """
+    Retrieves all citations from the database with pagination.
+    
+    Args:
+        db: The database session.
+        page: The page number to retrieve.
+        page_size: The number of items per page.
+        
+    Returns:
+        A dictionary containing the list of citations for the current page,
+        total number of items, current page, page size, and total pages.
+    """
     try:
-        return db.query(citation.Citation).all()
+        # Calculate the total number of items
+        total_items = db.query(citation.Citation).count()
+        
+        # Calculate the total number of pages
+        total_pages = (total_items + page_size - 1) // page_size
+        
+        # Calculate the offset for the current page
+        offset = (page - 1) * page_size
+        
+        # Retrieve the items for the current page
+        results = db.query(citation.Citation).offset(offset).limit(page_size).all()
+        return {
+            "results": results,
+            "total_items": total_items,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages
+        }
     except SQLAlchemyError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -540,9 +569,38 @@ def delete_citation(db: Session, citation_id: int):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def get_all_sources(db: Session):
+def get_all_sources(db: Session, page: int = 1, page_size: int = 10):
+    """
+    Retrieves all sources from the database with pagination.
+    
+    Args:
+        db: The database session.
+        page: The page number to retrieve.
+        page_size: The number of items per page.
+        
+    Returns:
+        A dictionary containing the list of sources for the current page,
+        total number of items, current page, page size, and total pages.
+    """
     try:
-        return db.query(source.Source).all()
+        # Calculate the total number of items
+        total_items = db.query(source.Source).count()
+        
+        # Calculate the total number of pages
+        total_pages = (total_items + page_size - 1) // page_size
+        
+        # Calculate the offset for the current page
+        offset = (page - 1) * page_size
+        
+        # Retrieve the items for the current page
+        results = db.query(source.Source).offset(offset).limit(page_size).all()
+        return {
+            "results": results,
+            "total_items": total_items,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages
+        }
     except SQLAlchemyError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -983,7 +1041,7 @@ def delete_event(db: Session, event_id: int):
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
-def get_all_people(db: Session, page: int = 1, page_size: int = 10):
+def get_all_people(db: Session, page: int = 1, page_size: int = 10, order_by: str = None, order_direction: str = None):
     """
     Retrieves all people from the database with pagination.
     
@@ -991,6 +1049,8 @@ def get_all_people(db: Session, page: int = 1, page_size: int = 10):
         db: The database session.
         page: The page number to retrieve.
         page_size: The number of items per page.
+        order_by: The field to order by.
+        order_direction: The direction to order (asc or desc).
         
     Returns:
         A dictionary containing the list of people for the current page,
@@ -1007,7 +1067,18 @@ def get_all_people(db: Session, page: int = 1, page_size: int = 10):
         offset = (page - 1) * page_size
         
         # Retrieve the items for the current page
-        results = db.query(person.Person).offset(offset).limit(page_size).all()
+        query = db.query(person.Person)
+        
+        # Add sorting if order_by is provided
+        if order_by:
+            order_column = getattr(person.Person, order_by, None)
+            if order_column is not None:
+                if order_direction == 'desc':
+                    query = query.order_by(order_column.desc())
+                else:
+                    query = query.order_by(order_column.asc())
+
+        results = query.offset(offset).limit(page_size).all()
         
         return {
             "results": results,

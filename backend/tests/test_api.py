@@ -448,9 +448,21 @@ def test_delete_source(test_app):
     assert response.json()["message"] == "Source deleted"
 
 def test_get_all_citations(test_app):
-    response = client.get("/api/citations")
+    response = client.get("/api/citations?page=1&page_size=2")
     assert response.status_code == 200
-    assert isinstance(response.json(), list)
+    assert isinstance(response.json(), dict)
+    assert "results" in response.json()
+    assert "total_items" in response.json()
+    assert "page" in response.json()
+    assert "page_size" in response.json()
+    assert "total_pages" in response.json()
+    assert len(response.json()["results"]) == 2
+
+def test_get_all_sources_no_pagination(test_app):
+    response = client.get("/api/sources")
+    assert response.status_code == 200
+    assert isinstance(response.json(), dict)
+    assert "results" in response.json()
 
 
 def test_get_citation_by_id(test_app):
@@ -492,6 +504,21 @@ def test_delete_citation(test_app):
     response = client.delete(f"/api/citations/{citation_id}")
     assert response.status_code == 200
     assert response.json()["message"] == "Citation deleted"
+
+def test_get_all_citations_no_pagination(test_app):
+    response = client.get("/api/citations")
+    assert response.status_code == 200
+    assert isinstance(response.json(), dict)
+    assert "results" in response.json()
+    assert "total_items" in response.json()
+    assert "page" in response.json()
+    assert "page_size" in response.json()
+    assert "total_pages" in response.json()
+    assert isinstance(response.json()["results"], list)
+
+def test_get_all_citations_with_pagination(test_app):
+    response = client.get("/api/citations?page=1&page_size=2")
+    assert len(response.json()["results"]) == 2
 
 
 def test_get_relationships_and_attributes(test_app):
@@ -617,4 +644,18 @@ def test_search_people(test_app):
     response = client.get("/api/people/search?name=John&gender=M")
     assert response.status_code == 200
     assert isinstance(response.json(), list)
+
+def test_get_all_sources_with_pagination(test_app):
+    # Test with page=1 and page_size=2
+    response = client.get("/api/sources?page=1&page_size=2")
+    assert response.status_code == 200
+    assert isinstance(response.json(), dict)
+    assert "results" in response.json()
+    assert "total_items" in response.json()
+    assert "page" in response.json()
+    assert "page_size" in response.json()
+    assert "total_pages" in response.json()
+    assert len(response.json()["results"]) == 2
+
+
     

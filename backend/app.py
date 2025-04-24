@@ -749,12 +749,20 @@ def get_all_people():
     username = session.get('username', 'api_user')
     current_app.logger.debug(f"API Get All People requested by '{username}'.")
     page = request.args.get('page', 1, type=int)
-    page_size = request.args.get('page_size', 10, type=int)
+    page_size = request.args.get('page_size', 10, type=int)    
+    order_by = request.args.get('order_by', 'person_id', type=str)
+    order_direction = request.args.get('order_direction', 'asc', type=str)
     
     if page < 1 or page_size < 1:
             abort(400, description="Page and page_size must be positive integers.")
+
+    if order_direction not in ('asc', 'desc'):
+            abort(400, description="order_direction must be 'asc' or 'desc'.")
+    
     
     if not family_tree: abort(503, description="Family tree service unavailable.")
+
+
     try:
         db = get_db_session(db_session_factory)
         paginated_people = get_all_people_db(db, page, page_size)
@@ -1602,7 +1610,14 @@ def delete_event_api(id: int):
 def get_sources_api():
     """Get all sources."""
     db = get_db_session(db_session_factory)
-    return get_all_sources(db)
+    page = request.args.get('page', 1, type=int)
+    page_size = request.args.get('page_size', 10, type=int)
+
+    if page < 1 or page_size < 1:
+        abort(400, description="Page and page_size must be positive integers.")
+
+    paginated_sources = get_all_sources(db, page, page_size)
+    return paginated_sources
 
 @app.get("/api/sources/{id}")
 def get_source_api(id: int):
@@ -1631,7 +1646,12 @@ def delete_source_api(id: int):
 def get_citations_api():
     """Get all citations."""
     db = get_db_session(db_session_factory)
-    return get_all_citations(db)
+    page = request.args.get('page', 1, type=int)
+    page_size = request.args.get('page_size', 10, type=int)
+
+    if page < 1 or page_size < 1:
+        abort(400, description="Page and page_size must be positive integers.")
+    return get_all_citations(db, page, page_size)
 
 @app.get("/api/citations/{id}")
 def get_citation_api(id: int):
