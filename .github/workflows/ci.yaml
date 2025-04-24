@@ -75,6 +75,7 @@ jobs:
       #    Provide environment variables for the test database connection
       - name: Run backend tests
         env:
+          PYTHONPATH: '.' # Ensure the current directory is in PYTHONPATH
           # Use the service container's details
           DATABASE_URL: postgresql://testuser:testpassword@localhost:5432/testdb
           # Add other necessary env vars for tests if any
