@@ -1,8 +1,5 @@
 # docker-compose.yml (in project root: dzinza-python/)
 
-version: '3.8'
-
-
 services:
   db:
     image: postgres:15-alpine

@@ -5,15 +5,14 @@ This document outlines the development plan for the Dzinza Family Tree applicati
 ### Key Technologies
 
 *   **Backend:** Python 3.11
-*   **Database:** PostgreSQL
-* **Database migration tool:** Liquibase
+*   **Database:** PostgreSQL 
 *   **ORM:** SQLAlchemy
-* **Caching:** Redis
+*   **Caching:** Redis
+*.  **Dev solution will be based on running with docker-compose, the final production solution will use docker with kubernetes
 
 ## PostgreSQL Database Implementation
 
-This section details the plan for implementing PostgreSQL as the primary database for the Dzinza Family Tree application. We will use Liquibase to manage the database schema.
-
+This section details the plan for implementing PostgreSQL as the primary database for the Dzinza Family Tree application.
 ### Rationale
 
 *   **Relational Model:** PostgreSQL's relational model is well-suited for the complex relationships in family tree data.
@@ -35,24 +34,6 @@ The database schema will consist of the following tables:
 *   **Events:** (id, person_id, event_type, date, place, description, created_at)
 *   **Sources:** (id, title, author, publication_info, url, notes, created_at)
 *   **Citations:** (id, source_id, person_id, event_id, citation_text, page_number, created_at)
-
-### Liquibase Configuration and Usage
-
-We will use Liquibase to manage database schema changes. This will allow us to:
-
-*   **Version Control:** Track changes to the database schema over time.
-*   **Incremental Updates:** Apply schema changes incrementally.
-* **Rollbacks:** Roll back to previous schema versions if necessary.
-
-#### Steps
-
-1.  **Add Liquibase Dependency:** Add the Liquibase package for Python to the `.idx/dev.nix` file.
-2.  **Create Liquibase Configuration:** Create a `liquibase.properties` file in the `backend` directory.
-3.  **Update `app.py`:** Modify `app.py` to initialize and use Liquibase.
-4.  **Create Initial Changelog:** Create a changelog file (e.g., `db.changelog-master.yaml`) in the `backend` directory.
-5.  **Define Database Schema:** Define the initial database schema (tables, columns, constraints) in the changelog file using Liquibase's YAML format.
-6. **Apply Changelog:** Use the Liquibase command-line interface (or integrate it into `app.py`) to apply the changelog to the database.
-7. **Create the initial data population script:** Create a script in the backend directory to populate the database with the initial data.
 
 ### PostgreSQL Configuration
 
@@ -315,15 +296,6 @@ We will be using PostgreSQL as the primary database for our application.
 * **Scalability:** use techniques to increase the performance of the database, like database replication.
 *   **Data Backup:** Implement robust backup and restore strategies to protect against data loss.
 *   **Data Migration:** Use a tool like Alembic to manage database schema migrations.
-
-#### Database Schema Management
-
-We will use Alembic to manage database schema changes. This will allow us to:
-
-*   **Version Control:** Track changes to the database schema over time.
-*   **Incremental Updates:** Apply schema changes incrementally without downtime.
-*   **Rollbacks:** Roll back to previous schema versions if necessary.
-
 #### PostgreSQL Configuration
 
 * we will use a docker image for our database.

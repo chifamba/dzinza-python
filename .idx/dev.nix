@@ -15,6 +15,7 @@
     pkgs.python3Packages.torch
     pkgs.python3Packages.datasets
     pkgs.python3Packages.accelerate
+    pkgs.python3Packages.pytest
     pkgs.tree-sitter
     pkgs.black
     pkgs.vim

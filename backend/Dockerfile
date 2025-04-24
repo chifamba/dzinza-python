@@ -35,5 +35,7 @@ EXPOSE 8090
 # For production, consider using a production-ready WSGI server like Gunicorn or Waitress
 # Example using Gunicorn:
 # CMD ["gunicorn", "--bind", "0.0.0.0:8090", "app:app"]
+RUN pytest /app/tests
+RUN python app/db_init.py
 CMD ["flask", "run"]
 

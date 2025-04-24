@@ -1,14 +1,13 @@
 # TODO List
 
 ## Feature 1: Dashboard Redesign
-
--   [ ] Create personalized dashboard with recent activity feed.
--   [ ] Implement quick access to favorites.
--   [ ] Add research suggestions section.
--   [ ] Create statistics overview for the tree.
--   [ ] Create tree health overview (e.g., data completeness).
--   [ ] Add the ability to search for people to create relationship with and create them if not found in search.
--   [ ] Ensure that people at the same level are hoizontally at the same level i.e. a husband and wife at the same level, but above all thier children whom are also at the same level.
+-   [ ] Create personalized dashboard with recent activity feed. <!-- Partially done: basic structure in place, but not the dynamic parts -->
+-   [ ] Implement quick access to favorites. <!-- Partially done: basic structure in place, but not the dynamic parts -->
+-   [ ] Add research suggestions section. <!-- Partially done: basic structure in place, but not the dynamic parts -->
+-   [ ] Create statistics overview for the tree. <!-- Partially done: basic structure in place, but not the dynamic parts -->
+-   [ ] Create tree health overview (e.g., data completeness). <!-- Partially done: basic structure in place, but not the dynamic parts -->
+-   [ ] Add the ability to search for people to create relationship with and create them if not found in search. <!-- Partially done: search bar in place, but not the dynamic parts -->
+-   [ ] Ensure that people at the same level are hoizontally at the same level i.e. a husband and wife at the same level, but above all thier children whom are also at the same level. <!-- Partially done: structure in place, but not the dynamic parts -->
 
 ## Feature 2: Person Detail View
 

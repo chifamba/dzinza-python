@@ -2,26 +2,29 @@ import os
 import logging
 from functools import wraps
 from flask import Flask, request, session, jsonify, abort, current_app
-from flask_cors import CORS, cross_origin
+from flask_cors import CORS
 from src.user_management import VALID_ROLES # Import VALID_ROLES
 from src.relationship import Relationship, VALID_RELATIONSHIP_TYPES, RelationshipModel # Import Relationship for type hints if needed
 from src.audit_log import log_audit
-from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
+from logging.handlers import RotatingFileHandler
 from datetime import date, timedelta
 from src.user_management import UserManagement  # Import UserManagement class
 from src.family_tree import FamilyTree  # Import FamilyTree class
 from sqlalchemy.exc import SQLAlchemyError
+from fastapi import FastAPI
 from werkzeug.exceptions import HTTPException, Unauthorized, InternalServerError, NotFound, BadRequest, Forbidden
 from sqlalchemy import create_engine, Column, Integer, String, Date, ForeignKey
-from sqlalchemy.orm import declarative_base, relationship, sessionmaker
+from sqlalchemy.orm import declarative_base, relationship, sessionmaker, Session
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from sqlalchemy.orm import sessionmaker
+from .services import get_all_users, get_user_by_id, create_user, get_all_people_db, get_person_by_id_db, create_person_db, get_all_events, get_event_by_id, create_event, update_event, delete_event, get_all_sources, get_source_by_id, create_source, update_source, delete_source, get_all_citations, get_citation_by_id, create_citation, update_citation, delete_citation
 
+from .services import get_all_person_attributes, get_person_attribute_by_id, create_person_attribute, update_person_attribute, delete_person_attribute, get_all_relationships, get_relationship_by_id, create_relationship, update_relationship, delete_relationship, get_all_relationship_attributes, get_relationship_attribute_by_id, create_relationship_attribute, update_relationship_attribute, delete_relationship_attribute, get_all_media, get_media_by_id, create_media, update_media, delete_media
+app = FastAPI()
 
 # --- Database Setup ---
 Base = declarative_base()
 db_engine = None
-# --- Configuration ---
 SECRET_KEY = os.environ.get('FLASK_SECRET_KEY', 'a_very_strong_dev_secret_key_39$@5_v2')
 if SECRET_KEY == 'a_very_strong_dev_secret_key_39$@5_v2':
     logging.warning("SECURITY WARNING: Using default Flask secret key. Set FLASK_SECRET_KEY environment variable for production.")
@@ -31,6 +34,32 @@ PROJECT_ROOT = os.path.dirname(APP_ROOT)
 LOG_DIR = os.path.join(PROJECT_ROOT, 'logs', 'backend')
 
 AUDIT_LOG_FILE = os.path.join(LOG_DIR, 'audit.log')
+
+
+# --- Database Engine & Session ---
+
+def create_tables(engine):
+    """Creates all tables in the database using the provided engine."""
+    Base.metadata.create_all(engine)
+
+
+def get_db_session_factory(db_engine):
+    """
+    Create a session factory function to be called when needed, using the provided database engine.
+    """
+    return sessionmaker(autocommit=False, autoflush=False, bind=db_engine)
+
+
+def get_db_session(session_factory):
+    """
+    Creates a database session from the factory, to be used in each request.
+    """
+    return session_factory()
+
+
+
+
+# --- Configuration ---
 
 DATABASE_URL = os.environ.get('DATABASE_URL')
 if not DATABASE_URL:
@@ -67,6 +96,10 @@ class Person(Base):
     place_of_death = Column(String)
     notes = Column(String)
     user_id = Column(Integer, ForeignKey('users.user_id'))
+    military_service = Column(String)
+    education_history = Column(String)
+    occupation_history = Column(String)
+    confidence = Column(String)
 
 class RelationshipModel(Base):
     __tablename__ = 'relationships'
@@ -89,7 +122,7 @@ class RelationshipModel(Base):
 APP_LOG_FILE = os.path.join(LOG_DIR, 'app.log')
 
 # --- Application Setup ---
-app = Flask(__name__)
+flask_app = Flask(__name__)
 app.secret_key = SECRET_KEY
 # Configure session cookie settings for security (optional but recommended)
 app.config.update(
@@ -122,25 +155,25 @@ console_handler.setFormatter(log_formatter)
 console_handler.setLevel(logging.DEBUG if os.environ.get('FLASK_DEBUG') == '1' else logging.INFO)
 
 # Get the Flask app's logger and configure it
-if app.logger.handlers: app.logger.handlers.clear()
-app.logger.addHandler(file_handler)
-app.logger.addHandler(console_handler)
-app.logger.setLevel(logging.DEBUG if os.environ.get('FLASK_DEBUG') == '1' else logging.INFO)
+if flask_app.logger.handlers: flask_app.logger.handlers.clear()
+flask_app.logger.addHandler(file_handler)
+flask_app.logger.addHandler(console_handler)
+flask_app.logger.setLevel(logging.DEBUG if os.environ.get('FLASK_DEBUG') == '1' else logging.INFO)
 
-app.logger.info("Flask application starting up...")
+flask_app.logger.info("Flask application starting up...")
 
 
 # --- Database Session Setup ---
-
 try:
     db_engine = create_engine(DATABASE_URL)
-    Base.metadata.create_all(db_engine)
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=db_engine)
+    create_tables(db_engine)
+    db_session_factory = get_db_session_factory(db_engine)
     
-    app.logger.info("Database engine created successfully.")
-    db_session = SessionLocal()
+    db_session = get_db_session(db_session_factory)
+    
+    flask_app.logger.info("Database engine created successfully.")
 except SQLAlchemyError as e:
-    app.logger.critical(f"CRITICAL ERROR: Database engine creation failed: {e}", exc_info=True)
+    flask_app.logger.critical(f"CRITICAL ERROR: Database engine creation failed: {e}", exc_info=True)
     logging.exception("Failed to create database engine")
     exit(1)
 
@@ -148,13 +181,13 @@ except SQLAlchemyError as e:
 user_manager = None
 family_tree = None
 try:   
-    user_manager = UserManagement(db_session, AUDIT_LOG_FILE)
+    user_manager = UserManagement(db_session, AUDIT_LOG_FILE)    
     family_tree = FamilyTree(db_session_factory, AUDIT_LOG_FILE)
 
-    app.logger.info("User manager and family tree initialized successfully.")
+    flask_app.logger.info("User manager and family tree initialized successfully.")
 except Exception as e:
-    app.logger.critical(f"CRITICAL ERROR: Failed to initialize core components: {e}", exc_info=True)
-    logging.exception("Failed to initialize application")
+    flask_app.logger.critical(f"CRITICAL ERROR: Failed to initialize core components: {e}", exc_info=True)
+    logging.exception("Failed to initialize flask_application")
     # App might be unusable, endpoints using these will fail later with 503 checks
 
 
@@ -162,12 +195,12 @@ except Exception as e:
 def populate_database(db_session):
     """Populates the database with initial data if it's empty."""
     # Check if there are any users
-    existing_users = db_session.query(User).count()
+    existing_users = db_session.query(User).count()    
     if existing_users == 0:
         app.logger.info("Database is empty, populating with initial data.")
         # Create an initial admin user
         admin_user = User(username='admin', password_hash_b64=user_manager.hash_password('admin'), role='admin')
-        db_session.add(admin_user)
+        db_session.add(admin_user)        
         
         # Create some initial people
         person1 = Person(first_name='John', last_name='Doe', birth_date=date(1980, 1, 1), user_id=admin_user.user_id)
@@ -177,9 +210,9 @@ def populate_database(db_session):
         # Create some initial relationships
         relationship1 = RelationshipModel(person1_id=person1.person_id, person2_id=person2.person_id, rel_type='married')
         db_session.add_all([relationship1])
-
+        
         db_session.commit()
-        app.logger.info("Database populated with initial data.")
+        flask_app.logger.info("Database populated with initial data.")
 
 
 # --- Validation Helper ---
@@ -232,7 +265,7 @@ def validate_person_data(data, is_edit=False):
                 errors['death_date'] = 'Date of Death cannot be before Date of Birth.'
         except (ValueError, TypeError) as date_err:
              # Log the specific error during comparison phase
-             app.logger.warning(f"Date comparison validation error: {date_err}", exc_info=True)
+             flask_app.logger.warning(f"Date comparison validation error: {date_err}", exc_info=True)
              # Add a user-friendly error message
              errors['date_comparison'] = 'Invalid date format for comparison.'
 
@@ -256,7 +289,7 @@ def api_login_required(f):
         # Check session *before* checking component initialization
         if 'user_id' not in session:
             current_app.logger.warning(f"API Authentication Required: Endpoint '{request.endpoint}' accessed without login (IP: {request.remote_addr}).")
-            log_audit(AUDIT_LOG_FILE, 'anonymous', 'api_access_denied', f'login required for API endpoint {request.endpoint}')
+            log_audit(AUDIT_LOG_FILE, 'anonymous', 'api_access_denied', f'login required for API endpoint {request.endpoint}')            
             # Use abort to trigger the 401 handler
             abort(401, description="Authentication required.")
 
@@ -292,7 +325,7 @@ def api_admin_required(f):
 @app.errorhandler(BadRequest) # 400
 def handle_bad_request(error: BadRequest):
     """Handles 400 Bad Request errors, often due to parsing or validation."""
-    description = getattr(error, 'description', "Invalid request format or data.")
+    description = getattr(error, 'description', "Invalid request format or data.")    
     current_app.logger.warning(f"API Bad Request (400): {description} - Endpoint: {request.endpoint}, IP: {request.remote_addr}")
     # Structure the response based on whether description is detailed validation errors
     response_data = {"error": "Bad Request", "message": description}
@@ -355,7 +388,7 @@ def api_login():
         data = request.get_json()
         if not data:
              abort(400, description="Request body must be valid JSON.")
-        if not data.get('username') or not data.get('password'):
+        if not data.get('username') or not data.get('password'):            
             abort(400, description="Username and password are required.")
 
         username = data['username'].strip()
@@ -596,7 +629,7 @@ def api_get_all_users():
         if not user_manager: abort(503, description="User management service unavailable.")
 
         all_users = user_manager.get_all_users()
-        all_users_list = []
+        all_users_list = []        
         for user in all_users:
             user_data = {"id": user.user_id, "username": user.username, "role": user.role}
             all_users_list.append(user_data)
@@ -1171,17 +1204,17 @@ def tree_data():
 
 # --- Main Execution ---
 if __name__ == '__main__':
-    # Check for admin user only if user_manager initialized successfully
-    if user_manager:
-        # check if there are initial users
-        try:            
-            # Check if ANY admin user exists
-            has_admin = any(isinstance(user, object) and getattr(user, 'role', None) == 'admin'
-                            for user in user_manager.users.values())
+   # Check for admin user only if user_manager initialized successfully
+   if user_manager:
+       # check if there are initial users
+       try:            
+           # Check if ANY admin user exists
+           has_admin = any(isinstance(user, object) and getattr(user, 'role', None) == 'admin'
+                           for user in user_manager.users.values())
 
-            if user_manager.users and not has_admin:
-                first_user_id = next(iter(user_manager.users)) # Get the first user ID
-                user = user_manager.users[first_user_id]
+           if user_manager.users and not has_admin:
+               first_user_id = next(iter(user_manager.users)) # Get the first user ID
+               user = user_manager.users[first_user_id]                
                 if isinstance(user, object):
                     first_username = getattr(user, 'username', 'unknown')                    
                     # user_manager.set_user_role(first_user_id, 'admin', actor_username='system_startup')
@@ -1189,27 +1222,273 @@ if __name__ == '__main__':
             elif not user_manager.users:
                 app.logger.info("No users found in user file. First registered user may need manual promotion to admin if required.")
             else:
-                 app.logger.info("Admin user(s) found.")
+                app.logger.info("Admin user(s) found.")
              
-            with SessionLocal() as session:
-                populate_database(session)
+            with db_session_factory() as session:
+                populate_database(session)                
                 
 
 
         except StopIteration:
-             app.logger.info("User file exists but contains no users.")
+            app.logger.info("User file exists but contains no users.")
         except Exception as admin_err:
-             app.logger.error(f"Error during initial admin check/promotion: {admin_err}", exc_info=True)
-    else:
-        app.logger.error("User manager failed to initialize. Cannot perform admin check or run application correctly.")
-        # Consider exiting if core components fail
-        # exit(1)
+            app.logger.error(f"Error during initial admin check/promotion: {admin_err}", exc_info=True)
+   else:
+       app.logger.error("User manager failed to initialize. Cannot perform admin check or run application correctly.")
+       # Consider exiting if core components fail
+       # exit(1)
 
+    
     port = int(os.environ.get('PORT', 8090))
     # Read FLASK_DEBUG from environment variable for consistency
     debug_mode = os.environ.get('FLASK_DEBUG', '0') == '1'
-    app.logger.info(f"Starting Flask server on host 0.0.0.0, port {port}, Debug: {debug_mode}")
+    flask_app.logger.info(f"Starting Flask server on host 0.0.0.0, port {port}, Debug: {debug_mode}")
 
     # Use app.run for development only
     # For production, use a WSGI server like Gunicorn or Waitress
-    app.run(debug=debug_mode, host='0.0.0.0', port=port)
+    #app.run(debug=debug_mode, host='0.0.0.0', port=port)
+    
+@app.get("/api/users")
+def get_users():
+    """Get all users."""
+    db = get_db_session(db_session_factory)
+    users = get_all_users(db)
+    return users
+
+@app.get("/api/users/{id}")
+def get_user(id: int):
+    """Get a specific user."""
+    db = get_db_session(db_session_factory)
+    user = get_user_by_id(db, id)
+    return user
+
+@app.post("/api/users")
+def create_user():
+    """Create a new user."""
+    db = get_db_session(db_session_factory)
+    user = create_user(db, request.get_json())
+    return user
+
+@app.get("/api/people")
+def get_people():
+    """Get all people."""
+    db = get_db_session(db_session_factory)
+    return get_all_people_db(db)
+
+@app.get("/api/people/{id}")
+def get_person_api(id: int):
+    """Get a specific person."""
+    db = get_db_session(db_session_factory)
+    return get_person_by_id_db(db, id)
+
+@app.post("/api/people")
+def create_person_api():
+    db = get_db_session(db_session_factory)
+    return create_person_db(db, request.get_json())
+
+@app.get("/api/person_attributes")
+def get_person_attributes_api():
+    """Get all person attributes."""
+    db = get_db_session(db_session_factory)
+    return get_all_person_attributes(db)
+
+@app.get("/api/person_attributes/{id}")
+def get_person_attribute_api(id: int):
+    """Get a specific person attribute."""
+    db = get_db_session(db_session_factory)
+    return get_person_attribute_by_id(db, id)
+
+@app.post("/api/person_attributes")
+def create_person_attribute_api():
+    """Create a new person attribute."""
+    db = get_db_session(db_session_factory)
+    return create_person_attribute(db, request.get_json())
+
+@app.put("/api/person_attributes/{id}")
+def update_person_attribute_api(id: int):
+    """Update an existing person attribute."""
+    db = get_db_session(db_session_factory)
+    return update_person_attribute(db, id, request.get_json())
+
+@app.delete("/api/person_attributes/{id}")
+def delete_person_attribute_api(id: int):
+    """Delete a person attribute."""
+    db = get_db_session(db_session_factory)
+    return delete_person_attribute(db, id)
+
+@app.get("/api/relationships")
+def get_relationships_api():
+    """Get all relationships."""
+    db = get_db_session(db_session_factory)
+    return get_all_relationships(db)
+
+@app.get("/api/relationships/{id}")
+def get_relationship_api(id: int):
+    """Get a specific relationship."""
+    db = get_db_session(db_session_factory)
+    return get_relationship_by_id(db, id)
+
+@app.post("/api/relationships")
+def create_relationship_api():
+    """Create a new relationship."""
+    db = get_db_session(db_session_factory)
+    return create_relationship(db, request.get_json())
+
+@app.put("/api/relationships/{id}")
+def update_relationship_api(id: int):
+    """Update an existing relationship."""
+    db = get_db_session(db_session_factory)
+    return update_relationship(db, id, request.get_json())
+
+@app.delete("/api/relationships/{id}")
+def delete_relationship_api(id: int):
+    """Delete a relationship."""
+    db = get_db_session(db_session_factory)
+    return delete_relationship(db, id)
+
+@app.get("/api/relationship_attributes")
+def get_relationship_attributes_api():
+    """Get all relationship attributes."""
+    db = get_db_session(db_session_factory)
+    return get_all_relationship_attributes(db)
+
+@app.get("/api/relationship_attributes/{id}")
+def get_relationship_attribute_api(id: int):
+    """Get a specific relationship attribute."""
+    db = get_db_session(db_session_factory)
+    return get_relationship_attribute_by_id(db, id)
+
+@app.post("/api/relationship_attributes")
+def create_relationship_attribute_api():
+    """Create a new relationship attribute."""
+    db = get_db_session(db_session_factory)
+    return create_relationship_attribute(db, request.get_json())
+
+@app.put("/api/relationship_attributes/{id}")
+def update_relationship_attribute_api(id: int):
+    """Update an existing relationship attribute."""
+    db = get_db_session(db_session_factory)
+    return update_relationship_attribute(db, id, request.get_json())
+
+@app.delete("/api/relationship_attributes/{id}")
+def delete_relationship_attribute_api(id: int):
+    """Delete a relationship attribute."""
+    db = get_db_session(db_session_factory)
+    return delete_relationship_attribute(db, id)
+
+@app.get("/api/media")
+def get_media_api():
+    """Get all media."""
+    db = get_db_session(db_session_factory)
+    return get_all_media(db)
+
+@app.get("/api/media/{id}")
+def get_media_attribute_api(id: int):
+    """Get a specific media."""
+    db = get_db_session(db_session_factory)
+    return get_media_by_id(db, id)
+
+@app.post("/api/media")
+def create_media_api():
+    """Create a new media."""
+    db = get_db_session(db_session_factory)
+    return create_media(db, request.get_json())
+
+@app.put("/api/media/{id}")
+def update_media_api(id: int):
+    """Update an existing media."""
+    db = get_db_session(db_session_factory)
+    return update_media(db, id, request.get_json())
+@app.delete("/api/media/{id}")
+def delete_media_api(id: int):
+    """Delete a media."""
+    db = get_db_session(db_session_factory)
+    return delete_media(db, id)
+
+@app.get("/api/events")
+def get_events_api():
+    """Get all events."""
+    db = get_db_session(db_session_factory)
+    return get_all_events(db)
+
+@app.get("/api/events/{id}")
+def get_event_api(id: int):
+    """Get a specific event."""
+    db = get_db_session(db_session_factory)
+    return get_event_by_id(db, id)
+
+@app.post("/api/events")
+def create_event_api():
+    """Create a new event."""
+    db = get_db_session(db_session_factory)
+    return create_event(db, request.get_json())
+
+@app.put("/api/events/{id}")
+def update_event_api(id: int):
+    """Update an existing event."""
+    db = get_db_session(db_session_factory)
+    return update_event(db, id, request.get_json())
+
+@app.delete("/api/events/{id}")
+def delete_event_api(id: int):
+    """Delete an event."""
+    db = get_db_session(db_session_factory)
+    return delete_event(db, id)
+
+@app.get("/api/sources")
+def get_sources_api():
+    """Get all sources."""
+    db = get_db_session(db_session_factory)
+    return get_all_sources(db)
+
+@app.get("/api/sources/{id}")
+def get_source_api(id: int):
+    """Get a specific source."""
+    db = get_db_session(db_session_factory)
+    return get_source_by_id(db, id)
+
+@app.post("/api/sources")
+def create_source_api():
+    """Create a new source."""
+    db = get_db_session(db_session_factory)
+    return create_source(db, request.get_json())
+
+@app.put("/api/sources/{id}")
+def update_source_api(id: int):
+    """Update an existing source."""
+    db = get_db_session(db_session_factory)
+    return update_source(db, id, request.get_json())
+@app.delete("/api/sources/{id}")
+def delete_source_api(id: int):
+    """Delete a source."""
+    db = get_db_session(db_session_factory)
+    return delete_source(db, id) 
+
+@app.get("/api/citations")
+def get_citations_api():
+    """Get all citations."""
+    db = get_db_session(db_session_factory)
+    return get_all_citations(db)
+
+@app.get("/api/citations/{id}")
+def get_citation_api(id: int):
+    """Get a specific citation."""
+    db = get_db_session(db_session_factory)
+    return get_citation_by_id(db, id)
+
+@app.post("/api/citations")
+def create_citation_api():
+    """Create a new citation."""
+    db = get_db_session(db_session_factory)
+    return create_citation(db, request.get_json())
+
+@app.put("/api/citations/{id}")
+def update_citation_api(id: int):
+    """Update an existing citation."""
+    db = get_db_session(db_session_factory)
+    return update_citation(db, id, request.get_json())
+@app.delete("/api/citations/{id}")
+def delete_citation_api(id: int):
+    """Delete a citation."""
+    db = get_db_session(db_session_factory)
+    return delete_citation(db, id)
