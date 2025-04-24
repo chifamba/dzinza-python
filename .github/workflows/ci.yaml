@@ -1,0 +1,134 @@
+# .github/workflows/ci.yml
+
+name: Dzinza CI
+
+# Controls when the workflow will run
+on:
+  push:
+    branches: [ "main", "develop" ] # Run on pushes to main and develop
+  pull_request:
+    branches: [ "main" ] # Run on PRs targeting main
+
+jobs:
+  backend-ci:
+    name: Backend CI (Lint, Test, Build)
+    runs-on: ubuntu-latest
+
+    # Service containers to run with the job
+    services:
+      # Label used to access the service container
+      postgres:
+        # Docker Hub image
+        image: postgres:15-alpine
+        # Provide the healthcheck settings for PostgreSQL
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          # Maps tcp port 5432 on service container to the host
+          - 5432:5432
+        # Set health checks to wait until postgres has started
+        env:
+          POSTGRES_USER: testuser       # Use non-root user for testing
+          POSTGRES_PASSWORD: testpassword
+          POSTGRES_DB: testdb
+
+    steps:
+      # 1. Checkout Repository
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. Set up Python
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # 3. Cache Python dependencies
+      - name: Cache Pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/backend/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      # 4. Install Python Dependencies (including test/lint tools)
+      #    Ensure requirements.txt includes: flake8, pytest, psycopg2-binary (or psycopg)
+      - name: Install backend dependencies
+        run: pip install -r backend/requirements.txt
+        working-directory: . # Run from root
+
+      # 5. Lint Backend Code (Example using flake8)
+      #    Add flake8 config (.flake8) if needed
+      - name: Lint with flake8
+        run: flake8 backend/
+        working-directory: . # Run from root
+
+      # 6. Run Backend Tests (using pytest)
+      #    Provide environment variables for the test database connection
+      - name: Run backend tests
+        env:
+          # Use the service container's details
+          DATABASE_URL: postgresql://testuser:testpassword@localhost:5432/testdb
+          # Add other necessary env vars for tests if any
+          FLASK_SECRET_KEY: test-secret-for-ci # Use a dummy secret for testing
+        run: pytest backend/tests/
+        working-directory: . # Run from root
+
+      # 7. Build Backend Docker Image (Verify Dockerfile syntax and build process)
+      - name: Build backend Docker image
+        run: docker build -t dzinza-backend-ci -f backend/Dockerfile .
+
+  frontend-ci:
+    name: Frontend CI (Lint, Test, Build)
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout Repository
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. Set up Node.js
+      - name: Set up Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      # 3. Cache Node modules
+      - name: Cache Node modules
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/frontend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      # 4. Install Frontend Dependencies
+      - name: Install frontend dependencies
+        run: npm ci # Use ci for faster, deterministic installs
+        working-directory: ./frontend
+
+      # 5. Lint Frontend Code (Using eslint as configured in package.json)
+      - name: Lint with eslint
+        run: npm run lint
+        working-directory: ./frontend
+
+      # 6. Run Frontend Tests (Using script from package.json)
+      #    Ensure your package.json has a "test" script configured
+      - name: Run frontend tests
+        run: npm test -- --watchAll=false # Add flags if needed for non-interactive CI run
+        working-directory: ./frontend
+
+      # 7. Build Frontend Application (Using script from package.json)
+      - name: Build frontend application
+        run: npm run build
+        working-directory: ./frontend
+
+      # 8. Build Frontend Docker Image (Verify Dockerfile syntax and build process)
+      - name: Build frontend Docker image
+        run: docker build -t dzinza-frontend-ci -f frontend/Dockerfile ./frontend
+        working-directory: . # Run docker build from root if Dockerfile expects context there
+

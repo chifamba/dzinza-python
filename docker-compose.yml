@@ -1,11 +1,29 @@
 # docker-compose.yml (in project root: dzinza-python/)
 
 services:
+  db:
+    image: postgres:15-alpine
+    container_name: dzinza-db
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=dzinza
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    
+    
+    restart: unless-stopped
+
+  # Backend Service (Flask API)
+
+
   # Backend Service (Flask API)
   backend:
     build:
-      context: ./backend # Path to the directory containing the backend Dockerfile
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: dzinza-backend
     ports:
       - "8090:8090" # Map host port 8090 to container port 8090
@@ -40,6 +58,12 @@ services:
     depends_on:
       - backend # Optional: Ensures backend starts before frontend (doesn't guarantee readiness)
     restart: unless-stopped
+
+volumes:
+  db_data:
+    driver: local
+    driver_opts:
+      o: size=10G
 
 # Optional: Define named volumes if you prefer them over bind mounts
 # volumes:

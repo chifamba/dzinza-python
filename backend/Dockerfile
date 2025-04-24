@@ -25,9 +25,12 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the backend application code into the container
-COPY . .
+# Copy the tests folder
+# COPY tests /app/tests
 
+# Copy all files
+COPY backend .
+RUN ls -l /app
 # Make port 8090 available to the world outside this container
 EXPOSE 8090
 
@@ -35,5 +38,7 @@ EXPOSE 8090
 # For production, consider using a production-ready WSGI server like Gunicorn or Waitress
 # Example using Gunicorn:
 # CMD ["gunicorn", "--bind", "0.0.0.0:8090", "app:app"]
+RUN pytest /app/tests
+RUN python backend/app/db_init.py
 CMD ["flask", "run"]
 
