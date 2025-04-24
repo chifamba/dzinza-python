@@ -4,7 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from backend.app import app, create_tables
+from backend.app import app, create_tables, get_db
 from backend.app.models import Base
 from backend.app.db_init import populate_db
 
@@ -63,11 +63,28 @@ def test_create_user(test_app):
     assert response.json()["username"] == "testuser"
 
 
-def test_get_all_people(test_app):
+def test_get_all_people_no_pagination(test_app):
     response = client.get("/api/people")
     assert response.status_code == 200
-    assert isinstance(response.json(), list)
-    assert len(response.json()) > 0
+    assert isinstance(response.json(), dict)
+    assert "results" in response.json()
+    assert "total_items" in response.json()
+    assert "page" in response.json()
+    assert "page_size" in response.json()
+    assert "total_pages" in response.json()
+    assert isinstance(response.json()["results"], list)
+    assert len(response.json()["results"]) > 0
+
+def test_get_all_people_with_pagination(test_app):
+    response = client.get("/api/people?page=1&page_size=2")
+    assert response.status_code == 200
+    assert isinstance(response.json(), dict)
+    assert "results" in response.json()
+    assert "total_items" in response.json()
+    assert "page" in response.json()
+    assert "page_size" in response.json()
+    assert "total_pages" in response.json()
+    assert len(response.json()["results"]) == 2
 
 
 def test_get_person_by_id(test_app):
@@ -83,10 +100,25 @@ def test_create_person(test_app):
     assert response.json()["first_name"] == "testfirst"
 
 
-def test_get_all_person_attributes(test_app):
+def test_get_all_person_attributes_no_pagination(test_app):
     response = client.get("/api/person_attributes")
     assert response.status_code == 200
-    assert isinstance(response.json(), list)
+    assert isinstance(response.json(), dict)
+    assert "results" in response.json()
+    assert "total_items" in response.json()
+    assert "page" in response.json()
+    assert "page_size" in response.json()
+    assert "total_pages" in response.json()
+    assert isinstance(response.json()["results"], list)
+    assert len(response.json()["results"]) > 0
+
+def test_get_all_person_attributes_with_pagination(test_app):
+    response = client.get("/api/person_attributes?page=1&page_size=2")
+    assert response.status_code == 200
+    assert isinstance(response.json(), dict)
+    assert "results" in response.json()
+    assert "total_pages" in response.json()
+    assert len(response.json()["results"]) == 2
 
 
 def test_get_person_attribute_by_id(test_app):
@@ -128,13 +160,27 @@ def test_delete_person_attribute(test_app):
     response = client.delete(f"/api/person_attributes/{person_attribute_id}")
     assert response.status_code == 200
     assert response.json()["message"] == "PersonAttribute deleted"
-from backend.app import get_db
 
 
 def test_get_all_relationships(test_app):
+    response = client.get("/api/relationships?page=1&page_size=2")
+    assert response.status_code == 200
+    assert isinstance(response.json(), dict)
+    assert "results" in response.json()
+    assert "total_items" in response.json()
+    assert "page" in response.json()
+    assert "page_size" in response.json()
+    assert "total_pages" in response.json()
+    assert len(response.json()["results"]) == 2
+
+
+def test_get_all_relationships_no_pagination(test_app):
     response = client.get("/api/relationships")
     assert response.status_code == 200
-    assert isinstance(response.json(), list)
+    assert isinstance(response.json(), dict)
+    assert "results" in response.json()
+    assert "total_pages" in response.json()
+    assert isinstance(response.json()["results"], list)
 
 
 def test_get_relationship_by_id(test_app):
@@ -177,9 +223,21 @@ def test_delete_relationship(test_app):
     assert response.json()["message"] == "Relationship deleted"
 
 
-def test_get_all_relationship_attributes(test_app):
+def test_get_all_relationship_attributes_no_pagination(test_app):
     response = client.get("/api/relationship_attributes")
     assert response.status_code == 200
+    assert isinstance(response.json(), dict)
+    assert "results" in response.json()
+    assert "total_items" in response.json()
+    assert "page" in response.json()
+    assert "page_size" in response.json()
+    assert "total_pages" in response.json()
+    assert isinstance(response.json()["results"], list)
+
+def test_get_all_relationship_attributes_with_pagination(test_app):
+    response = client.get("/api/relationship_attributes?page=1&page_size=2")
+    assert response.status_code == 200
+    assert isinstance(response.json(), dict)
     assert isinstance(response.json(), list)
 
 
@@ -226,8 +284,20 @@ def test_delete_relationship_attribute(test_app):
 def test_get_all_media(test_app):
     response = client.get("/api/media")
     assert response.status_code == 200
-    assert isinstance(response.json(), list)
+    assert isinstance(response.json(), dict)
+    assert "results" in response.json()
+    assert "total_items" in response.json()
+    assert "page" in response.json()
+    assert "page_size" in response.json()
+    assert "total_pages" in response.json()
+    assert isinstance(response.json()["results"], list)
 
+def test_get_all_media_with_pagination(test_app):
+    response = client.get("/api/media?page=1&page_size=2")
+    assert response.status_code == 200
+    assert isinstance(response.json(), dict)
+    assert "results" in response.json()
+    assert len(response.json()["results"]) == 2
 
 def test_get_media_by_id(test_app):
     response = client.get("/api/media/1")
@@ -410,3 +480,129 @@ def test_delete_citation(test_app):
     response = client.delete(f"/api/citations/{citation_id}")
     assert response.status_code == 200
     assert response.json()["message"] == "Citation deleted"
+
+
+def test_get_relationships_and_attributes(test_app):
+    response = client.get("/api/people/1/relationships_and_attributes")
+    assert response.status_code == 200
+    assert isinstance(response.json(), dict)
+
+    # Check if the dictionary contains the keys 'person_attributes' and 'relationships'
+    assert "person_attributes" in response.json()
+    assert "relationships" in response.json()
+
+    # Check if 'person_attributes' is a list and its items are dictionaries
+    assert isinstance(response.json()["person_attributes"], list)
+    if response.json()["person_attributes"]:
+        assert isinstance(response.json()["person_attributes"][0], dict)
+        assert "id" in response.json()["person_attributes"][0]
+        assert "key" in response.json()["person_attributes"][0]
+        assert "value" in response.json()["person_attributes"][0]
+        assert "person_id" in response.json()["person_attributes"][0]
+
+    # Check if 'relationships' is a list and its items are dictionaries
+    assert isinstance(response.json()["relationships"], list)
+    if response.json()["relationships"]:
+        assert isinstance(response.json()["relationships"][0], dict)
+        assert "id" in response.json()["relationships"][0]
+        assert "type" in response.json()["relationships"][0]
+        assert "person1_id" in response.json()["relationships"][0]
+        assert "person2_id" in response.json()["relationships"][0]
+        assert "attributes" in response.json()["relationships"][0]
+        if response.json()["relationships"][0]["attributes"]:
+            assert isinstance(response.json()["relationships"][0]["attributes"][0], dict)
+            assert "relationship_id" in response.json()["relationships"][0]["attributes"][0]
+
+
+def test_get_ancestors(test_app):
+    response = client.get("/api/people/1/ancestors")
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)
+    response = client.get("/api/people/1/ancestors?depth=1")
+    assert response.status_code == 200
+
+
+def test_get_descendants(test_app):
+    response = client.get("/api/people/1/descendants")
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)
+    response = client.get("/api/people/1/descendants?depth=1")
+    assert response.status_code == 200
+
+
+def test_get_extended_family(test_app):
+    response = client.get("/api/people/1/extended_family")
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)
+    response = client.get("/api/people/1/extended_family?depth=1")
+    assert response.status_code == 200
+
+
+def test_get_related(test_app):
+    response = client.get("/api/people/1/related")
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)
+    response = client.get("/api/people/1/related?depth=1")
+    assert response.status_code == 200
+
+def test_get_partial_tree(test_app):
+    # Test with no depth specified
+    response = client.get("/api/people/1/partial_tree")
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)
+
+    # Test with depth=1
+    response = client.get("/api/people/1/partial_tree?depth=1")
+    assert response.status_code == 200
+
+    # Test with only_ancestors=true
+    response = client.get("/api/people/1/partial_tree?only_ancestors=true")
+    assert response.status_code == 200
+    # Test with only_descendants=true
+    response = client.get("/api/people/1/partial_tree?only_descendants=true")
+    assert response.status_code == 200
+
+def test_get_branch(test_app):
+    # Test with no depth specified
+    response = client.get("/api/people/1/branch")
+    assert response.status_code == 200
+    # Test with depth=1
+    response = client.get("/api/people/1/branch?depth=1")
+    assert response.status_code == 200
+
+
+def test_search_people(test_app):
+    # Test with no parameters
+    response = client.get("/api/people/search")
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)
+
+    # Test with name parameter
+    response = client.get("/api/people/search?name=John")
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)
+    for person in response.json():
+        assert "John" in person["first_name"] or "John" in person["last_name"]
+
+    # Test with gender parameter
+    response = client.get("/api/people/search?gender=M")
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)
+    for person in response.json():
+        assert person["gender"] == "M"
+
+    # Test with place_of_birth
+    response = client.get("/api/people/search?place_of_birth=London")
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)
+
+    # Test with attribute_key and attribute_value
+    response = client.get("/api/people/search?attribute_key=occupation&attribute_value=teacher")
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)
+
+    # Test with multiple parameters
+    response = client.get("/api/people/search?name=John&gender=M")
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)
+    

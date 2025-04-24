@@ -15,11 +15,11 @@ from fastapi import FastAPI
 from werkzeug.exceptions import HTTPException, Unauthorized, InternalServerError, NotFound, BadRequest, Forbidden
 from sqlalchemy import create_engine, Column, Integer, String, Date, ForeignKey
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker, Session
-from sqlalchemy.exc import SQLAlchemyError, IntegrityError
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError, NoResultFound
 from sqlalchemy.orm import sessionmaker
-from .services import get_all_users, get_user_by_id, create_user, get_all_people_db, get_person_by_id_db, create_person_db, get_all_events, get_event_by_id, create_event, update_event, delete_event, get_all_sources, get_source_by_id, create_source, update_source, delete_source, get_all_citations, get_citation_by_id, create_citation, update_citation, delete_citation
-
-from .services import get_all_person_attributes, get_person_attribute_by_id, create_person_attribute, update_person_attribute, delete_person_attribute, get_all_relationships, get_relationship_by_id, create_relationship, update_relationship, delete_relationship, get_all_relationship_attributes, get_relationship_attribute_by_id, create_relationship_attribute, update_relationship_attribute, delete_relationship_attribute, get_all_media, get_media_by_id, create_media, update_media, delete_media
+from .services import get_partial_tree, get_all_users, get_user_by_id, create_user, get_all_people_db, get_person_by_id_db, create_person_db, get_all_events, get_event_by_id, create_event, update_event, delete_event, get_all_sources, get_source_by_id, create_source, update_source, delete_source, get_all_citations, get_citation_by_id, create_citation, update_citation, delete_citation, search_people, get_person_relationships_and_attributes
+from .services import get_descendants, get_ancestors
+from .services import get_all_person_attributes, get_person_attribute_by_id, create_person_attribute, update_person_attribute, delete_person_attribute, get_all_relationships, get_relationship_by_id, create_relationship, update_relationship, delete_relationship, get_all_relationship_attributes, get_relationship_attribute_by_id, create_relationship_attribute, update_relationship_attribute, delete_relationship_attribute, get_all_media, get_media_by_id, create_media, update_media, delete_media, get_extended_family, get_related
 app = FastAPI()
 
 # --- Database Setup ---
@@ -748,19 +748,26 @@ def get_all_people():
     """API endpoint to get a list of all people."""
     username = session.get('username', 'api_user')
     current_app.logger.debug(f"API Get All People requested by '{username}'.")
+    page = request.args.get('page', 1, type=int)
+    page_size = request.args.get('page_size', 10, type=int)
+    
+    if page < 1 or page_size < 1:
+            abort(400, description="Page and page_size must be positive integers.")
+    
     if not family_tree: abort(503, description="Family tree service unavailable.")
     try:
-        # Get all people from the database
-        people = db_session.query(Person).all()
-        # Convert people to a list of dictionaries
+        db = get_db_session(db_session_factory)
+        paginated_people = get_all_people_db(db, page, page_size)
+        
         people_list = []
-        for person in people:
-            person_dict = {"id": person.person_id, "first_name": person.first_name, "last_name":person.last_name, "birth_date": str(person.birth_date), "death_date": str(person.death_date), "notes": person.notes}
-            people_list.append(person_dict)
+        for person in paginated_people['results']:
+            people_list.append({"id": person.person_id, "first_name": person.first_name, "last_name":person.last_name, "birth_date": str(person.birth_date), "death_date": str(person.death_date), "notes": person.notes})
 
-        current_app.logger.info(f"API Get All People: Retrieved {len(people_list)} people for user '{username}'.")
 
-        return jsonify(people_list)
+        current_app.logger.info(f"API Get All People: Retrieved {len(people_list)} people (page {page}, page_size {page_size}) for user '{username}'.")
+
+        return jsonify({**paginated_people, "results": people_list})
+    
     except Exception as e:
         current_app.logger.exception(f"API Get All People Error: Failed to retrieve people data for user '{username}'.")
         abort(500)
@@ -946,19 +953,30 @@ def get_all_relationships():
     """API endpoint to get a list of all relationships."""
     username = session.get('username', 'api_user')
     current_app.logger.debug(f"API Get All Relationships requested by '{username}'.")
+    page = request.args.get('page', 1, type=int)
+    page_size = request.args.get('page_size', 10, type=int)
+    
+    if page < 1 or page_size < 1:
+            abort(400, description="Page and page_size must be positive integers.")
+    
     if not family_tree: abort(503, description="Family tree service unavailable.")
     try:
-        # Get all relationships from the database
-        relationships = db_session.query(RelationshipModel).all()
-        # Convert relationships to a list of dictionaries
+        db = get_db_session(db_session_factory)
+        paginated_relationships = get_all_relationships(db, page, page_size)
+
         relationships_list = []
-        for rel in relationships:
-            rel_dict = {"id": rel.rel_id, "person1_id": rel.person1_id, "person2_id": rel.person2_id, "relationship_type": rel.rel_type, "start_date": str(rel.start_date), "end_date": str(rel.end_date)}
-            relationships_list.append(rel_dict)
+        for relationship in paginated_relationships['results']:
+            relationships_list.append({
+                "id": relationship.rel_id,
+                "person1_id": relationship.person1_id,
+                "person2_id": relationship.person2_id,
+                "relationship_type": relationship.rel_type,
+                "start_date": str(relationship.start_date),
+                "end_date": str(relationship.end_date)
+            })
 
-
-        current_app.logger.info(f"API Get All Relationships: Retrieved {len(relationships_list)} relationships for user '{username}'.")
-        return jsonify(relationships_list)
+        current_app.logger.info(f"API Get All Relationships: Retrieved {len(relationships_list)} relationships (page {page}, page_size {page_size}) for user '{username}'.")
+        return jsonify({**paginated_relationships, "results": relationships_list})
     except Exception as e:
         current_app.logger.exception(f"API Get All Relationships Error: Failed to retrieve relationships data for user '{username}'.")
         abort(500)
@@ -1201,6 +1219,116 @@ def tree_data():
         abort(500)
 
         
+@app.route('/api/people/<int:person_id>/partial_tree', methods=['GET'])
+@api_login_required
+def get_partial_tree_api(person_id):
+    """
+    API endpoint to get a partial tree of a person.
+    Accepts optional query parameters:
+        - depth (int): to limit the depth of the search
+        - only_ancestors (bool): to load only ancestors
+        - only_descendants (bool): to load only descendants
+    """
+    db = get_db_session(db_session_factory)
+    depth = request.args.get('depth', type=int)
+    only_ancestors = request.args.get('only_ancestors', default=False, type=lambda v: v.lower() == 'true')
+    only_descendants = request.args.get('only_descendants', default=False, type=lambda v: v.lower() == 'true')
+
+    try:
+        if depth is not None and depth < 0:
+            abort(400, description="Depth must be a non-negative integer.")
+        
+        current_app.logger.info(f"Getting partial tree for person {person_id} with depth {depth}, only_ancestors={only_ancestors}, only_descendants={only_descendants}")
+        
+        partial_tree = get_partial_tree(db, person_id, depth, only_ancestors, only_descendants)
+        
+        return jsonify(partial_tree)
+
+    except NoResultFound:
+        abort(404, description=f"Person with ID {person_id} not found.")
+    except Exception as e:
+        current_app.logger.exception(f"Error getting partial tree for person {person_id}")
+        abort(500)
+        
+@app.route('/api/people/<int:person_id>/branch', methods=['GET'])
+@api_login_required
+def get_branch_api(person_id):
+    """
+    API endpoint to get a branch of the tree of a person.
+    Accepts an optional query parameter:
+        - depth (int): to limit the depth of the search
+    """
+    db = get_db_session(db_session_factory)
+    depth = request.args.get('depth', type=int)
+
+    try:
+        if depth is not None and depth < 0:
+            abort(400, description="Depth must be a non-negative integer.")
+
+        current_app.logger.info(f"Getting branch for person {person_id} with depth {depth}")
+        
+        branch = get_branch(db, person_id, depth)
+
+        return jsonify(branch)
+
+    except NoResultFound:
+        abort(404, description=f"Person with ID {person_id} not found.")
+    except Exception as e:
+        current_app.logger.exception(f"Error getting branch for person {person_id}")
+        abort(500)
+
+@app.route('/api/people/search', methods=['GET'])
+@api_login_required
+def search_people_api():
+    """
+    API endpoint to search for people.
+    Accepts the following optional query parameters:
+        - name (string): to search by name
+        - birth_date (date): to search by birth date
+        - death_date (date): to search by death date
+        - gender (string): to search by gender
+        - place_of_birth (string): to search by place of birth
+        - place_of_death (string): to search by place of death
+        - notes (string): to search by notes
+        - attribute_key (string): to search by attribute key
+        - attribute_value (string): to search by attribute value
+    """
+    db = get_db_session(db_session_factory)
+    name = request.args.get('name')
+    birth_date = request.args.get('birth_date', type=date.fromisoformat)
+    death_date = request.args.get('death_date', type=date.fromisoformat)
+    gender = request.args.get('gender')
+    place_of_birth = request.args.get('place_of_birth')
+    place_of_death = request.args.get('place_of_death')
+    notes = request.args.get('notes')
+    attribute_key = request.args.get('attribute_key')
+    attribute_value = request.args.get('attribute_value')
+    return search_people(db, name, birth_date, death_date, gender, place_of_birth, place_of_death, notes, attribute_key, attribute_value)
+
+
+@app.route('/api/people/<int:person_id>/relationships_and_attributes', methods=['GET'])
+@api_login_required
+def get_person_relationships_and_attributes_api(person_id):
+    """
+    API endpoint to get all relationships and attributes of a person.
+    """
+    db = get_db_session(db_session_factory)
+    try:
+        current_app.logger.info(f"Getting relationships and attributes for person {person_id}")
+
+        relationships_and_attributes = get_person_relationships_and_attributes(db, person_id)
+
+        return jsonify(relationships_and_attributes)
+
+    except NoResultFound:
+        abort(404, description=f"Person with ID {person_id} not found.")
+    except Exception as e:
+        current_app.logger.exception(f"Error getting relationships and attributes for person {person_id}")
+        abort(500)
+
+
+
+
 
 # --- Main Execution ---
 if __name__ == '__main__':
@@ -1273,7 +1401,9 @@ def create_user():
 def get_people():
     """Get all people."""
     db = get_db_session(db_session_factory)
-    return get_all_people_db(db)
+    page = request.args.get('page', 1, type=int)
+    page_size = request.args.get('page_size', 10, type=int)
+    return get_all_people_db(db, page, page_size)
 
 @app.get("/api/people/{id}")
 def get_person_api(id: int):
@@ -1290,7 +1420,15 @@ def create_person_api():
 def get_person_attributes_api():
     """Get all person attributes."""
     db = get_db_session(db_session_factory)
-    return get_all_person_attributes(db)
+    
+    page = request.args.get('page', 1, type=int)
+    page_size = request.args.get('page_size', 10, type=int)
+
+    if page < 1 or page_size < 1:
+        abort(400, description="Page and page_size must be positive integers.")
+        
+    return get_all_person_attributes(db, page, page_size)
+
 
 @app.get("/api/person_attributes/{id}")
 def get_person_attribute_api(id: int):
@@ -1320,7 +1458,12 @@ def delete_person_attribute_api(id: int):
 def get_relationships_api():
     """Get all relationships."""
     db = get_db_session(db_session_factory)
-    return get_all_relationships(db)
+    page = request.args.get('page', 1, type=int)
+    page_size = request.args.get('page_size', 10, type=int)
+
+    if page < 1 or page_size < 1:
+        abort(400, description="Page and page_size must be positive integers.")
+    return get_all_relationships(db, page, page_size)
 
 @app.get("/api/relationships/{id}")
 def get_relationship_api(id: int):
@@ -1350,7 +1493,13 @@ def delete_relationship_api(id: int):
 def get_relationship_attributes_api():
     """Get all relationship attributes."""
     db = get_db_session(db_session_factory)
-    return get_all_relationship_attributes(db)
+    page = request.args.get('page', 1, type=int)
+    page_size = request.args.get('page_size', 10, type=int)
+
+    if page < 1 or page_size < 1:
+        abort(400, description="Page and page_size must be positive integers.")
+
+    return get_all_relationship_attributes(db, page, page_size)
 
 @app.get("/api/relationship_attributes/{id}")
 def get_relationship_attribute_api(id: int):
@@ -1380,7 +1529,14 @@ def delete_relationship_attribute_api(id: int):
 def get_media_api():
     """Get all media."""
     db = get_db_session(db_session_factory)
-    return get_all_media(db)
+    page = request.args.get('page', 1, type=int)
+    page_size = request.args.get('page_size', 10, type=int)
+
+    if page < 1 or page_size < 1:
+        abort(400, description="Page and page_size must be positive integers.")
+
+    return get_all_media(db, page, page_size)
+
 
 @app.get("/api/media/{id}")
 def get_media_attribute_api(id: int):
