@@ -1,366 +1,288 @@
 # backend/src/user_management.py
-import os
-import uuid
 import logging
-from datetime import datetime, timedelta, timezone
-from itsdangerous import BadSignature, URLSafeTimedSerializer
+import bcrypt
+from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError, NoResultFound
+from typing import Optional, List, Dict, Any
 
-import yagmail # Ensure this is added to requirements.txt
+# Assuming User model and audit log function are correctly imported/defined
+try:
+    from .models.user import User
+    from .audit_log import log_audit
+    # Import encryption functions if deriving keys from passwords here
+    # from .encryption import derive_key_from_password, generate_salt, SALT_SIZE
+except ImportError as e:
+    logging.critical(f"Failed to import necessary modules in user_management: {e}")
+    raise
 
-from .audit_log import log_audit
-from .encryption import hash_password, verify_password
-from .db_utils import load_data, save_data
-from .user import User, VALID_ROLES
-
-# Constants for password reset
-RESET_TOKEN_EXPIRY_MINUTES = 60
-
-def send_email(to_email, subject, body):
-    """Helper function to send email using yagmail."""
-    try:
-        # Load credentials from environment variables
-        email_user = os.environ.get("EMAIL_USER")
-        email_password = os.environ.get("EMAIL_PASSWORD")
-
-        if not email_user or not email_password:
-             logging.error("Email credentials (EMAIL_USER, EMAIL_PASSWORD) not found in environment variables.")
-             return False
-
-        yag = yagmail.SMTP(email_user, email_password)
-        yag.send(to=to_email, subject=subject, contents=body)
-        logging.info(f"Email sent successfully to {to_email}")
-        return True
-    except Exception as e:
-        logging.error(f"Error sending email to {to_email}: {e}", exc_info=True)
-        return False
+# --- Constants ---
+VALID_ROLES = ["basic", "editor", "admin"] # Define valid roles
 
 class UserManagement:
-    """
-    Handles user registration, login, roles, deletion, password reset, and data persistence.
-    """
-    def __init__(self, users_file_path=None, audit_log_path=None):
-        backend_dir = os.path.dirname(os.path.dirname(__file__)) # Go up two directories to reach 'backend'
-        self.users_file_path = users_file_path or os.path.join(backend_dir, 'data', 'users.json') # Corrected default path
-        self.audit_log_path = audit_log_path or os.path.join(backend_dir, 'logs', 'audit.log') # Corrected default path
-        self.secret_key = os.environ.get('FLASK_SECRET_KEY')
-        if not self.secret_key:
-             logging.critical("FLASK_SECRET_KEY environment variable not set. Password reset tokens will not work.")
-             raise ValueError("FLASK_SECRET_KEY is required for password reset functionality.")
-        self.serializer = URLSafeTimedSerializer(self.secret_key, salt='password-reset-salt')
+    """Handles user creation, login, role management, etc."""
 
-        users_dir = os.path.dirname(self.users_file_path)
-        if users_dir:
-            os.makedirs(users_dir, exist_ok=True)
-        self.users = self._load_users()
-
-    def _load_users(self):
-        """Loads user data from the specified JSON file (encrypted)."""
-        users_data = load_data(self.users_file_path, default={}, is_encrypted=True) # Default to empty dict
-        loaded_users = {}
-        if isinstance(users_data, dict): # Ensure data is a dictionary
-            for uid, udata in users_data.items():
-                 try:
-                     if isinstance(udata, dict): # Check if udata is a dict
-                         if 'user_id' not in udata:
-                            udata['user_id'] = uid # Ensure user_id is present
-                         loaded_users[uid] = User.from_dict(udata)
-                     else:
-                          logging.warning(f"_load_users: Invalid data format for user ID {uid} (expected dict, got {type(udata)}). Skipping.")
-                 except (KeyError, ValueError, TypeError) as e:
-                     logging.error(f"Error loading user data in _load_users for ID {uid}: {e}. Skipping this user.", exc_info=True)
-                     log_audit(self.audit_log_path, "system", "load_users", f"error - invalid user data for ID {uid}: {e}")
-            count = len(loaded_users)
-            logging.info(f"Loaded {count} users from {self.users_file_path}")
-            return loaded_users
-        else:
-            logging.warning(f"No user data found or error loading from {self.users_file_path}. Starting with empty user list.")
-            log_audit(self.audit_log_path, "system", "load_users", "warning - file not found or empty/invalid")
-            return {} # Return empty dict
-
-    def _save_users(self):
-        """Saves the current user data to the JSON file (encrypted)."""
-        try:
-            # Ensure all users are User objects before trying to call to_dict()
-            users_data_to_save = {}
-            for uid, user in self.users.items():
-                 if isinstance(user, User):
-                     users_data_to_save[uid] = user.to_dict()
-                 else:
-                      logging.error(f"_save_users: Attempted to save non-User object for ID {uid}. Skipping.")
-            save_data(self.users_file_path, users_data_to_save, is_encrypted=True)
-            # Removed audit log here as saving the users data is an expected behavior
-        except Exception as e:
-             logging.error(f"Error saving user data in _save_users to {self.users_file_path}: {e}", exc_info=True)
-             log_audit(self.audit_log_path, "system", "save_users", f"failure: {e}")
-
-    def register_user(self, username, password, role="basic"):
-        """Registers a new user."""
-        if not username or not username.strip():
-            logging.error("register_user failed: Username cannot be empty.", exc_info=True)
-            log_audit(self.audit_log_path, "(registration attempt)", 'register', 'failure - empty username')
-            return None
-        if not password:
-            logging.error("register_user failed: Password cannot be empty.", exc_info=True)
-            log_audit(self.audit_log_path, username, 'register', 'failure - empty password')
-            return None
-        if role not in VALID_ROLES:
-            logging.error(f"register_user failed: Invalid role '{role}'. Valid roles: {VALID_ROLES}", exc_info=True)
-            log_audit(self.audit_log_path, username, 'register', f"failure - invalid role: {role}")
-            return None
-
-        username = username.strip()
-        # Case-insensitive check for existing username
-        if any(user.username and user.username.lower() == username.lower() for user in self.users.values() if isinstance(user, User)):
-            logging.warning(f"Registration failed: Username '{username}' already exists.", exc_info=True)
-            log_audit(self.audit_log_path, username, 'register', 'failure - username exists')
-            return None
-
-        password_hash = hash_password(password)
-        if password_hash is None:
-            logging.error(f"register_user error hashing password during registration for '{username}'.", exc_info=True)
-            log_audit(self.audit_log_path, username, 'register', f'failure - password hash error')
-            return None
-
-        try:
-            user_id = str(uuid.uuid4())
-            # Create User object using constructor
-            new_user = User(user_id=user_id, username=username, password_hash=password_hash, role=role)
-            self.users[user_id] = new_user
-            self._save_users()
-            logging.info(f"User '{username}' registered successfully with role '{role}'.")
-            log_audit(self.audit_log_path, username, 'register', f'success - role: {role}, id: {user_id}')
-            return new_user
-        except Exception as e:
-             logging.error(f"An error occurred in register_user during the final steps of registration for '{username}': {e}", exc_info=True)
-             log_audit(self.audit_log_path, username, 'register', f'failure - internal error: {e}')
-             # Rollback: remove user if added before error
-             if 'user_id' in locals() and user_id in self.users:
-                 del self.users[user_id]
-             return None
-
-    def login_user(self, username, password):
-        """Authenticates a user based on username and password."""
-        if not username or not password:
-            return None
-
-        user_to_check = None
-        username_lower = username.lower()
-        for user in self.users.values():
-             # Ensure it's a User object before accessing attributes
-             if isinstance(user, User) and user.username and user.username.lower() == username_lower:
-                 user_to_check = user
-                 break
-
-        if user_to_check:
-            # Check if password hash exists and is bytes
-            if user_to_check.password_hash and isinstance(user_to_check.password_hash, bytes):
-                if verify_password(password, user_to_check.password_hash):
-                    logging.info(f"User '{username}' logged in successfully.")
-                    log_audit(self.audit_log_path, username, 'login', 'success')
-                    # Clear any lingering reset token on successful login
-                    if user_to_check.reset_token:
-                        user_to_check.reset_token = None
-                        user_to_check.reset_token_expiry = None
-                        self._save_users()
-                    return user_to_check
-                else:
-                    logging.warning(f"login_user - Invalid password for user '{username}'.", exc_info=False) # No need for stack trace on wrong password
-                    log_audit(self.audit_log_path, username, 'login', 'failure - invalid password')
-                    return None
-            else:
-                logging.error(f"login_user failed for '{username}': Stored password hash is missing or not bytes.", exc_info=True)
-                log_audit(self.audit_log_path, username, 'login', 'failure - invalid stored hash format')
-                return None
-        else:
-            logging.warning(f"login_user - Username '{username}' not found during login attempt.", exc_info=False)
-            log_audit(self.audit_log_path, username, 'login', 'failure - user not found')
-            return None
-
-    def find_user_by_username(self, username):
-        """Finds a user by their username (case-insensitive)."""
-        if not username:
-            return None
-        username_lower = username.lower()
-        for user in self.users.values():
-             if isinstance(user, User) and user.username and user.username.lower() == username_lower:
-                 return user
-        return None
-
-    def find_user_by_id(self, user_id):
-        """Finds a user by their unique ID."""
-        user = self.users.get(user_id)
-        if isinstance(user, User):
-            return user
-        return None
-
-    def set_user_role(self, user_id, new_role, actor_username="system"):
-        """Sets the role for a given user ID."""
-        user_to_modify = self.find_user_by_id(user_id)
-        if not user_to_modify:
-            logging.error(f"set_user_role - Cannot set role: User with ID '{user_id}' not found.", exc_info=True)
-            log_audit(self.audit_log_path, actor_username, 'set_user_role', f"failure - user not found: {user_id}")
-            return False
-
-        if new_role not in VALID_ROLES:
-            logging.error(f"set_user_role - Cannot set role for user '{user_to_modify.username}': Invalid role '{new_role}'. Valid roles: {VALID_ROLES}", exc_info=True)
-            log_audit(self.audit_log_path, actor_username, 'set_user_role', f"failure - invalid role '{new_role}' for user {user_id}")
-            return False
-
-        if user_to_modify.role == new_role:
-            logging.info(f"User '{user_to_modify.username}' already has role '{new_role}'. No change needed.")
-            log_audit(self.audit_log_path, actor_username, 'set_user_role', f"no change - user {user_id} already has role '{new_role}'")
-            return True # Indicate success as the state is as requested
-
-        original_role = user_to_modify.role
-        user_to_modify.role = new_role
-        self._save_users()
-        logging.info(f"Successfully changed role for user '{user_to_modify.username}' from '{original_role}' to '{new_role}'.")
-        log_audit(self.audit_log_path, actor_username, 'set_user_role', f"success - user {user_id} ({user_to_modify.username}) role changed from '{original_role}' to '{new_role}'")
-        return True
-
-    def delete_user(self, user_id, actor_username="system"):
+    def __init__(self, db_session: Session, audit_log_path: str):
         """
-        Deletes a user from the system.
+        Initializes UserManagement.
 
         Args:
-            user_id (str): The ID of the user to delete.
-            actor_username (str): The username of the user performing the action (for audit).
-
-        Returns:
-            bool: True if the user was deleted successfully, False otherwise.
+            db_session: The SQLAlchemy session object.
+            audit_log_path: Path to the audit log file.
         """
-        user_to_delete = self.find_user_by_id(user_id)
-        if not user_to_delete:
-            logging.error(f"delete_user - Cannot delete user: User with ID '{user_id}' not found.", exc_info=True)
-            log_audit(self.audit_log_path, actor_username, 'delete_user', f"failure - user not found: {user_id}")
+        if not isinstance(db_session, Session):
+            raise TypeError("db_session must be a SQLAlchemy Session object.")
+        self.db = db_session
+        self.audit_log_path = audit_log_path
+        logging.info("UserManagement initialized.")
+
+    def _hash_password(self, password: str) -> bytes:
+        """Hashes a password using bcrypt."""
+        if not isinstance(password, str) or not password:
+            raise ValueError("Password must be a non-empty string.")
+        # Generate salt and hash the password
+        salt = bcrypt.gensalt()
+        hashed_password = bcrypt.hashpw(password.encode('utf-8'), salt)
+        # Return the full hash (includes salt) encoded in base64 for storage
+        return base64.b64encode(hashed_password)
+
+    def _verify_password(self, stored_hash_b64: bytes, provided_password: str) -> bool:
+        """Verifies a provided password against a stored bcrypt hash (base64 encoded)."""
+        if not stored_hash_b64 or not isinstance(stored_hash_b64, bytes):
+            logging.warning("Attempted password verification with invalid stored hash.")
+            return False
+        if not provided_password or not isinstance(provided_password, str):
+             logging.warning("Attempted password verification with invalid provided password type.")
+             return False
+        try:
+            # Decode the base64 stored hash before checking
+            stored_hash = base64.b64decode(stored_hash_b64)
+            return bcrypt.checkpw(provided_password.encode('utf-8'), stored_hash)
+        except ValueError as e:
+            # Handle potential base64 decoding errors
+            logging.error(f"Error decoding stored password hash: {e}")
+            return False
+        except Exception as e:
+            # Catch other potential errors during checkpw
+            logging.error(f"Unexpected error during password verification: {e}", exc_info=True)
             return False
 
-        # Optional: Add checks to prevent deletion of critical accounts if needed
-        # if user_to_delete.role == 'admin' and some_condition: return False
 
-        deleted_username = user_to_delete.username
-        deleted_role = user_to_delete.role
-        del self.users[user_id]
-        self._save_users() # Save the change
-        logging.info(f"Successfully deleted user '{deleted_username}' (ID: {user_id}, Role: {deleted_role}).")
-        log_audit(self.audit_log_path, actor_username, 'delete_user', f"success - deleted user {user_id} ({deleted_username}), role: {deleted_role}")
-        return True
+    def create_user(self, username: str, password: str, role: str = "basic") -> Optional[User]:
+        """Creates a new user with a hashed password."""
+        if role not in VALID_ROLES:
+            logging.warning(f"Attempted to create user '{username}' with invalid role '{role}'.")
+            raise ValueError(f"Invalid role specified. Valid roles are: {', '.join(VALID_ROLES)}")
+        if not username or not isinstance(username, str):
+             raise ValueError("Username must be a non-empty string.")
+        if not password or not isinstance(password, str):
+             raise ValueError("Password must be a non-empty string.")
 
-    def generate_password_reset_token(self, user_id):
-        """Generates a time-sensitive password reset token."""
-        user = self.find_user_by_id(user_id)
-        if not user:
-            logging.warning(f"generate_password_reset_token - requested for non-existent user ID: {user_id}", exc_info=True)
-            return None, None
+        # Check if username already exists
+        existing_user = self.db.query(User).filter(User.username == username).first()
+        if existing_user:
+            logging.warning(f"Attempted to create user with existing username '{username}'.")
+            log_audit(self.audit_log_path, "system", "create_user_failed", f"username '{username}' already exists")
+            return None # Indicate failure due to existing user
+
         try:
-            token = self.serializer.dumps(user_id)
-            # Expiration time in UTC
-            expiration_time = datetime.now(timezone.utc) + timedelta(minutes=RESET_TOKEN_EXPIRY_MINUTES)
-            user.reset_token = token
-            user.reset_token_expiry = expiration_time # Store datetime object
-            self._save_users()
-            return token, expiration_time
-        except Exception as e:
-            logging.error(f"Error generating password reset token for user ID {user_id}: {e}", exc_info=True)
-            return None, None
+            hashed_password_b64 = self._hash_password(password)
+            new_user = User(
+                username=username,
+                password_hash_b64=hashed_password_b64, # Store the base64 encoded hash
+                role=role
+            )
+            self.db.add(new_user)
+            self.db.commit()
+            self.db.refresh(new_user)
+            logging.info(f"User '{username}' created successfully with role '{role}'.")
+            log_audit(self.audit_log_path, "system", "create_user_success", f"user '{username}' created with role '{role}'")
+            return new_user
+        except SQLAlchemyError as e:
+            self.db.rollback()
+            logging.error(f"Database error creating user '{username}': {e}", exc_info=True)
+            log_audit(self.audit_log_path, "system", "create_user_failed", f"database error for user '{username}': {e}")
+            return None
+        except ValueError as ve: # Catch hashing errors
+             logging.error(f"Error hashing password for user '{username}': {ve}")
+             log_audit(self.audit_log_path, "system", "create_user_failed", f"password error for user '{username}': {ve}")
+             return None
 
-    def request_password_reset(self, email):
-        """Generates a reset token for the user with the given email and sends it."""
-        user = self.find_user_by_username(email)
-        if not user:
-            logging.warning(f"request_password_reset: No user found with email: {email}")
-            # Return True here to prevent revealing if an email is registered
+
+    def login_user(self, username: str, password: str) -> Optional[User]:
+        """Authenticates a user and returns the User object if successful."""
+        if not username or not password:
+            return None
+        try:
+            user = self.db.query(User).filter(User.username == username).first()
+            if user and self._verify_password(user.password_hash_b64, password):
+                logging.info(f"User '{username}' logged in successfully.")
+                log_audit(self.audit_log_path, username, "login_success", "User logged in")
+                return user
+            else:
+                logging.warning(f"Failed login attempt for username '{username}'.")
+                log_audit(self.audit_log_path, username, "login_failed", "Invalid username or password")
+                return None
+        except NoResultFound:
+            logging.warning(f"Failed login attempt: Username '{username}' not found.")
+            log_audit(self.audit_log_path, username, "login_failed", "Username not found")
+            return None
+        except SQLAlchemyError as e:
+            logging.error(f"Database error during login for user '{username}': {e}", exc_info=True)
+            # Do not log specific DB error details to audit log for security
+            log_audit(self.audit_log_path, username, "login_failed", "Database error during login attempt")
+            return None
+        except Exception as e:
+             # Catch potential errors in _verify_password
+             logging.error(f"Unexpected error during login for user '{username}': {e}", exc_info=True)
+             log_audit(self.audit_log_path, username, "login_failed", "Unexpected error during login attempt")
+             return None
+
+    def change_user_role(self, username_to_change: str, new_role: str, performing_user: str) -> bool:
+        """Changes the role of a user."""
+        if new_role not in VALID_ROLES:
+            logging.warning(f"User '{performing_user}' attempted to set invalid role '{new_role}' for user '{username_to_change}'.")
+            log_audit(self.audit_log_path, performing_user, "change_role_failed", f"invalid role '{new_role}' for user '{username_to_change}'")
+            return False
+
+        try:
+            user = self.db.query(User).filter(User.username == username_to_change).first()
+            if not user:
+                logging.warning(f"User '{performing_user}' attempted to change role for non-existent user '{username_to_change}'.")
+                log_audit(self.audit_log_path, performing_user, "change_role_failed", f"user '{username_to_change}' not found")
+                return False
+
+            old_role = user.role
+            user.role = new_role
+            self.db.commit()
+            logging.info(f"User '{performing_user}' changed role of user '{username_to_change}' from '{old_role}' to '{new_role}'.")
+            log_audit(self.audit_log_path, performing_user, "change_role_success", f"changed role for user '{username_to_change}' from '{old_role}' to '{new_role}'")
             return True
-
-        token, expiry = self.generate_password_reset_token(user.user_id)
-        if not token:
-            logging.error(f"request_password_reset: Error generating token for user: {email}")
-            return False # Internal error
-
-        # Construct reset link (requires APP_URL environment variable)
-        app_url = os.environ.get('APP_URL', 'http://localhost:5173') # Default for dev
-        reset_link = f"{app_url}/reset-password/{token}" # Assuming this frontend route exists
-
-        expiry_str = expiry.strftime('%Y-%m-%d %H:%M:%S %Z') if expiry else 'soon'
-        body = f"Hello {user.username},\n\nPlease click the following link to reset your password:\n{reset_link}\n\nThis link will expire {expiry_str}.\n\nIf you did not request this, please ignore this email."
-
-        # Use the helper function to send email
-        if not send_email(email, "Dzinza Family Tree - Password Reset Request", body):
-            logging.error(f"request_password_reset: Error sending email to {email}")
+        except SQLAlchemyError as e:
+            self.db.rollback()
+            logging.error(f"Database error changing role for user '{username_to_change}': {e}", exc_info=True)
+            log_audit(self.audit_log_path, performing_user, "change_role_failed", f"database error for user '{username_to_change}': {e}")
             return False
 
-        logging.info(f"request_password_reset: Password reset email sent to {email}")
-        return True
+    def delete_user(self, username_to_delete: str, performing_user: str) -> bool:
+        """Deletes a user."""
+        # Add checks: prevent deleting self, prevent deleting last admin?
+        if username_to_delete == performing_user:
+             logging.warning(f"User '{performing_user}' attempted to delete themselves.")
+             log_audit(self.audit_log_path, performing_user, "delete_user_failed", "attempted to delete self")
+             return False
 
-    def reset_password(self, token, new_password):
-        """Resets the user's password using a valid token."""
-        user_id = self.validate_password_reset_token(token)
-        if not user_id:
-            logging.warning(f"Invalid or expired reset token provided: {token[:8]}...", exc_info=False)
-            return False
-
-        user = self.find_user_by_id(user_id)
-        if not user:
-            # Should not happen if token was valid, but check anyway
-            logging.error(f"reset_password - User not found for user_id: {user_id} despite valid token.")
-            return False
-
-        if not new_password:
-            logging.error(f"Password reset failed for user {user.username}: New password cannot be empty.", exc_info=True)
-            return False
-
-        # Validate password complexity if needed here
-
-        new_password_hash = hash_password(new_password)
-        if new_password_hash is None:
-            logging.error(f"reset_password failed for user {user.username}: Error hashing new password.")
-            log_audit(self.audit_log_path, user.username, 'reset_password', f'failure - password hash error')
-            return False
-
-        # Update password and clear token details
-        user.password_hash = new_password_hash
-        user.reset_token = None
-        user.reset_token_expiry = None
-        self._save_users()
-        logging.info(f"Password successfully reset for user: {user.username}")
-        log_audit(self.audit_log_path, user.username, 'reset_password', 'success')
-        return True
-
-    def validate_password_reset_token(self, token):
-        """Validates a password reset token and returns the user ID if valid."""
         try:
-            # Loads the token and checks expiration (max_age is in seconds)
-            user_id = self.serializer.loads(token, max_age=RESET_TOKEN_EXPIRY_MINUTES * 60)
+            user = self.db.query(User).filter(User.username == username_to_delete).first()
+            if not user:
+                logging.warning(f"User '{performing_user}' attempted to delete non-existent user '{username_to_delete}'.")
+                log_audit(self.audit_log_path, performing_user, "delete_user_failed", f"user '{username_to_delete}' not found")
+                return False
 
-            # Additional check: Ensure the token matches the one stored for the user
-            user = self.find_user_by_id(user_id)
-            if not user or user.reset_token != token:
-                 logging.warning(f"Token valid syntax/time, but does not match stored token for user {user_id}.")
-                 return None
-            # Check if token expiry time in user object has passed (belt-and-suspenders)
-            if user.reset_token_expiry and user.reset_token_expiry < datetime.now(timezone.utc):
-                 logging.warning(f"Token valid syntax/time, but expired according to stored expiry for user {user_id}.")
-                 # Optionally clear the expired token here
-                 # user.reset_token = None
-                 # user.reset_token_expiry = None
-                 # self._save_users()
-                 return None
+            # Add check for last admin if necessary
+            # if user.role == 'admin':
+            #     admin_count = self.db.query(User).filter(User.role == 'admin').count()
+            #     if admin_count <= 1:
+            #         logging.warning(f"User '{performing_user}' attempted to delete the last admin '{username_to_delete}'.")
+            #         log_audit(self.audit_log_path, performing_user, "delete_user_failed", f"attempted to delete last admin '{username_to_delete}'")
+            #         return False
 
-            return user_id
-        except BadSignature:
-            logging.warning(f"Password reset token validation failed: Bad signature or expired. Token: {token[:8]}...")
+            self.db.delete(user)
+            self.db.commit()
+            logging.info(f"User '{performing_user}' deleted user '{username_to_delete}'.")
+            log_audit(self.audit_log_path, performing_user, "delete_user_success", f"deleted user '{username_to_delete}'")
+            return True
+        except SQLAlchemyError as e:
+            self.db.rollback()
+            logging.error(f"Database error deleting user '{username_to_delete}': {e}", exc_info=True)
+            log_audit(self.audit_log_path, performing_user, "delete_user_failed", f"database error for user '{username_to_delete}': {e}")
+            return False
+
+    def change_password(self, username: str, old_password: str, new_password: str) -> bool:
+        """Changes a user's password after verifying the old one."""
+        if not new_password or not isinstance(new_password, str):
+             raise ValueError("New password must be a non-empty string.")
+
+        try:
+            user = self.db.query(User).filter(User.username == username).first()
+            if user and self._verify_password(user.password_hash_b64, old_password):
+                user.password_hash_b64 = self._hash_password(new_password)
+                self.db.commit()
+                logging.info(f"Password changed successfully for user '{username}'.")
+                log_audit(self.audit_log_path, username, "change_password_success", "Password changed")
+                return True
+            else:
+                logging.warning(f"Password change failed for user '{username}' due to incorrect old password.")
+                log_audit(self.audit_log_path, username, "change_password_failed", "Incorrect old password")
+                return False
+        except NoResultFound:
+             logging.warning(f"Password change failed: User '{username}' not found.")
+             log_audit(self.audit_log_path, username, "change_password_failed", "User not found")
+             return False
+        except SQLAlchemyError as e:
+            self.db.rollback()
+            logging.error(f"Database error changing password for user '{username}': {e}", exc_info=True)
+            log_audit(self.audit_log_path, username, "change_password_failed", "Database error")
+            return False
+        except ValueError as ve: # Catch hashing errors
+             logging.error(f"Error hashing new password for user '{username}': {ve}")
+             log_audit(self.audit_log_path, username, "change_password_failed", f"Error hashing new password: {ve}")
+             return False
+
+
+    def get_user_details(self, username: str) -> Optional[Dict[str, Any]]:
+        """Retrieves non-sensitive details for a user."""
+        try:
+            user = self.db.query(User).filter(User.username == username)\
+                .options(load_only(User.id, User.username, User.role, User.created_at)).first() # Select specific fields
+            if user:
+                return {
+                    "id": user.id,
+                    "username": user.username,
+                    "role": user.role,
+                    "created_at": user.created_at.isoformat() if user.created_at else None
+                }
+            else:
+                return None
+        except SQLAlchemyError as e:
+            logging.error(f"Database error fetching details for user '{username}': {e}", exc_info=True)
             return None
-        except Exception as e:
-            logging.error(f"Error validating reset token: {e}. Token: {token[:8]}...", exc_info=True)
+
+    def list_all_users(self) -> List[Dict[str, Any]]:
+        """Lists all users with non-sensitive details."""
+        try:
+            users = self.db.query(User)\
+                .options(load_only(User.id, User.username, User.role, User.created_at))\
+                .order_by(User.username)\
+                .all()
+            return [
+                {
+                    "id": u.id,
+                    "username": u.username,
+                    "role": u.role,
+                    "created_at": u.created_at.isoformat() if u.created_at else None
+                } for u in users
+            ]
+        except SQLAlchemyError as e:
+            logging.error(f"Database error listing all users: {e}", exc_info=True)
+            return []
+
+    def find_user_by_id(self, user_id: int) -> Optional[User]:
+         """Finds a user by their ID."""
+         try:
+             return self.db.query(User).filter(User.id == user_id).first()
+         except SQLAlchemyError as e:
+             logging.error(f"Database error finding user by ID {user_id}: {e}", exc_info=True)
+             return None
+
+    def find_user_by_username(self, username: str) -> Optional[User]:
+        """Finds a user by their username."""
+        try:
+            return self.db.query(User).filter(User.username == username).first()
+        except SQLAlchemyError as e:
+            # Fixed F541: Added placeholder
+            logging.error(f"Database error finding user by username '{username}': {e}", exc_info=True)
             return None
 
-    # Added method to get all users
-    def get_all_users(self):
-        """
-        Returns a list of all registered users.
+    # --- Add other user management methods as needed ---
+    # E.g., password reset functionality, account locking, etc.
 
-        Returns:
-            list[User]: A list of all User objects.
-        """
-        # Return a copy of the values to prevent external modification
-        return list(self.users.values())

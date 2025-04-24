@@ -1,50 +1,87 @@
 # backend/src/photo_utils.py
-import hashlib
-import logging
 
-logging.basicConfig(level=logging.INFO)
-def generate_default_person_photo(person_id: str, size: int = 150) -> str:
-    """
-    Generates a placeholder image URL based on the person's ID.
-    Uses placehold.co for generating simple placeholder images.
+import os
+import requests
+from io import BytesIO
+from PIL import Image, ImageDraw, ImageFont
 
-    Args:
-        person_id (str): The unique ID of the person.
-        size (int): The desired size (width and height) of the placeholder image.
+# Placeholder image service URL
+PLACEHOLDER_URL = "https://placehold.co/"
 
-    Returns:
-        str: A URL to a placeholder image.
-    """
-    if not person_id:
-        # Default placeholder if ID is missing
-        return f"https://localhost:8080/assets/profiles/images/default.png"
+def generate_placeholder_image_url(width: int, height: int, text: str = "No Image",
+                                   bg_color_hex: str = "cccccc", text_color_hex: str = "969696") -> str:
+    """Generates a URL for a placeholder image using placehold.co."""
+    # Basic validation
+    width = max(10, int(width))
+    height = max(10, int(height))
+    text = text if text else "Placeholder"
+    # Basic hex color validation (6 hex digits)
+    bg_color_hex = bg_color_hex if len(bg_color_hex) == 6 and all(c in '0123456789abcdefABCDEF' for c in bg_color_hex) else "cccccc"
+    text_color_hex = text_color_hex if len(text_color_hex) == 6 and all(c in '0123456789abcdefABCDEF' for c in text_color_hex) else "969696"
 
-    # Use a hash of the person_id to generate somewhat consistent colors
-    # This is a simple way to get varied placeholders without external libraries
-    try:
-        hash_obj = hashlib.md5(person_id.encode("utf-8")).hexdigest()
-        # Use parts of the hash for background/text colors (simple example)
-        bg_color = hash_obj[:6]
-        text_color = hash_obj[6:12]
-        # Extract first initial (or first two letters) for the placeholder text
-        initials = person_id[:2].upper() # Use first 2 chars of ID as placeholder text
-    except Exception as e:
-        logging.error(f"Error generating default photo for {person_id}: {e}", exc_info=True)
-        logging.warning(f"generate_default_person_photo: Error while generating the image for person with ID {person_id}, using default values")
-        bg_color = "EFEFEF"
-        text_color = "AAAAAA"
+    # Construct the URL
+    # Fixed F541: Added placeholders
+    url = f"{PLACEHOLDER_URL}{width}x{height}/{bg_color_hex}/{text_color_hex}?text={requests.utils.quote(text)}"
+    return url
+
+def generate_initials_placeholder(first_name: str, last_name: str, size: int = 100) -> Image.Image:
+    """Generates a simple placeholder image with initials."""
+    initials = ""
+    if first_name:
+        initials += first_name[0].upper()
+    if last_name:
+        initials += last_name[0].upper()
+    if not initials:
         initials = "?"
 
-    # Construct the placehold.co URL
-    # Example: https://placehold.co/150x150/abcdef/123456?text=AB
-    placeholder_url = f"https://localhost:8080/assets/profiles/images/?text={initials}"
+    # Removed unused variables: bg_color, text_color
+    # Create an image with a light grey background
+    image = Image.new('RGB', (size, size), color='#E0E0E0')
+    draw = ImageDraw.Draw(image)
 
-    return placeholder_url
+    # Use a default font (consider including a TTF font file for better results)
+    try:
+        # Adjust font size based on image size
+        font_size = max(15, size // 3)
+        # This relies on Pillow finding a default font. Might fail on minimal systems.
+        font = ImageFont.truetype("arial.ttf", font_size) # Or specify path to a bundled font
+    except IOError:
+        # Fallback if default font isn't found
+        font = ImageFont.load_default()
+        print("Warning: Default font not found. Using fallback.")
+
+
+    # Calculate text size and position
+    # Use textbbox for potentially more accurate sizing with specific fonts
+    try:
+         # Pillow >= 9.2.0
+         bbox = draw.textbbox((0, 0), initials, font=font)
+         text_width = bbox[2] - bbox[0]
+         text_height = bbox[3] - bbox[1]
+    except AttributeError:
+         # Fallback for older Pillow versions
+         text_width, text_height = draw.textsize(initials, font=font)
+
+
+    x = (size - text_width) / 2
+    y = (size - text_height) / 2
+
+    # Draw the text (dark grey)
+    draw.text((x, y), initials, fill='#555555', font=font)
+
+    return image
 
 # Example usage (optional)
 if __name__ == '__main__':
-    test_id_1 = "82f28529-6b5d-4c30-a2d7-a18349c12564"
-    test_id_2 = "2a7b5741-4e34-468d-85da-ec3343718d37"
-    logging.info(f"generate_default_person_photo: Photo URL for {test_id_1[:8]}...: {generate_default_person_photo(test_id_1)}")
-    logging.info(f"generate_default_person_photo: Photo URL for {test_id_2[:8]}...: {generate_default_person_photo(test_id_2)}")
-    logging.info(f"generate_default_person_photo: Photo URL for empty ID: {generate_default_person_photo('')}")
+    # Example 1: Generate URL
+    url = generate_placeholder_image_url(200, 150, text="John D.")
+    print(f"Placeholder URL: {url}")
+
+    # Example 2: Generate Initials Image and save it
+    try:
+        img = generate_initials_placeholder("Jane", "Smith", size=120)
+        img.save("initials_placeholder.png")
+        print("Saved initials_placeholder.png")
+    except Exception as e:
+        print(f"Could not generate or save initials placeholder: {e}")
+
