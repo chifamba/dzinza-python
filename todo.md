@@ -45,6 +45,10 @@ Security
 
 [ ] Implement Security audit logging.
 
+[ ] Implement actual password hashing in encryption.py.
+
+[ ] Implement actual password verification in encryption.py.
+
 Frontend
 [ ] Redesign the dashboard:
 
@@ -269,7 +273,7 @@ Backend Services
 
 [ ] Implement delete_relationship logic in services.py.
 
-[ ] Implement get_relationship_attribute_by_id logic in services.py.
+[ ] Implement get_relationship_attribute logic in services.py.
 
 [ ] Implement create_relationship_attribute logic in services.py.
 
@@ -286,6 +290,8 @@ Backend Services
 [ ] Implement update_media logic in services.py.
 
 [ ] Implement delete_media logic in services.py.
+
+[ ] Implement get_partial_tree logic in services.py.
 
 Testing and Reliability
 [ ] Create a comprehensive test suite with high coverage.
