@@ -205,4 +205,3 @@ class RelationshipView:
         if self.relationship.description:
             logging.info(f"display_relationship:   Description: {self.relationship.description}")
         logging.info("----------------------------")
-

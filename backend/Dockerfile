@@ -7,9 +7,10 @@ FROM python:3.11-slim
 WORKDIR /backend
 
 # Set environment variables for Flask and Python
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
-ENV FLASK_APP=app.py
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/backend
+ENV FLASK_APP=app.main
 ENV FLASK_RUN_HOST=0.0.0.0
 ENV FLASK_RUN_PORT=8090
 # Set FLASK_DEBUG=0 for production builds, or pass via docker-compose for dev
@@ -23,8 +24,8 @@ COPY backend .
 RUN ls -l /backend
 
 # Install Python dependencies
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+RUN pip install --upgrade pip && \
+    pip install -r requirements.txt
 
 # Copy the tests folder
 # COPY tests /app/tests
@@ -38,6 +39,5 @@ EXPOSE 8090
 # Example using Gunicorn:
 # CMD ["gunicorn", "--bind", "0.0.0.0:8090", "app:app"]
 # RUN pytest /app/tests
-RUN cd /backend && PYTHONPATH=/backend python app/db_init.py
-CMD ["flask", "run"]
-
+RUN python -m app.db_init
+CMD ["flask", "run", "--host=0.0.0.0"]

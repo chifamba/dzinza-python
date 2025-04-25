@@ -10,15 +10,15 @@ from fastapi import Request, HTTPException
 
 # Import models using relative paths
 try:
-    from .models.user import User
-    from .models.person import Person
-    from .models.person_attribute import PersonAttribute
-    from .models.relationship import Relationship as RelationshipModel
-    from .models.relationship_attribute import RelationshipAttribute
-    from .models.media import Media
-    from .models.event import Event
-    from .models.source import Source
-    from .models.citation import Citation
+    from app.models.user import User
+    from app.models.person import Person
+    from app.models.person_attribute import PersonAttribute
+    from app.models.relationship import Relationship as RelationshipModel
+    from app.models.relationship_attribute import RelationshipAttribute
+    from app.models.media import Media
+    from app.models.event import Event
+    from app.models.source import Source
+    from app.models.citation import Citation
 except ImportError as e:
     logging.critical(f"Failed to import models in services: {e}")
     raise

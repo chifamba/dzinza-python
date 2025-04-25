@@ -6,8 +6,8 @@ import logging
 from datetime import date
 # Prevent circular import for type hinting
 if TYPE_CHECKING:
-    from .relationship import Relationship
-    from .family_tree import FamilyTree # If needed for methods accessing the tree
+    from src.relationship import Relationship
+    from src.family_tree import FamilyTree # If needed for methods accessing the tree
 
 
 @dataclass

@@ -62,8 +62,6 @@ services:
 volumes:
   db_data:
     driver: local
-    driver_opts:
-      o: size=10G
 
 # Optional: Define named volumes if you prefer them over bind mounts
 # volumes:

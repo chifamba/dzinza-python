@@ -3,12 +3,12 @@ import unittest
 import os
 import tempfile
 from datetime import datetime
-# Assuming log_audit is in backend.src.audit_log
+# Assuming log_audit is in  src.audit_log
 # Adjust the import based on your actual structure
 try:
-    from backend.src.audit_log import log_audit, read_audit_log
+    from  src.audit_log import log_audit, read_audit_log
 except ImportError:
-    print("Warning: Could not import audit log functions from backend.src.audit_log")
+    print("Warning: Could not import audit log functions from  src.audit_log")
     # Define dummy functions if import fails, so tests can run structurally
     def log_audit(*args, **kwargs): pass
     def read_audit_log(*args, **kwargs): return []

@@ -130,7 +130,7 @@
 - [x] Create the database models.
 - [x] Create the database schema programmatically in app.py.
 - [x] Create an initial job to populate the database with the base schema and initial structure. This should run once only.
-- [x] Add PostgreSQL as the database to the backend.
+- [x] Add PostgreSQL as the database to the  
 - [x] Create User CRUD API endpoints.
 - [x] Create Person CRUD API endpoints.
 - [x] Create PersonAttribute CRUD API endpoints.

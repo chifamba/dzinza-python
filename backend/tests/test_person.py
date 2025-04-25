@@ -6,9 +6,9 @@ from unittest.mock import MagicMock # Used for mocking FamilyTree if needed
 
 # Corrected Imports: Use absolute path from project root perspective
 try:
-    from backend.src.person import Person
-    from backend.src.relationship import Relationship
-    # from backend.src.family_tree import FamilyTree # Avoid direct import if mocking
+    from  src.person import Person
+    from  src.relationship import Relationship
+    # from  src.family_tree import FamilyTree # Avoid direct import if mocking
 except ImportError as e:
     print(f"Error importing test dependencies: {e}")
     # Define dummy classes if needed for tests to run structurally

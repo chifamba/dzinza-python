@@ -17,7 +17,7 @@ from werkzeug.exceptions import HTTPException, Unauthorized, InternalServerError
 # Adjust imports based on actual project structure if different
 try:
     # Import only services used directly in these routes
-    from .services import (
+    from app.services import (
         get_all_users, get_user_by_id,
         get_all_people_db, get_person_by_id_db, create_person_db,
         get_all_events, # Assuming get_events_api uses this
@@ -31,13 +31,13 @@ try:
         get_partial_tree
         # Removed unused service imports based on previous app.py version
     )
-    from .models import Base # Assuming models define Base
+    from app.models import Base # Assuming models define Base
     # Removed unused model imports: User, Person, RelationshipModel
-    from .db_init import populate_database
-    from .user_management import UserManagement # Removed VALID_ROLES
+    from app.db_init import populate_database
+    from src.user_management import UserManagement # Removed VALID_ROLES
     # Removed FamilyTree
     # Removed VALID_RELATIONSHIP_TYPES
-    from .audit_log import log_audit
+    from src.audit_log import log_audit
 except ImportError as e:
     logging.critical(f"Failed to import necessary modules: {e}", exc_info=True)
     raise

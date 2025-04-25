@@ -8,10 +8,10 @@ import uuid
 
 # Import Person and Relationship from sibling modules
 try:
-    from .person import Person
-    from .relationship import Relationship # Removed get_reciprocal_relationship, VALID_RELATIONSHIP_TYPES
-    from .audit_log import log_audit
-    from .db_utils import load_data, save_data
+    from src.person import Person
+    from src.relationship import Relationship # Removed get_reciprocal_relationship, VALID_RELATIONSHIP_TYPES
+    from src.audit_log import log_audit
+    from src.db_utils import load_data, save_data
 except ImportError as e:
     logging.critical(f"Failed to import modules in family_tree: {e}")
     raise

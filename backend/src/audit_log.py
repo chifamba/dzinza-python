@@ -1,7 +1,7 @@
 import os
 import logging
 from datetime import datetime
-from .db_utils import save_data
+from src.db_utils import save_data
 
 # Default log directory (can be overridden by path passed to log_audit)
 LOG_DIR = 'backend'

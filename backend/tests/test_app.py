@@ -1,15 +1,15 @@
 # backend/tests/test_app.py
 import unittest
 from unittest.mock import patch, MagicMock
-# Assuming app is the Flask/FastAPI instance from backend.app.app or backend.app
+# Assuming app is the Flask/FastAPI instance from  app.app or  app
 # Adjust the import based on your actual structure
 try:
-    from backend.app import app # Corrected import path (example)
+    from  app import app # Corrected import path (example)
 except ImportError:
     # Fallback or handle error if structure is different
     # This might happen if tests are run from a different directory
     # Or if backend/app.py doesn't define 'app' directly
-    print("Warning: Could not import 'app' from backend.app. Assuming Flask app instance.")
+    print("Warning: Could not import 'app' from  app. Assuming Flask app instance.")
     from flask import Flask
     app = Flask(__name__) # Create a dummy app for testing structure if import fails
 
@@ -27,7 +27,7 @@ class TestApp(unittest.TestCase):
         """Executed after each test."""
         pass
 
-    @patch('backend.app.get_db') # Mock the database dependency
+    @patch(' app.get_db') # Mock the database dependency
     def test_home_page_status_code(self, mock_get_db):
         """Test that the home page loads correctly."""
         # Mock the DB session if the route uses it

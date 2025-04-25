@@ -8,17 +8,17 @@ from unittest.mock import patch, MagicMock
 
 # Corrected Imports: Use absolute path from 'backend'
 try:
-    from backend.app import app # Assuming app instance is here
-    from backend.src.user import User, UserRole # Import UserRole
-    from backend.src.person import Person
-    from backend.src.relationship import Relationship, RelationshipType
+    from  app import app # Assuming app instance is here
+    from  src.user import User, UserRole # Import UserRole
+    from  src.person import Person
+    from  src.relationship import Relationship, RelationshipType
     # Import components being patched using absolute paths
-    import backend.src.user_management
-    import backend.src.family_tree
-    import backend.src.audit_log
-    import backend.src.db_utils
+    import  src.user_management
+    import  src.family_tree
+    import  src.audit_log
+    import  src.db_utils
     # Import hashing function if used directly in mocks
-    from backend.src.encryption import hash_password
+    from  src.encryption import hash_password
 except ImportError as e:
     print(f"Error importing test dependencies for test_app_integration: {e}")
     from flask import Flask
@@ -75,12 +75,12 @@ class TestAppIntegration(unittest.TestCase):
 
         # Patch Components using absolute paths
         # Patch the actual classes used by the app routes
-        self.user_mgmt_patcher = patch('backend.app.user_manager', spec=backend.src.user_management.UserManagement) # Patch instance in app.py
-        self.family_tree_patcher = patch('backend.app.family_tree', spec=backend.src.family_tree.FamilyTree) # Patch instance in app.py
-        self.audit_log_patcher = patch('backend.src.audit_log.log_audit', spec=True) # Patch function directly
+        self.user_mgmt_patcher = patch(' app.user_manager', spec= src.user_management.UserManagement) # Patch instance in app.py
+        self.family_tree_patcher = patch(' app.family_tree', spec= src.family_tree.FamilyTree) # Patch instance in app.py
+        self.audit_log_patcher = patch(' src.audit_log.log_audit', spec=True) # Patch function directly
         # Patch db_utils if they are imported directly into app routes (less likely)
-        # self.load_patch = patch('backend.app.load_data') # Example if imported into app.py
-        # self.save_patch = patch('backend.app.save_data') # Example
+        # self.load_patch = patch(' app.load_data') # Example if imported into app.py
+        # self.save_patch = patch(' app.save_data') # Example
 
         self.mock_user_mgmt = self.user_mgmt_patcher.start()
         self.mock_family_tree = self.family_tree_patcher.start()

@@ -7,12 +7,12 @@ from unittest.mock import MagicMock # Keep MagicMock if used
 
 # Corrected Imports: Use absolute path from 'backend'
 try:
-    # Assuming app instance and get_db are in backend.app
-    from backend.app import app, get_db
-    # Assuming Base is defined in backend.app.models (adjust if different)
-    from backend.app.models import Base
-    # Assuming db_init functions are in backend.app.db_init
-    from backend.app.db_init import populate_database, create_tables
+    # Assuming app instance and get_db are in  app
+    from  app import app, get_db
+    # Assuming Base is defined in  app.models (adjust if different)
+    from  app.models import Base
+    # Assuming db_init functions are in  app.db_init
+    from  app.db_init import populate_database, create_tables
 except ImportError as e:
     print(f"Error importing test dependencies for test_api: {e}")
     # Define dummy app/functions if needed for structural testing

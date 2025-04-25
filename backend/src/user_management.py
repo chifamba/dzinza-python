@@ -8,8 +8,8 @@ from typing import Optional, List, Dict, Any
 
 # Assuming User model and audit log function are correctly imported/defined
 try:
-    from .models.user import User
-    from .audit_log import log_audit
+    from src.models.user import User
+    from src.audit_log import log_audit
 except ImportError as e:
     logging.critical(f"Failed to import necessary modules in user_management: {e}")
     raise

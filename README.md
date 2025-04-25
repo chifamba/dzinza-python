@@ -131,7 +131,7 @@ These scripts automate the setup process. Run them from the **project root direc
     * Ensure you are in the project root directory (`dzinza-python/`).
     * Activate the virtual environment: `source backend/.venv/bin/activate` (or `backend\.venv\Scripts\activate` on Windows).
     * Run all tests: `python -m unittest discover backend/tests`
-    * Run a specific test file: `python -m unittest backend.tests.test_api`
+    * Run a specific test file: `python -m unittest  tests.test_api`
 
 2.  **Frontend Tests (React):**
     * Navigate to the `frontend` directory: `cd frontend`

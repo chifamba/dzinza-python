@@ -3,14 +3,14 @@ import unittest
 import os
 import tempfile
 import json
-# Assuming encryption functions are in backend.src.encryption
+# Assuming encryption functions are in  src.encryption
 # Adjust the import based on your actual structure
 try:
-    from backend.src.encryption import (
+    from  src.encryption import (
         generate_key, load_key, save_key, encrypt_data, decrypt_data
     )
 except ImportError:
-    print("Warning: Could not import encryption functions from backend.src.encryption")
+    print("Warning: Could not import encryption functions from  src.encryption")
     # Define dummy functions if import fails
     def generate_key(): return b'dummy_key_1234567890123456' # Must be 16, 24, or 32 bytes
     def load_key(path): return generate_key()
