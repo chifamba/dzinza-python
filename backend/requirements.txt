@@ -28,3 +28,4 @@ pytest
 pytest-cov
 flake8
 httpx
+cryptography

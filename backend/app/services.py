@@ -2,11 +2,10 @@
 import logging
 from urllib.parse import urljoin
 from sqlalchemy.orm import Session, load_only, joinedload
-from sqlalchemy.exc import SQLAlchemyError, NoResultFound
+from sqlalchemy.exc import SQLAlchemyError, NoResultFound, IntegrityError
 from sqlalchemy import or_, and_, desc, asc
 from typing import Optional, List, Dict, Any
 from datetime import date
-# Removed FastAPI imports: Request, HTTPException
 # Using Flask's abort for error handling
 from flask import abort, request # Import Flask's request object for get_all_relationships links
 
@@ -19,8 +18,8 @@ try:
     from app.models.relationship_attribute import RelationshipAttribute
     from app.models.media import Media
     from app.models.event import Event # Ensure Event model is correctly defined and imported
-    from app.models.source import Source
-    from app.models.citation import Citation
+    from app.models.source import Source # Ensure Source model is correctly defined and imported
+    from app.models.citation import Citation # Ensure Citation model is correctly defined and imported
 except ImportError as e:
     logging.critical(f"Failed to import models in services: {e}")
     raise
@@ -33,7 +32,6 @@ def get_all_users(db: Session) -> List[User]:
         return db.query(User).all()
     except SQLAlchemyError as e:
         logging.error(f"Database error fetching all users: {e}", exc_info=True)
-        # Using Flask's abort for error handling
         abort(500, description="Database error fetching users.")
 
 def get_user_by_id(db: Session, user_id: int) -> User:
@@ -41,7 +39,6 @@ def get_user_by_id(db: Session, user_id: int) -> User:
     try:
         user_obj = db.query(User).filter(User.id == user_id).first()
         if user_obj is None:
-            # Using Flask's abort for error handling
             abort(404, description="User not found")
         return user_obj
     except SQLAlchemyError as e:
@@ -60,8 +57,7 @@ def create_user(db: Session, user_data: dict) -> User:
     except SQLAlchemyError as e:
         db.rollback()
         logging.error(f"Database error creating user: {e}", exc_info=True)
-        if "UNIQUE constraint failed" in str(e) or "duplicate key value violates unique constraint" in str(e):
-             # Using Flask's abort for error handling
+        if isinstance(e, IntegrityError):
              abort(409, description="Username already exists.")
         abort(500, description="Database error creating user.")
 
@@ -190,7 +186,7 @@ def create_person_db(db: Session, person_data: dict) -> Person:
     except SQLAlchemyError as e:
         db.rollback()
         logging.error(f"Database error creating person: {e}", exc_info=True)
-        if "UNIQUE constraint failed" in str(e) or "duplicate key value violates unique constraint" in str(e):
+        if isinstance(e, IntegrityError):
              abort(409, description="Person creation conflict.")
         elif "NOT NULL constraint failed" in str(e) or "null value in column" in str(e):
              abort(400, description=f"Missing required field for person: {e}")
@@ -294,10 +290,141 @@ def get_all_relationships(db: Session, page: int = 1, page_size: int = 10,
         abort(500, description="Error processing relationships request.")
 
 
-# --- Add get_relationship_by_id, create_relationship, update_relationship, delete_relationship ---
+def get_relationship_by_id(db: Session, relationship_id: int, fields: Optional[List[str]] = None,
+                          include_person1: bool = False, include_person2: bool = False) -> Optional[Dict[str, Any]]:
+    """Retrieves a single relationship by ID (Placeholder)."""
+    logging.warning(f"Relationship service 'get_relationship_by_id' for ID {relationship_id} is a placeholder.")
+    # TODO: Implement actual logic to fetch a single relationship
+    abort(501, description="Relationship service not implemented.") # Changed from 404 to 501 as it's not implemented
+
+
+def create_relationship(db: Session, relationship_data: dict) -> Dict[str, Any]:
+    """Creates a new relationship (Placeholder)."""
+    logging.warning("Relationship service 'create_relationship' is a placeholder.")
+    # TODO: Implement actual logic to create a relationship
+    abort(501, description="Relationship creation service not implemented.")
+
+def update_relationship(db: Session, relationship_id: int, relationship_data: dict) -> Optional[Dict[str, Any]]:
+    """Updates an existing relationship (Placeholder)."""
+    logging.warning(f"Relationship service 'update_relationship' for ID {relationship_id} is a placeholder.")
+    # TODO: Implement actual logic to update a relationship
+    abort(501, description="Relationship update service not implemented.")
+
+def delete_relationship(db: Session, relationship_id: int) -> bool:
+    """Deletes a relationship (Placeholder)."""
+    logging.warning(f"Relationship service 'delete_relationship' for ID {relationship_id} is a placeholder.")
+    # TODO: Implement actual logic to delete a relationship
+    abort(501, description="Relationship deletion service not implemented.")
+
 
 # --- Relationship Attribute Services ---
-# --- Implement similarly ---
+
+def get_all_relationship_attributes(db: Session, page: int = 1, page_size: int = 10,
+                              order_by: str = 'id', order_direction: str = 'asc',
+                              key: Optional[str] = None, value: Optional[str] = None,
+                              relationship_id: Optional[int] = None,
+                              fields: Optional[List[str]] = None,
+                              include_relationship: bool = False) -> Dict[str, Any]:
+    """Retrieves relationship attributes with pagination, filtering, sorting, field selection, and optional includes."""
+    try:
+        query = db.query(RelationshipAttribute)
+
+        # Filtering
+        if key:
+            query = query.filter(RelationshipAttribute.key.ilike(f"%{key}%"))
+        if value:
+            query = query.filter(RelationshipAttribute.value.ilike(f"%{value}%"))
+        if relationship_id:
+            query = query.filter(RelationshipAttribute.relationship_id == relationship_id)
+
+        total_items = query.count()
+
+        # Sorting
+        valid_order_by_columns = ['id', 'key', 'value', 'relationship_id']
+        sort_column_name = order_by if order_by in valid_order_by_columns else 'id'
+        order_column = getattr(RelationshipAttribute, sort_column_name)
+        query = query.order_by(desc(order_column) if order_direction == 'desc' else asc(order_column))
+
+        # Includes
+        load_options = []
+        if include_relationship:
+            load_options.append(joinedload(RelationshipAttribute.relationship))
+        if load_options:
+             query = query.options(*load_options)
+
+        # Field selection
+        final_fields = None
+        if fields:
+             required_fields = {'id', 'relationship_id'}
+             final_fields = list(set(fields) | required_fields)
+             try:
+                 query = query.options(load_only(*final_fields))
+             except Exception as e:
+                 logging.warning(f"Invalid fields requested for RelationshipAttribute: {fields}. Error: {e}. Ignoring.")
+                 final_fields = None
+
+        # Pagination
+        offset = (page - 1) * page_size
+        results_orm = query.offset(offset).limit(page_size).all()
+
+        # Prepare response
+        results_list = []
+        for item in results_orm:
+            if final_fields:
+                item_data = {field: getattr(item, field, None) for field in final_fields}
+            else:
+                item_data = item.to_dict()
+                if "_sa_instance_state" in item_data: del item_data["_sa_instance_state"]
+
+            if include_relationship and hasattr(item, 'relationship') and item.relationship:
+                item_data["relationship"] = item.relationship.to_dict()
+                if "_sa_instance_state" in item_data["relationship"]: del item_data["relationship"]["_sa_instance_state"]
+
+            results_list.append(item_data)
+
+        total_pages = (total_items + page_size - 1) // page_size
+        return {
+            "results": results_list,
+            "total_items": total_items,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages
+        }
+    except SQLAlchemyError as e:
+        logging.error(f"Database error fetching relationship attributes: {e}", exc_info=True)
+        abort(500, description="Database error fetching relationship attributes.")
+    except Exception as e:
+        logging.error(f"Error processing relationship attributes request: {e}", exc_info=True)
+        abort(500, description="Error processing relationship attributes request.")
+
+
+def get_relationship_attribute(db: Session, relationship_attribute_id: int,
+                         fields: Optional[List[str]] = None,
+                         include_relationship: bool = False) -> Optional[Dict[str, Any]]:
+    """Retrieves a single relationship attribute by ID (Placeholder)."""
+    logging.warning(f"Relationship attribute service 'get_relationship_attribute' for ID {relationship_attribute_id} is a placeholder.")
+    # TODO: Implement actual logic to fetch a single relationship attribute
+    abort(501, description="Relationship attribute service not implemented.") # Changed from 404 to 501 as it's not implemented
+
+
+def create_relationship_attribute(db: Session, relationship_attribute_data: dict) -> Dict[str, Any]:
+    """Creates a new relationship attribute (Placeholder)."""
+    logging.warning("Relationship attribute service 'create_relationship_attribute' is a placeholder.")
+    # TODO: Implement actual logic to create a relationship attribute
+    abort(501, description="Relationship attribute creation service not implemented.")
+
+def update_relationship_attribute(db: Session, relationship_attribute_id: int, relationship_attribute_data: dict) -> Optional[Dict[str, Any]]:
+    """Updates an existing relationship attribute (Placeholder)."""
+    logging.warning(f"Relationship attribute service 'update_relationship_attribute' for ID {relationship_attribute_id} is a placeholder.")
+    # TODO: Implement actual logic to update a relationship attribute
+    abort(501, description="Relationship attribute update service not implemented.")
+
+def delete_relationship_attribute(db: Session, relationship_attribute_id: int) -> bool:
+    """Deletes a relationship attribute (Placeholder)."""
+    logging.warning(f"Relationship attribute service 'delete_relationship_attribute' for ID {relationship_attribute_id} is a placeholder.")
+    # TODO: Implement actual logic to delete a relationship attribute
+    abort(501, description="Relationship deletion service not implemented.")
+
 
 # --- Person Attribute Services ---
 
@@ -414,8 +541,8 @@ def get_person_attribute(db: Session, person_attribute_id: int,
             item_data = attr_obj.to_dict()
             if "_sa_instance_state" in item_data: del item_data["_sa_instance_state"]
 
-        if include_person and hasattr(attr_obj, 'person') and attr_obj.person:
-            item_data["person"] = attr_obj.person.to_dict()
+        if include_person and hasattr(item, 'person') and item.person:
+            item_data["person"] = item.person.to_dict()
             if "_sa_instance_state" in item_data["person"]: del item_data["person"]["_sa_instance_state"]
 
         return item_data
@@ -428,13 +555,71 @@ def get_person_attribute(db: Session, person_attribute_id: int,
         abort(500, description="Error processing person attribute request.")
 
 
-# --- Add create, update, delete for person attributes ---
+# ADDED: Placeholder functions for missing person attribute CRUD services
+def create_person_attribute(db: Session, person_attribute_data: dict) -> Dict[str, Any]:
+    """Creates a new person attribute (Placeholder)."""
+    logging.warning("Person attribute service 'create_person_attribute' is a placeholder.")
+    # TODO: Implement actual logic to create a person attribute
+    abort(501, description="Person attribute creation service not implemented.")
+
+def update_person_attribute(db: Session, person_attribute_id: int, person_attribute_data: dict) -> Optional[Dict[str, Any]]:
+    """Updates an existing person attribute (Placeholder)."""
+    logging.warning(f"Person attribute service 'update_person_attribute' for ID {person_attribute_id} is a placeholder.")
+    # TODO: Implement actual logic to update a person attribute
+    abort(501, description="Person attribute update service not implemented.")
+
+def delete_person_attribute(db: Session, person_attribute_id: int) -> bool:
+    """Deletes a person attribute (Placeholder)."""
+    logging.warning(f"Person attribute service 'delete_person_attribute' for ID {person_attribute_id} is a placeholder.")
+    # TODO: Implement actual logic to delete a person attribute
+    abort(501, description="Person attribute deletion service not implemented.")
+
 
 # --- Media Services ---
-# --- Implement similarly ---
+# Placeholder functions for media services
+def get_all_media(db: Session, page: int = 1, page_size: int = 10,
+                  order_by: str = 'id', order_direction: str = 'asc',
+                  file_name: Optional[str] = None, file_type: Optional[str] = None,
+                  description: Optional[str] = None, fields: Optional[List[str]] = None) -> Dict[str, Any]:
+    """Retrieves all media with pagination and filtering (Placeholder)."""
+    logging.warning("Media service 'get_all_media' is a placeholder.")
+    # TODO: Implement actual logic to fetch media from the database
+    return {
+        "results": [],
+        "total_items": 0,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": 0,
+    }
+
+def get_media_by_id(db: Session, media_id: int, fields: Optional[List[str]] = None) -> Optional[Dict[str, Any]]:
+    """Retrieves a single media item by ID (Placeholder)."""
+    logging.warning(f"Media service 'get_media_by_id' for ID {media_id} is a placeholder.")
+    # TODO: Implement actual logic to fetch a single media item
+    abort(501, description="Media service not implemented.") # Changed from 404 to 501 as it's not implemented
+
+
+def create_media(db: Session, media_data: dict) -> Dict[str, Any]:
+    """Creates a new media item (Placeholder)."""
+    logging.warning("Media service 'create_media' is a placeholder.")
+    # TODO: Implement actual logic to create a media item
+    abort(501, description="Media creation service not implemented.")
+
+def update_media(db: Session, media_id: int, media_data: dict) -> Optional[Dict[str, Any]]:
+    """Updates an existing media item (Placeholder)."""
+    logging.warning(f"Media service 'update_media' for ID {media_id} is a placeholder.")
+    # TODO: Implement actual logic to update a media item
+    abort(501, description="Media update service not implemented.")
+
+def delete_media(db: Session, media_id: int) -> bool:
+    """Deletes a media item (Placeholder)."""
+    logging.warning(f"Media service 'delete_media' for ID {media_id} is a placeholder.")
+    # TODO: Implement actual logic to delete a media item
+    abort(501, description="Media deletion service not implemented.")
+
 
 # --- Event Services ---
-# ADDED: Placeholder functions for missing event services
+# Placeholder functions for event services
 def get_all_events(db: Session, page: int = 1, page_size: int = 10,
                    order_by: str = 'id', order_direction: str = 'asc',
                    type: Optional[str] = None, place: Optional[str] = None,
@@ -442,7 +627,6 @@ def get_all_events(db: Session, page: int = 1, page_size: int = 10,
     """Retrieves all events with pagination and filtering (Placeholder)."""
     logging.warning("Event service 'get_all_events' is a placeholder.")
     # TODO: Implement actual logic to fetch events from the database
-    # Example placeholder return structure:
     return {
         "results": [],
         "total_items": 0,
@@ -455,44 +639,116 @@ def get_event_by_id(db: Session, event_id: int, fields: Optional[List[str]] = No
     """Retrieves a single event by ID (Placeholder)."""
     logging.warning(f"Event service 'get_event_by_id' for ID {event_id} is a placeholder.")
     # TODO: Implement actual logic to fetch a single event
-    # Example placeholder return:
-    # return None # If not found
-    # return {"id": event_id, "type": "Placeholder Event", ...} # If found
-    abort(404, description="Event service not implemented.")
+    abort(501, description="Event service not implemented.") # Changed from 404 to 501 as it's not implemented
 
 
 def create_event(db: Session, event_data: dict) -> Dict[str, Any]:
     """Creates a new event (Placeholder)."""
     logging.warning("Event service 'create_event' is a placeholder.")
     # TODO: Implement actual logic to create an event
-    # Example placeholder return:
-    # return {"id": 999, **event_data} # Return created event data
     abort(501, description="Event creation service not implemented.")
 
 def update_event(db: Session, event_id: int, event_data: dict) -> Optional[Dict[str, Any]]:
     """Updates an existing event (Placeholder)."""
     logging.warning(f"Event service 'update_event' for ID {event_id} is a placeholder.")
     # TODO: Implement actual logic to update an event
-    # Example placeholder return:
-    # return None # If not found
-    # return {"id": event_id, **event_data} # Return updated event data
     abort(501, description="Event update service not implemented.")
 
 def delete_event(db: Session, event_id: int) -> bool:
     """Deletes an event (Placeholder)."""
     logging.warning(f"Event service 'delete_event' for ID {event_id} is a placeholder.")
     # TODO: Implement actual logic to delete an event
-    # Example placeholder return:
-    # return False # If not found
-    # return True # If deleted successfully
     abort(501, description="Event deletion service not implemented.")
 
 
 # --- Source Services ---
-# --- Implement similarly ---
+# Placeholder functions for source services
+def get_all_sources(db: Session, page: int = 1, page_size: int = 10,
+                    order_by: str = 'id', order_direction: str = 'asc',
+                    title: Optional[str] = None, author: Optional[str] = None,
+                    fields: Optional[List[str]] = None) -> Dict[str, Any]:
+    """Retrieves all sources with pagination and filtering (Placeholder)."""
+    logging.warning("Source service 'get_all_sources' is a placeholder.")
+    # TODO: Implement actual logic to fetch sources from the database
+    return {
+        "results": [],
+        "total_items": 0,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": 0,
+    }
+
+def get_source_by_id(db: Session, source_id: int, fields: Optional[List[str]] = None) -> Optional[Dict[str, Any]]:
+    """Retrieves a single source by ID (Placeholder)."""
+    logging.warning(f"Source service 'get_source_by_id' for ID {source_id} is a placeholder.")
+    # TODO: Implement actual logic to fetch a single source
+    abort(501, description="Source service not implemented.") # Changed from 404 to 501 as it's not implemented
+
+
+def create_source(db: Session, source_data: dict) -> Dict[str, Any]:
+    """Creates a new source (Placeholder)."""
+    logging.warning("Source service 'create_source' is a placeholder.")
+    # TODO: Implement actual logic to create a source
+    abort(501, description="Source creation service not implemented.")
+
+def update_source(db: Session, source_id: int, source_data: dict) -> Optional[Dict[str, Any]]:
+    """Updates an existing source (Placeholder)."""
+    logging.warning(f"Source service 'update_source' for ID {source_id} is a placeholder.")
+    # TODO: Implement actual logic to update a source
+    abort(501, description="Source update service not implemented.")
+
+def delete_source(db: Session, source_id: int) -> bool:
+    """Deletes a source (Placeholder)."""
+    logging.warning(f"Source service 'delete_source' for ID {source_id} is a placeholder.")
+    # TODO: Implement actual logic to delete a source
+    abort(501, description="Source deletion service not implemented.")
+
 
 # --- Citation Services ---
-# --- Implement similarly ---
+# Placeholder functions for citation services
+def get_all_citations(db: Session, page: int = 1, page_size: int = 10,
+                      order_by: str = 'id', order_direction: str = 'asc',
+                      source_id: Optional[int] = None, person_id: Optional[int] = None,
+                      event_id: Optional[int] = None, description: Optional[str] = None,
+                      fields: Optional[List[str]] = None, include_source: bool = False,
+                      include_person: bool = False, include_event: bool = False) -> Dict[str, Any]:
+    """Retrieves all citations with pagination and filtering (Placeholder)."""
+    logging.warning("Citation service 'get_all_citations' is a placeholder.")
+    # TODO: Implement actual logic to fetch citations from the database
+    return {
+        "results": [],
+        "total_items": 0,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": 0,
+    }
+
+def get_citation_by_id(db: Session, citation_id: int, fields: Optional[List[str]] = None,
+                       include_source: bool = False, include_person: bool = False,
+                       include_event: bool = False) -> Optional[Dict[str, Any]]:
+    """Retrieves a single citation by ID (Placeholder)."""
+    logging.warning(f"Citation service 'get_citation_by_id' for ID {citation_id} is a placeholder.")
+    # TODO: Implement actual logic to fetch a single citation
+    abort(501, description="Citation service not implemented.") # Changed from 404 to 501 as it's not implemented
+
+
+def create_citation(db: Session, citation_data: dict) -> Dict[str, Any]:
+    """Creates a new citation (Placeholder)."""
+    logging.warning("Citation service 'create_citation' is a placeholder.")
+    # TODO: Implement actual logic to create a citation
+    abort(501, description="Citation creation service not implemented.")
+
+def update_citation(db: Session, citation_id: int, citation_data: dict) -> Optional[Dict[str, Any]]:
+    """Updates an existing citation (Placeholder)."""
+    logging.warning(f"Citation service 'update_citation' for ID {citation_id} is a placeholder.")
+    # TODO: Implement actual logic to update a citation
+    abort(501, description="Citation update service not implemented.")
+
+def delete_citation(db: Session, citation_id: int) -> bool:
+    """Deletes a citation (Placeholder)."""
+    logging.warning(f"Citation service 'delete_citation' for ID {citation_id} is a placeholder.")
+    # TODO: Implement actual logic to delete a citation
+    abort(501, description="Citation deletion service not implemented.")
 
 
 # --- Tree Traversal Services ---
@@ -564,8 +820,20 @@ def get_descendants(db: Session, person_id: int, depth: int) -> List[Person]:
                 queue.append((child.id, current_depth + 1))
     return descendants
 
+# ADDED: Placeholder for get_partial_tree
+def get_partial_tree(db: Session, person_id: int, depth: int, only_ancestors: bool, only_descendants: bool) -> Dict[str, Any]:
+    """Retrieves a partial tree (ancestors and/or descendants) for a person (Placeholder)."""
+    logging.warning(f"Tree traversal service 'get_partial_tree' for ID {person_id} is a placeholder.")
+    # TODO: Implement actual logic to fetch partial tree data
+    # Example placeholder return structure:
+    return {
+        "center": None, # The central person (as a dict)
+        "ancestors": [], # List of ancestor Person objects (as dicts)
+        "descendants": [] # List of descendant Person objects (as dicts)
+    }
 
-# --- Implement get_extended_family, get_related, get_partial_tree, get_branch similarly ---
+
+# --- Implement get_extended_family, get_related, get_branch similarly ---
 
 # --- Search Service ---
 def search_people(db: Session, name: Optional[str] = None, birth_date: Optional[date] = None,
