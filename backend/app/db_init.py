@@ -51,8 +51,8 @@ def populate_database(db: DbSession): # Renamed from populate_db for clarity
         # Create users
         # Note: Passwords should be hashed using UserManagement or encryption module
         # This example uses placeholder hashes for simplicity in db_init
-        user1 = User(username="user1", password_hash_b64="placeholder_hash1", role="admin")
-        user2 = User(username="user2", password_hash_b64="placeholder_hash2", role="basic")
+        user1 = User(username="user1", password_hash="placeholder_hash1", role="admin")
+        user2 = User(username="user2", password_hash="placeholder_hash2", role="basic")
         db.add_all([user1, user2])
         db.flush() # Flush to get user IDs if needed immediately
 
