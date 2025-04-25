@@ -9,7 +9,7 @@ services:
     environment:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=dzinza
+      - POSTGRES_DB=${POSTGRES_DB}
     volumes:
       - db_data:/var/lib/postgresql/data
     
@@ -46,6 +46,7 @@ services:
       - EMAIL_PORT=${EMAIL_PORT:-587}
       - MAIL_SENDER=${MAIL_SENDER}
       - APP_URL=${APP_URL:-http://localhost:5173} # URL frontend uses
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB} # Connection string for PostgreSQL
       # Add any other environment variables your backend needs
     restart: unless-stopped # Restart policy
 
