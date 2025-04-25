@@ -12,12 +12,14 @@ services:
       - POSTGRES_DB=${POSTGRES_DB}
     volumes:
       - db_data:/var/lib/postgresql/data
-    
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"] # Checks if the DB is accepting connections
+      interval: 10s # How often to run the check
+      timeout: 5s   # How long to wait for the check to pass
+      retries: 5    # How many times to retry before marking as unhealthy
+      start_period: 30s # Give the DB some time to start up initially    
     
     restart: unless-stopped
-
-  # Backend Service (Flask API)
-
 
   # Backend Service (Flask API)
   backend:
