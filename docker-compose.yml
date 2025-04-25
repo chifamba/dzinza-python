@@ -31,6 +31,12 @@ services:
       - "8090:8090" # Map host port 8090 to container port 8090
     depends_on:
       - db # Ensure the database is started before the backend
+    healthcheck: # Added backend healthcheck
+      test: ["CMD", "curl", "-f", "http://localhost:8090/health"] # Check the new /health endpoint
+      interval: 30s # How often to run the check
+      timeout: 10s   # How long to wait for the check to pass
+      retries: 5    # How many times to retry before marking as unhealthy
+      start_period: 10s # Give the backend some time to start up initially
     volumes:
       # Mount data and logs directories to persist data outside the container
       - ./backend/data:/app/data

@@ -25,7 +25,8 @@ try:
         get_all_citations, get_citation_by_id, create_citation, update_citation, delete_citation, # Citation services
         search_people, get_person_relationships_and_attributes, # Search/Detail services
         get_descendants, get_ancestors, # Tree traversal services (ensure these exist in services.py)
-        # get_partial_tree, get_extended_family, get_related, get_branch # Removed - Not found in services.py previously
+        get_partial_tree, # Keep if implemented in services.py
+        # get_extended_family, get_related, get_branch # Removed - Not found in services.py previously
         get_all_person_attributes, get_person_attribute as get_person_attribute_by_id, # Person Attribute services
         create_person_attribute, update_person_attribute, delete_person_attribute,
         get_all_relationships, get_relationship_by_id, create_relationship, update_relationship, delete_relationship, # Relationship services
@@ -340,6 +341,50 @@ def handle_service_unavailable(error):
     response = jsonify({"error": "Service Unavailable", "message": description})
     response.status_code = 503
     return response
+
+
+# --- Health Check Endpoint ---
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Basic health check endpoint including database connection status and version."""
+    db_session = None
+    try:
+        # Attempt to get a database session
+        if not db_session_factory:
+            app.logger.error("Health check: Database session factory not initialized.")
+            return jsonify({"status": "error", "database": "Database session factory not initialized"}), 503
+
+        db_session = db_session_factory()
+
+        # Execute a simple query to check connection and get DB version
+        # For PostgreSQL, SELECT version(); is common
+        db_version_result = db_session.execute(text("SELECT version();")).scalar()
+
+        # If we reach here, the database connection and basic query were successful
+        return jsonify({
+            "status": "ok",
+            "database": "connected",
+            "database_version": db_version_result
+        }), 200
+
+    except Exception as e:
+        # Catch any exception during database connection or query
+        app.logger.error(f"Health check failed: Database connection or query failed: {e}", exc_info=True)
+        return jsonify({
+            "status": "error",
+            "database": "connection_failed",
+            "message": f"Database connection or query failed: {e}"
+        }), 503 # Use 503 Service Unavailable for dependency issues
+
+    finally:
+        # Ensure the database session is closed
+        if db_session:
+            try:
+                db_session.close()
+                app.logger.debug("Health check: Database session closed.")
+            except Exception as close_exc:
+                app.logger.error(f"Health check: Error closing DB session: {close_exc}", exc_info=True)
+
 
 
 # --- API Routes (Flask Style) ---
@@ -1023,3 +1068,4 @@ if __name__ == '__main__':
     # Debug mode is automatically enabled if FLASK_DEBUG=1 env var is set
     # app.run(debug=True) handles this.
     app.run(host='0.0.0.0', port=port) # Debug determined by FLASK_DEBUG env var
+
