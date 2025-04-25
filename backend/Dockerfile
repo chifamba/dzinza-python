@@ -38,6 +38,6 @@ EXPOSE 8090
 # Example using Gunicorn:
 # CMD ["gunicorn", "--bind", "0.0.0.0:8090", "app:app"]
 # RUN pytest /app/tests
-RUN python /backend/app/db_init.py
+RUN cd /backend && PYTHONPATH=/backend python app/db_init.py
 CMD ["flask", "run"]
 
