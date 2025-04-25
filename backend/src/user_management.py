@@ -5,6 +5,8 @@ from sqlalchemy.orm import Session
 from app.models.user import User # Changed from from src.models.user import User
 from src.audit_log import log_audit
 from src.encryption import hash_password, verify_password # Assuming encryption functions are here
+# Added import for Optional
+from typing import Optional
 
 # Define valid roles if not imported from elsewhere
 VALID_ROLES = ['user', 'admin']

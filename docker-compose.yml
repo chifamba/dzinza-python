@@ -27,6 +27,8 @@ services:
     container_name: dzinza-backend
     ports:
       - "8090:8090" # Map host port 8090 to container port 8090
+    depends_on:
+      - db # Ensure the database is started before the backend
     volumes:
       # Mount data and logs directories to persist data outside the container
       - ./backend/data:/app/data
