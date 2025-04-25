@@ -4,7 +4,7 @@
 FROM python:3.11-slim
 
 # Set the working directory in the container
-WORKDIR /app
+WORKDIR /backend
 
 # Set environment variables for Flask and Python
 ENV PYTHONDONTWRITEBYTECODE 1
@@ -20,7 +20,7 @@ ENV FLASK_RUN_PORT=8090
 
 # Copy all files
 COPY backend .
-RUN ls -l /app
+RUN ls -l /backend
 
 # Install Python dependencies
 RUN pip install --no-cache-dir --upgrade pip && \
@@ -38,6 +38,6 @@ EXPOSE 8090
 # Example using Gunicorn:
 # CMD ["gunicorn", "--bind", "0.0.0.0:8090", "app:app"]
 # RUN pytest /app/tests
-RUN python backend/app/db_init.py
+RUN python app/db_init.py
 CMD ["flask", "run"]
 
