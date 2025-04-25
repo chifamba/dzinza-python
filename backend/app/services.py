@@ -6,7 +6,9 @@ from sqlalchemy.exc import SQLAlchemyError, NoResultFound
 from sqlalchemy import or_, and_, desc, asc
 from typing import Optional, List, Dict, Any
 from datetime import date
-from fastapi import Request, HTTPException
+# Removed FastAPI imports: Request, HTTPException
+# Using Flask's abort for error handling
+from flask import abort, request # Import Flask's request object for get_all_relationships links
 
 # Import models using relative paths
 try:
@@ -16,7 +18,7 @@ try:
     from app.models.relationship import Relationship as RelationshipModel
     from app.models.relationship_attribute import RelationshipAttribute
     from app.models.media import Media
-    from app.models.event import Event
+    from app.models.event import Event # Ensure Event model is correctly defined and imported
     from app.models.source import Source
     from app.models.citation import Citation
 except ImportError as e:
@@ -31,23 +33,25 @@ def get_all_users(db: Session) -> List[User]:
         return db.query(User).all()
     except SQLAlchemyError as e:
         logging.error(f"Database error fetching all users: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Database error fetching users.")
+        # Using Flask's abort for error handling
+        abort(500, description="Database error fetching users.")
 
 def get_user_by_id(db: Session, user_id: int) -> User:
     """Retrieves a single user by their ID."""
     try:
         user_obj = db.query(User).filter(User.id == user_id).first()
         if user_obj is None:
-            raise HTTPException(status_code=404, detail="User not found")
+            # Using Flask's abort for error handling
+            abort(404, description="User not found")
         return user_obj
     except SQLAlchemyError as e:
         logging.error(f"Database error fetching user ID {user_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Database error fetching user.")
+        abort(500, description="Database error fetching user.")
 
 def create_user(db: Session, user_data: dict) -> User:
     """Creates a new user."""
     try:
-        # Password hashing should be handled elsewhere
+        # Password hashing should be handled elsewhere, ideally before calling this service
         new_user = User(**user_data)
         db.add(new_user)
         db.commit()
@@ -56,9 +60,10 @@ def create_user(db: Session, user_data: dict) -> User:
     except SQLAlchemyError as e:
         db.rollback()
         logging.error(f"Database error creating user: {e}", exc_info=True)
-        if "UNIQUE constraint failed" in str(e):
-            raise HTTPException(status_code=409, detail="Username already exists.")
-        raise HTTPException(status_code=500, detail="Database error creating user.")
+        if "UNIQUE constraint failed" in str(e) or "duplicate key value violates unique constraint" in str(e):
+             # Using Flask's abort for error handling
+             abort(409, description="Username already exists.")
+        abort(500, description="Database error creating user.")
 
 # --- Person Services ---
 
@@ -114,7 +119,7 @@ def get_all_people_db(db: Session, page: int = 1, page_size: int = 10, order_by:
              if final_fields:
                  item_data = {field: getattr(item, field, None) for field in final_fields}
              else:
-                 item_data = item.to_dict()
+                 item_data = item.to_dict() # Assuming to_dict exists on models
                  if "_sa_instance_state" in item_data:
                      del item_data["_sa_instance_state"]
              results_list.append(item_data)
@@ -130,10 +135,10 @@ def get_all_people_db(db: Session, page: int = 1, page_size: int = 10, order_by:
 
     except SQLAlchemyError as e:
         logging.error(f"Database error fetching people: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Database error fetching people.")
+        abort(500, description="Database error fetching people.")
     except Exception as e:
         logging.error(f"Error processing people request: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Error processing people request.")
+        abort(500, description="Error processing people request.")
 
 
 def get_person_by_id_db(db: Session, person_id: int, fields: Optional[List[str]] = None) -> Dict[str, Any]:
@@ -154,7 +159,7 @@ def get_person_by_id_db(db: Session, person_id: int, fields: Optional[List[str]]
         person_obj = query.first()
 
         if person_obj is None:
-            raise HTTPException(status_code=404, detail="Person not found")
+            abort(404, description="Person not found")
 
         if final_fields:
             response_data = {field: getattr(person_obj, field, None) for field in final_fields}
@@ -166,13 +171,13 @@ def get_person_by_id_db(db: Session, person_id: int, fields: Optional[List[str]]
         return response_data
 
     except NoResultFound:
-         raise HTTPException(status_code=404, detail="Person not found")
+         abort(404, description="Person not found")
     except SQLAlchemyError as e:
         logging.error(f"Database error fetching person ID {person_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Database error fetching person.")
+        abort(500, description="Database error fetching person.")
     except Exception as e:
         logging.error(f"Error processing get person request for ID {person_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Error processing person request.")
+        abort(500, description="Error processing person request.")
 
 def create_person_db(db: Session, person_data: dict) -> Person:
     """Creates a new person in the database."""
@@ -186,16 +191,17 @@ def create_person_db(db: Session, person_data: dict) -> Person:
         db.rollback()
         logging.error(f"Database error creating person: {e}", exc_info=True)
         if "UNIQUE constraint failed" in str(e) or "duplicate key value violates unique constraint" in str(e):
-             raise HTTPException(status_code=409, detail="Person creation conflict.")
+             abort(409, description="Person creation conflict.")
         elif "NOT NULL constraint failed" in str(e) or "null value in column" in str(e):
-             raise HTTPException(status_code=400, detail=f"Missing required field for person: {e}")
-        raise HTTPException(status_code=500, detail="Database error creating person.")
+             abort(400, description=f"Missing required field for person: {e}")
+        abort(500, description="Database error creating person.")
 
 # --- Add update_person_db, delete_person_db similarly ---
 
 # --- Relationship Services ---
 
-def get_all_relationships(db: Session, request: Request, page: int = 1, page_size: int = 10,
+# Removed 'request: Request' from signature, using Flask's global request object
+def get_all_relationships(db: Session, page: int = 1, page_size: int = 10,
                           order_by: str = 'id', order_direction: str = 'asc',
                           type: Optional[str] = None, person1_id: Optional[int] = None,
                           person2_id: Optional[int] = None, fields: Optional[List[str]] = None,
@@ -246,7 +252,9 @@ def get_all_relationships(db: Session, request: Request, page: int = 1, page_siz
 
         # Prepare response data
         results_list = []
-        base_url = str(request.base_url)
+        # Use Flask's request.url_root to get the base URL
+        base_url = request.url_root
+
         for item in results_orm:
             if final_fields:
                 item_data = {field: getattr(item, field, None) for field in final_fields}
@@ -254,10 +262,11 @@ def get_all_relationships(db: Session, request: Request, page: int = 1, page_siz
                 item_data = item.to_dict()
                 if "_sa_instance_state" in item_data: del item_data["_sa_instance_state"]
 
+            # Generate links using the Flask request object
             item_data["_links"] = {
-                "self": urljoin(base_url, f"/api/relationships/{item.id}"),
-                "person1": urljoin(base_url, f"/api/people/{item.person1_id}"),
-                "person2": urljoin(base_url, f"/api/people/{item.person2_id}"),
+                "self": urljoin(base_url, f"api/relationships/{item.id}"),
+                "person1": urljoin(base_url, f"api/people/{item.person1_id}"),
+                "person2": urljoin(base_url, f"api/people/{item.person2_id}"),
             }
 
             if include_person1 and hasattr(item, 'person1') and item.person1:
@@ -279,10 +288,10 @@ def get_all_relationships(db: Session, request: Request, page: int = 1, page_siz
         }
     except SQLAlchemyError as e:
         logging.error(f"Database error fetching relationships: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Database error fetching relationships.")
+        abort(500, description="Database error fetching relationships.")
     except Exception as e:
         logging.error(f"Error processing relationships request: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Error processing relationships request.")
+        abort(500, description="Error processing relationships request.")
 
 
 # --- Add get_relationship_by_id, create_relationship, update_relationship, delete_relationship ---
@@ -365,10 +374,10 @@ def get_all_person_attributes(db: Session, page: int = 1, page_size: int = 10,
         }
     except SQLAlchemyError as e:
         logging.error(f"Database error fetching person attributes: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Database error fetching person attributes.")
+        abort(500, description="Database error fetching person attributes.")
     except Exception as e:
         logging.error(f"Error processing person attributes request: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Error processing person attributes request.")
+        abort(500, description="Error processing person attributes request.")
 
 
 def get_person_attribute(db: Session, person_attribute_id: int,
@@ -413,16 +422,78 @@ def get_person_attribute(db: Session, person_attribute_id: int,
 
     except SQLAlchemyError as e:
         logging.error(f"Database error fetching person attribute ID {person_attribute_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Database error fetching person attribute.")
+        abort(500, description="Database error fetching person attribute.")
     except Exception as e:
         logging.error(f"Error processing get person attribute request for ID {person_attribute_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Error processing person attribute request.")
+        abort(500, description="Error processing person attribute request.")
 
 
 # --- Add create, update, delete for person attributes ---
 
-# --- Media, Event, Source, Citation Services ---
+# --- Media Services ---
 # --- Implement similarly ---
+
+# --- Event Services ---
+# ADDED: Placeholder functions for missing event services
+def get_all_events(db: Session, page: int = 1, page_size: int = 10,
+                   order_by: str = 'id', order_direction: str = 'asc',
+                   type: Optional[str] = None, place: Optional[str] = None,
+                   description: Optional[str] = None, fields: Optional[List[str]] = None) -> Dict[str, Any]:
+    """Retrieves all events with pagination and filtering (Placeholder)."""
+    logging.warning("Event service 'get_all_events' is a placeholder.")
+    # TODO: Implement actual logic to fetch events from the database
+    # Example placeholder return structure:
+    return {
+        "results": [],
+        "total_items": 0,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": 0,
+    }
+
+def get_event_by_id(db: Session, event_id: int, fields: Optional[List[str]] = None) -> Optional[Dict[str, Any]]:
+    """Retrieves a single event by ID (Placeholder)."""
+    logging.warning(f"Event service 'get_event_by_id' for ID {event_id} is a placeholder.")
+    # TODO: Implement actual logic to fetch a single event
+    # Example placeholder return:
+    # return None # If not found
+    # return {"id": event_id, "type": "Placeholder Event", ...} # If found
+    abort(404, description="Event service not implemented.")
+
+
+def create_event(db: Session, event_data: dict) -> Dict[str, Any]:
+    """Creates a new event (Placeholder)."""
+    logging.warning("Event service 'create_event' is a placeholder.")
+    # TODO: Implement actual logic to create an event
+    # Example placeholder return:
+    # return {"id": 999, **event_data} # Return created event data
+    abort(501, description="Event creation service not implemented.")
+
+def update_event(db: Session, event_id: int, event_data: dict) -> Optional[Dict[str, Any]]:
+    """Updates an existing event (Placeholder)."""
+    logging.warning(f"Event service 'update_event' for ID {event_id} is a placeholder.")
+    # TODO: Implement actual logic to update an event
+    # Example placeholder return:
+    # return None # If not found
+    # return {"id": event_id, **event_data} # Return updated event data
+    abort(501, description="Event update service not implemented.")
+
+def delete_event(db: Session, event_id: int) -> bool:
+    """Deletes an event (Placeholder)."""
+    logging.warning(f"Event service 'delete_event' for ID {event_id} is a placeholder.")
+    # TODO: Implement actual logic to delete an event
+    # Example placeholder return:
+    # return False # If not found
+    # return True # If deleted successfully
+    abort(501, description="Event deletion service not implemented.")
+
+
+# --- Source Services ---
+# --- Implement similarly ---
+
+# --- Citation Services ---
+# --- Implement similarly ---
+
 
 # --- Tree Traversal Services ---
 
@@ -432,16 +503,25 @@ def get_ancestors(db: Session, person_id: int, depth: int) -> List[Person]:
     queue = [(person_id, 0)]
     visited_ids = {person_id}
 
+    # Check if the starting person exists
+    starting_person = db.query(Person).filter(Person.id == person_id).first()
+    if not starting_person:
+         logging.warning(f"Starting person ID {person_id} not found for get_ancestors.")
+         # Raising 404 here aligns with API endpoint behavior
+         abort(404, description=f"Person with ID {person_id} not found.")
+
+
     while queue:
         current_id, current_depth = queue.pop(0)
 
         if current_depth >= depth:
             continue
 
+        # Find parents of the current person
         parent_rels = db.query(RelationshipModel).filter(
             RelationshipModel.person2_id == current_id,
-            RelationshipModel.rel_type == 'parent'
-        ).options(joinedload(RelationshipModel.person1)).all()
+            RelationshipModel.rel_type == 'parent' # Assuming 'parent' relationship type
+        ).options(joinedload(RelationshipModel.person1)).all() # Eager load person1 (the parent)
 
         for rel in parent_rels:
             parent = rel.person1
@@ -457,16 +537,24 @@ def get_descendants(db: Session, person_id: int, depth: int) -> List[Person]:
     queue = [(person_id, 0)]
     visited_ids = {person_id}
 
+    # Check if the starting person exists
+    starting_person = db.query(Person).filter(Person.id == person_id).first()
+    if not starting_person:
+         logging.warning(f"Starting person ID {person_id} not found for get_descendants.")
+         # Raising 404 here aligns with API endpoint behavior
+         abort(404, description=f"Person with ID {person_id} not found.")
+
     while queue:
         current_id, current_depth = queue.pop(0)
 
         if current_depth >= depth:
             continue
 
+        # Find children of the current person
         child_rels = db.query(RelationshipModel).filter(
             RelationshipModel.person1_id == current_id,
-            RelationshipModel.rel_type == 'parent'
-        ).options(joinedload(RelationshipModel.person2)).all()
+            RelationshipModel.rel_type == 'parent' # Assuming 'parent' relationship type implies person2 is the child
+        ).options(joinedload(RelationshipModel.person2)).all() # Eager load person2 (the child)
 
         for rel in child_rels:
             child = rel.person2
@@ -521,7 +609,7 @@ def search_people(db: Session, name: Optional[str] = None, birth_date: Optional[
         return query.all()
     except SQLAlchemyError as e:
         logging.error(f"Database error during person search: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Database error during search.")
+        abort(500, description="Database error during search.")
 
 
 def get_person_relationships_and_attributes(db: Session, person_id: int) -> Dict[str, Any]:
@@ -529,7 +617,7 @@ def get_person_relationships_and_attributes(db: Session, person_id: int) -> Dict
     try:
         person_obj = db.query(Person).filter(Person.id == person_id).first()
         if not person_obj:
-            raise HTTPException(status_code=404, detail="Person not found")
+            abort(404, description="Person not found")
 
         person_attrs = db.query(PersonAttribute)\
                          .filter(PersonAttribute.person_id == person_id)\
@@ -543,25 +631,25 @@ def get_person_relationships_and_attributes(db: Session, person_id: int) -> Dict
                                      joinedload(RelationshipModel.person2))\
                             .all()
 
-        person_attributes_data = [attr.to_dict() for attr in person_attrs]
+        person_attributes_data = [attr.to_dict() for attr in person_attrs] # Assuming to_dict exists
         relationships_data = []
         for rel in person_rels_orm:
-            rel_data = rel.to_dict()
+            rel_data = rel.to_dict() # Assuming to_dict exists
             if "_sa_instance_state" in rel_data: del rel_data["_sa_instance_state"]
 
-            rel_data['attributes'] = [rel_attr.to_dict() for rel_attr in rel.attributes]
+            rel_data['attributes'] = [rel_attr.to_dict() for rel_attr in rel.attributes] # Assuming to_dict exists
             for attr_dict in rel_data['attributes']:
                  if "_sa_instance_state" in attr_dict: del attr_dict["_sa_instance_state"]
 
             if rel.person1:
-                p1_data = rel.person1.to_dict()
+                p1_data = rel.person1.to_dict() # Assuming to_dict exists
                 if "_sa_instance_state" in p1_data: del p1_data["_sa_instance_state"]
                 rel_data['person1'] = p1_data
             else:
                  rel_data['person1'] = None
 
             if rel.person2:
-                p2_data = rel.person2.to_dict()
+                p2_data = rel.person2.to_dict() # Assuming to_dict exists
                 if "_sa_instance_state" in p2_data: del p2_data["_sa_instance_state"]
                 rel_data['person2'] = p2_data
             else:
@@ -569,16 +657,14 @@ def get_person_relationships_and_attributes(db: Session, person_id: int) -> Dict
 
             relationships_data.append(rel_data)
 
-        # Corrected indentation for the return statement
         return {
             "person_attributes": person_attributes_data,
             "relationships": relationships_data
         }
-    # Correct indentation for the except blocks
     except NoResultFound:
-        raise HTTPException(status_code=404, detail="Person not found")
+        abort(404, description="Person not found")
     except SQLAlchemyError as e:
         logging.error(f"Database error fetching relationships/attributes for person {person_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Database error fetching relationships/attributes.")
+        abort(500, description="Database error fetching relationships/attributes.")
 
 # Ensure no trailing code or incorrect indentation below this line
