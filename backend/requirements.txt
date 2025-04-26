@@ -1,31 +1,22 @@
+
 # backend/requirements.txt
 
-# Web Framework & Server
-Flask
-Flask-Cors # Added for API Cross-Origin Resource Sharing
-fastapi   # Added for API endpoints
-uvicorn[standard] # Added ASGI server for FastAPI
+Flask>=3.1 # Or your specific Flask version
+SQLAlchemy>=2.0 # Or your specific SQLAlchemy version
+psycopg2-binary>=2.9 # Or your specific PostgreSQL driver
+bcrypt>=4.3 # For password hashing
+cryptography>=44.0 # For data encryption
+python-dotenv>=1.1 # Optional: For loading environment variables
 
-# Database
-SQLAlchemy
-psycopg2-binary # Added PostgreSQL driver
+# Logging & Tracing
+structlog>=25.3 # For structured logging
+opentelemetry-api>=1.32
+opentelemetry-sdk>=1.32
+opentelemetry-exporter-otlp-proto-grpc>=1.32 # Or opentelemetry-exporter-otlp-proto-http
+# Optional but recommended for web apps/DBs:
+opentelemetry-instrumentation-flask>=0.53b1
+opentelemetry-instrumentation-sqlalchemy>=0.53b1
+opentelemetry-instrumentation-requests>=0.53b1 # If making external HTTP requests
+opentelemetry-instrumentation-logging>=0.53b1 # To correlate logs with traces
 
-# Password Hashing
-bcrypt
-
-# For GEDCOM import/export (Optional - Keep if needed for future API endpoints)
-# gedcom-py
-
-# For data encryption
-pycryptodome
-
-# For sending emails (Password Reset)
-yagmail
-itsdangerous # Required by Flask for session signing, and used for tokens
-
-# For testing & Linting
-pytest
-pytest-cov
-flake8
-httpx
-cryptography
+# Add any other dependencies you have (e.g., gunicorn, requests)
