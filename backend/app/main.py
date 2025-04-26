@@ -361,11 +361,13 @@ def health_check():
         db_version_result = db_session.execute(text("SELECT version();")).scalar()
 
         # If we reach here, the database connection and basic query were successful
-        return jsonify({
+        response_data = {
             "status": "ok",
             "database": "connected",
             "database_version": db_version_result
-        }), 200
+        }
+        app.logger.info(f"Health check response: {response_data}") # Log response
+        return jsonify(response_data), 200
 
     except Exception as e:
         # Catch any exception during database connection or query

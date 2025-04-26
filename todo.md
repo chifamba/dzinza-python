@@ -9,45 +9,39 @@ Database
 [ ] Implement database replication to improve performance.
 
 Complex Operations
-[ ] Partial tree loading.
+[ ] Partial tree loading. (The get_partial_tree function in services.py is a placeholder.)
 
-[ ] Advanced search and filtering.
+[ ] Advanced search and filtering. (The search_people function in services.py has basic filtering, but likely needs enhancement for "advanced" capabilities.)
 
-[ ] Define functions to get the relationships and attributes of a person.
+[x] Define functions to get the relationships and attributes of a person. (The get_person_relationships_and_attributes function in services.py is implemented.)
 
 [x] Tree Traversal:
 
-[x] get_ancestors(db: Session, person_id: int, depth: int): Get the ancestors of a person up to a certain depth.
+[x] get_ancestors(db: Session, person_id: int, depth: int): Get the ancestors of a person up to a certain depth. (Implemented with iterative logic.)
 
-[x] get_descendants(db: Session, person_id: int, depth: int): Get the descendants of a person up to a certain depth.
+[x] get_descendants(db: Session, person_id: int, depth: int): Get the descendants of a person up to a certain depth. (Implemented with iterative logic.)
 
-[x] get_extended_family(db: Session, person_id: int, depth: int): Get the extended family of a person up to a certain depth (siblings, cousins, etc).
+[ ] get_extended_family(db: Session, person_id: int, depth: int): Get the extended family of a person up to a certain depth (siblings, cousins, etc). (Function not found in services.py.)
 
-[x] get_related(db: Session, person_id: int, depth: int): Get the related people of a person up to a certain depth (in-laws, step-relations, etc).
-
-[ ] Partial tree loading.
-
-[ ] Advanced search and filtering.
-
-[ ] Define functions to get the relationships and attributes of a person.
+[ ] get_related(db: Session, person_id: int, depth: int): Get the related people of a person up to a certain depth (in-laws, step-relations, etc). (Function not found in services.py.)
 
 Enhanced Logging and Tracing
-[ ] Implement enhanced logging throughout the application.
+[ ] Implement enhanced logging throughout the application. (Basic logging is present, but "enhanced" implies more structured/detailed logging.)
 
-[ ] Enable tracing of application calls end-to-end using correlation IDs.
+[ ] Enable tracing of application calls end-to-end using correlation IDs. (Not implemented.)
 
-[ ] Support OpenTelemetry type metrics for monitoring.
+[ ] Support OpenTelemetry type metrics for monitoring. (Not implemented.)
 
 Security
-[ ] Implement JWT authentication.
+[ ] Implement JWT authentication. (Not implemented; currently uses Flask sessions.)
 
-[ ] Implement Two-factor authentication.
+[ ] Implement Two-factor authentication. (Not implemented.)
 
-[ ] Implement Security audit logging.
+[ ] Implement Security audit logging. (Basic file-based audit logging is implemented in src/audit_log.py, but "Security audit logging" might imply a more robust system.)
 
-[ ] Implement actual password hashing in encryption.py.
+[ ] Implement actual password hashing in encryption.py. (The hash_password function in src/encryption.py is explicitly a placeholder. The hashing logic is in user_management.py.)
 
-[ ] Implement actual password verification in encryption.py.
+[ ] Implement actual password verification in encryption.py. (The verify_password function in src/encryption.py is explicitly a placeholder. The verification logic is in user_management.py.)
 
 Frontend
 [ ] Redesign the dashboard:
@@ -136,172 +130,174 @@ Media management
 [ ] Create default image for men, women, boys and girls.
 
 GEDCOM support
-[ ] Add GEDCOM import capability.
+[ ] Add GEDCOM import capability. (Not implemented.)
 
-[ ] Implement GEDCOM export functionality.
+[ ] Implement GEDCOM export functionality. (Not implemented.)
 
-[ ] Create merge strategy for imported data.
+[ ] Create merge strategy for imported data. (Not implemented.)
 
-[ ] Add validation for GEDCOM format compliance.
+[ ] Add validation for GEDCOM format compliance. (Not implemented.)
 
 Collaboration
-[ ] Implement basic collaboration tools (e.g., shared view).
+[ ] Implement basic collaboration tools (e.g., shared view). (Not implemented.)
 
-[ ] Add user role and permissions management.
+[ ] Add user role and permissions management. (Basic role handling is in user_management.py and decorators in main.py, but full management UI/features are not implemented.)
 
-[ ] Build collaboration history tracking.
+[ ] Build collaboration history tracking. (Not implemented.)
 
-[ ] Create collaboration notifications.
+[ ] Create collaboration notifications. (Not implemented.)
 
-[ ] Research and implement advanced collaboration features (e.g., commenting, shared editing).
+[ ] Research and implement advanced collaboration features (e.g., commenting, shared editing). (Not implemented.)
 
-[ ] Implement user profile management.
+[ ] Implement user profile management. (Basic user details retrieval is in user_management.py, but full profile management is not implemented.)
 
-[ ] Create user preferences for visualization.
+[ ] Create user preferences for visualization. (Not implemented.)
 
-[ ] Add favorite/recent people tracking.
+[ ] Add favorite/recent people tracking. (Not implemented.)
 
-[ ] Implement notification system for changes.
+[ ] Implement notification system for changes. (Not implemented.)
 
-[ ] Create activity feed for tree changes.
+[ ] Create activity feed for tree changes. (Not implemented.)
 
-[ ] Build user activity dashboard.
+[ ] Build user activity dashboard. (Not implemented.)
 
-[ ] Add email notifications for important changes.
+[ ] Add email notifications for important changes. (Not implemented.)
 
 Data Export and Backup
-[ ] Create report builder interface.
+[ ] Create report builder interface. (Not implemented.)
 
-[ ] Implement print layouts for trees.
+[ ] Implement print layouts for trees. (Not implemented.)
 
-[ ] Add PDF generation for family trees.
+[ ] Add PDF generation for family trees. (Not implemented.)
 
-[ ] Build custom report generation.
+[ ] Build custom report generation. (Not implemented.)
 
-[ ] Create sharing options for reports.
+[ ] Create sharing options for reports. (Not implemented.)
 
-[ ] Implement data export in multiple formats.
+[ ] Implement data export in multiple formats. (Not implemented.)
 
 API Enhancements and Integration
-[ ] Implement proper API versioning (/api/v1/...).
+[ ] Implement proper API versioning (/api/v1/...). (Not implemented.)
 
-[ ] Create OpenAPI/Swagger documentation.
+[ ] Create OpenAPI/Swagger documentation. (Not implemented.)
 
-[ ] Add rate limiting and throttling.
+[ ] Add rate limiting and throttling. (Not implemented.)
 
-[ ] Implement proper error response structure.
+[ ] Implement proper error response structure. (Basic Flask error handlers are present, but might need refinement for a consistent API structure.)
 
-[ ] Create webhooks for external system integration.
+[ ] Create webhooks for external system integration. (Not implemented.)
 
-[ ] Add OAuth support for third-party authentication.
+[ ] Add OAuth support for third-party authentication. (Not implemented.)
 
-[ ] Implement public API for approved partners.
+[ ] Implement public API for approved partners. (Not implemented.)
 
-[ ] Create data sync capabilities.
+[ ] Create data sync capabilities. (Not implemented.)
 
 Database
-[x] Update app.py to connect to the database.
+[x] Update app.py to connect to the database. (Implemented.)
 
-[x] Create the database models.
+[x] Create the database models. (Models are defined in app/models.)
 
-[x] Create the database schema programmatically in app.py.
+[x] Create the database schema programmatically in app.py. (Implemented using Base.metadata.create_all.)
 
-[x] Create an initial job to populate the database with the base schema and initial structure. This should run once only.
+[x] Create an initial job to populate the database with the base schema and initial structure. This should run once only. (Implemented in db_init.py, but uses placeholder password hashes.)
 
-[x] Add PostgreSQL as the database to the
+[x] Add PostgreSQL as the database to the (This task seems incomplete in its description, but PostgreSQL is configured in docker-compose.yml.)
 
-[x] Create User CRUD API endpoints.
+[ ] Create User CRUD API endpoints. (Basic GET endpoints are in main.py, but POST, PUT, DELETE are not fully implemented as endpoints.)
 
-[x] Create Person CRUD API endpoints.
+[ ] Create Person CRUD API endpoints. (GET and POST endpoints are in main.py, but PUT and DELETE are not fully implemented as endpoints.)
 
-[x] Create PersonAttribute CRUD API endpoints.
+[ ] Create PersonAttribute CRUD API endpoints. (GET endpoints are in main.py, but POST, PUT, DELETE are not fully implemented as endpoints.)
 
-[x] Create Relationship CRUD API endpoints.
+[ ] Create Relationship CRUD API endpoints. (GET endpoints are in main.py, but GET by ID, POST, PUT, DELETE are not fully implemented as endpoints.)
 
-[x] Create RelationshipAttribute CRUD API endpoints.
+[ ] Create RelationshipAttribute CRUD API endpoints. (GET endpoints are in main.py, but GET by ID, POST, PUT, DELETE are not fully implemented as endpoints.)
 
-[x] Create Media CRUD API endpoints.
+[ ] Create Media CRUD API endpoints. (GET endpoints are in main.py, but GET by ID, POST, PUT, DELETE are not fully implemented as endpoints.)
 
-[x] Create Event CRUD API endpoints.
+[ ] Create Event CRUD API endpoints. (GET endpoints are in main.py, but GET by ID, POST, PUT, DELETE are not fully implemented as endpoints.)
 
-[x] Create Source CRUD API endpoints.
+[ ] Create Source CRUD API endpoints. (GET endpoints are in main.py, but GET by ID, POST, PUT, DELETE are not fully implemented as endpoints.)
 
-[x] Create Citation CRUD API endpoints.
+[ ] Create Citation CRUD API endpoints. (GET endpoints are in main.py, but GET by ID, POST, PUT, DELETE are not fully implemented as endpoints.)
 
 Backend Services
-[ ] Implement get_all_events logic in services.py.
+[x] Refactor db_utils.py to correctly use encryption functions. (Completed.)
 
-[ ] Implement get_event_by_id logic in services.py.
+[ ] Implement get_all_events logic in services.py. (Placeholder.)
 
-[ ] Implement create_event logic in services.py.
+[ ] Implement get_event_by_id logic in services.py. (Placeholder.)
 
-[ ] Implement update_event logic in services.py.
+[ ] Implement create_event logic in services.py. (Placeholder.)
 
-[ ] Implement delete_event logic in services.py.
+[ ] Implement update_event logic in services.py. (Placeholder.)
 
-[ ] Implement get_all_sources logic in services.py.
+[ ] Implement delete_event logic in services.py. (Placeholder.)
 
-[ ] Implement get_source_by_id logic in services.py.
+[ ] Implement get_all_sources logic in services.py. (Placeholder.)
 
-[ ] Implement create_source logic in services.py.
+[ ] Implement get_source_by_id logic in services.py. (Placeholder.)
 
-[ ] Implement update_source logic in services.py.
+[ ] Implement create_source logic in services.py. (Placeholder.)
 
-[ ] Implement delete_source logic in services.py.
+[ ] Implement update_source logic in services.py. (Placeholder.)
 
-[ ] Implement get_all_citations logic in services.py.
+[ ] Implement delete_source logic in services.py. (Placeholder.)
 
-[ ] Implement get_citation_by_id logic in services.py.
+[ ] Implement get_all_citations logic in services.py. (Placeholder.)
 
-[ ] Implement create_citation logic in services.py.
+[ ] Implement get_citation_by_id logic in services.py. (Placeholder.)
 
-[ ] Implement update_citation logic in services.py.
+[ ] Implement create_citation logic in services.py. (Placeholder.)
 
-[ ] Implement delete_citation logic in services.py.
+[ ] Implement update_citation logic in services.py. (Placeholder.)
 
-[ ] Implement create_person_attribute logic in services.py.
+[ ] Implement delete_citation logic in services.py. (Placeholder.)
 
-[ ] Implement update_person_attribute logic in services.py.
+[ ] Implement create_person_attribute logic in services.py. (Placeholder.)
 
-[ ] Implement delete_person_attribute logic in services.py.
+[ ] Implement update_person_attribute logic in services.py. (Placeholder.)
 
-[ ] Implement get_relationship_by_id logic in services.py.
+[ ] Implement delete_person_attribute logic in services.py. (Placeholder.)
 
-[ ] Implement create_relationship logic in services.py.
+[ ] Implement get_relationship_by_id logic in services.py. (Placeholder.)
 
-[ ] Implement update_relationship logic in services.py.
+[ ] Implement create_relationship logic in services.py. (Placeholder.)
 
-[ ] Implement delete_relationship logic in services.py.
+[ ] Implement update_relationship logic in services.py. (Placeholder.)
 
-[ ] Implement get_relationship_attribute logic in services.py.
+[ ] Implement delete_relationship logic in services.py. (Placeholder.)
 
-[ ] Implement create_relationship_attribute logic in services.py.
+[ ] Implement get_relationship_attribute logic in services.py. (Placeholder.)
 
-[ ] Implement update_relationship_attribute logic in services.py.
+[ ] Implement create_relationship_attribute logic in services.py. (Placeholder.)
 
-[ ] Implement delete_relationship_attribute logic in services.py.
+[ ] Implement update_relationship_attribute logic in services.py. (Placeholder.)
 
-[ ] Implement get_all_media logic in services.py.
+[ ] Implement delete_relationship_attribute logic in services.py. (Placeholder.)
 
-[ ] Implement get_media_by_id logic in services.py.
+[ ] Implement get_all_media logic in services.py. (Placeholder.)
 
-[ ] Implement create_media logic in services.py.
+[ ] Implement get_media_by_id logic in services.py. (Placeholder.)
 
-[ ] Implement update_media logic in services.py.
+[ ] Implement create_media logic in services.py. (Placeholder.)
 
-[ ] Implement delete_media logic in services.py.
+[ ] Implement update_media logic in services.py. (Placeholder.)
 
-[ ] Implement get_partial_tree logic in services.py.
+[ ] Implement delete_media logic in services.py. (Placeholder.)
+
+[ ] Implement get_partial_tree logic in services.py. (Placeholder.)
 
 Testing and Reliability
-[ ] Create a comprehensive test suite with high coverage.
+[ ] Create a comprehensive test suite with high coverage. (Tests exist, but coverage needs to be assessed.)
 
-[ ] Implement load testing scripts.
+[ ] Implement load testing scripts. (Not implemented.)
 
-[ ] Add automated integration testing.
+[ ] Add automated integration testing. (Integration tests exist, but automation setup like CI/CD is pending.)
 
-[ ] Create stress testing for large tree handling.
+[ ] Create stress testing for large tree handling. (Not implemented.)
 
-[ ] Create a GitHub Actions workflow for CI/CD.
+[ ] Create a GitHub Actions workflow for CI/CD. (Not implemented.)
 
-[ ] Deploy the application to a scalable cloud hosting environment.
+[ ] Deploy the application to a scalable cloud hosting environment. (Not implemented.)
