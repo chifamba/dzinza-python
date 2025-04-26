@@ -2,8 +2,8 @@
 import logging
 import bcrypt
 import base64
-from sqlalchemy.orm import Session
-from sqlalchemy.exc import SQLAlchemyError, NoResultFound
+from sqlalchemy.orm import Session, load_only # Import load_only
+from sqlalchemy.exc import SQLAlchemyError, NoResultFound, IntegrityError # Import IntegrityError
 from typing import Optional, List, Dict, Any
 
 # Assuming User model and audit log function are correctly imported/defined
@@ -77,6 +77,7 @@ class UserManagement:
         existing_user = self.db.query(User).filter(User.username == username).first()
         if existing_user:
             logging.warning(f"Attempted to create user with existing username '{username}'.")
+            # Log audit using 'system' as actor for creation initiated internally (e.g., API endpoint)
             log_audit(self.audit_log_path, "system", "create_user_failed", f"username '{username}' already exists")
             return None
 
@@ -162,6 +163,52 @@ class UserManagement:
             log_audit(self.audit_log_path, performing_user, "change_role_failed", f"database error for user '{username_to_change}': {e}")
             return False
 
+    # ADDED: Method to change user role by ID
+    def change_user_role_by_id(self, user_id_to_change: int, new_role: str, performing_user_id: int) -> Optional[User]:
+        """Changes the role of a user by their ID."""
+        performing_user_obj = self.find_user_by_id(performing_user_id)
+        performing_username = performing_user_obj.username if performing_user_obj else 'unknown_user'
+
+        if new_role not in VALID_ROLES:
+            logging.warning(f"User '{performing_username}' attempted to set invalid role '{new_role}' for user ID {user_id_to_change}.")
+            log_audit(self.audit_log_path, performing_username, "change_role_failed", f"invalid role '{new_role}' for user ID {user_id_to_change}")
+            raise ValueError(f"Invalid role specified. Valid roles are: {', '.join(VALID_ROLES)}")
+
+        try:
+            user = self.db.query(User).filter(User.id == user_id_to_change).first()
+            if not user:
+                logging.warning(f"User '{performing_username}' attempted to change role for non-existent user ID {user_id_to_change}.")
+                log_audit(self.audit_log_path, performing_username, "change_role_failed", f"user ID {user_id_to_change} not found")
+                return None
+
+            # Prevent admin from changing their own role via this method
+            if user.id == performing_user_id and new_role != user.role:
+                 logging.warning(f"User '{performing_username}' attempted to change their own role.")
+                 log_audit(self.audit_log_path, performing_username, "change_role_failed", "attempted to change own role")
+                 # Consider raising a specific exception or returning a status indicating this
+                 # For now, returning None and logging as failure
+                 return None
+
+
+            old_role = user.role
+            if old_role != new_role:
+                user.role = new_role
+                self.db.commit()
+                self.db.refresh(user) # Refresh to get updated state
+                logging.info(f"User '{performing_username}' changed role of user ID {user_id_to_change} from '{old_role}' to '{new_role}'.")
+                log_audit(self.audit_log_path, performing_username, "change_role_success", f"changed role for user ID {user_id_to_change} from '{old_role}' to '{new_role}'")
+            else:
+                 logging.info(f"User '{performing_username}' attempted to set role for user ID {user_id_to_change} to their current role '{old_role}'. No change needed.")
+                 log_audit(self.audit_log_path, performing_username, "change_role_no_change", f"no role change for user ID {user_id_to_change}")
+
+            return user # Return the updated user object
+
+        except SQLAlchemyError as e:
+            self.db.rollback()
+            logging.error(f"Database error changing role for user ID {user_id_to_change}: {e}", exc_info=True)
+            log_audit(self.audit_log_path, performing_username, "change_role_failed", f"database error for user ID {user_id_to_change}: {e}")
+            raise # Re-raise DB errors
+
     def delete_user(self, username_to_delete: str, performing_user: str) -> bool:
         """Deletes a user."""
         if username_to_delete == performing_user:
@@ -186,6 +233,37 @@ class UserManagement:
             logging.error(f"Database error deleting user '{username_to_delete}': {e}", exc_info=True)
             log_audit(self.audit_log_path, performing_user, "delete_user_failed", f"database error for user '{username_to_delete}': {e}")
             return False
+
+    # ADDED: Method to delete user by ID
+    def delete_user_by_id(self, user_id_to_delete: int, performing_user_id: int) -> bool:
+        """Deletes a user by their ID."""
+        performing_user_obj = self.find_user_by_id(performing_user_id)
+        performing_username = performing_user_obj.username if performing_user_obj else 'unknown_user'
+
+        if user_id_to_delete == performing_user_id:
+             logging.warning(f"User '{performing_username}' attempted to delete themselves (ID: {performing_user_id}).")
+             log_audit(self.audit_log_path, performing_username, "delete_user_failed", "attempted to delete self")
+             return False
+
+        try:
+            user = self.db.query(User).filter(User.id == user_id_to_delete).first()
+            if not user:
+                logging.warning(f"User '{performing_username}' attempted to delete non-existent user ID {user_id_to_delete}.")
+                log_audit(self.audit_log_path, performing_username, "delete_user_failed", f"user ID {user_id_to_delete} not found")
+                return False
+
+            username_to_delete = user.username # Get username for logging before deleting
+            self.db.delete(user)
+            self.db.commit()
+            logging.info(f"User '{performing_username}' deleted user '{username_to_delete}' (ID: {user_id_to_delete}).")
+            log_audit(self.audit_log_path, performing_username, "delete_user_success", f"deleted user '{username_to_delete}' (ID: {user_id_to_delete})")
+            return True
+        except SQLAlchemyError as e:
+            self.db.rollback()
+            logging.error(f"Database error deleting user ID {user_id_to_delete}: {e}", exc_info=True)
+            log_audit(self.audit_log_path, performing_username, "delete_user_failed", f"database error for user ID {user_id_to_delete}: {e}")
+            return False
+
 
     def change_password(self, username: str, old_password: str, new_password: str) -> bool:
         """Changes a user's password after verifying the old one."""

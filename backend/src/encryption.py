@@ -1,17 +1,17 @@
 # backend/src/encryption.py
 import os
 import base64
-# Removed unused json import
-import logging # Added logging import
+import logging
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.backends import default_backend
-from cryptography.exceptions import InvalidKey, InvalidTag # Import InvalidTag for decryption errors
+from cryptography.exceptions import InvalidKey, InvalidTag
 
 # --- Constants ---
-KEY_FILE = os.path.join(os.path.dirname(__file__), '..', 'data', 'encryption_key.key') # Adjusted path relative to src
-# For password hashing/key derivation
+# Adjusted path relative to src directory
+KEY_FILE = os.path.join(os.path.dirname(__file__), '..', 'data', 'encryption_key.key')
+# For password hashing/key derivation (These are used by derive_key_from_password, not the removed password functions)
 SALT_SIZE = 16
 ITERATIONS = 390000 # Recommended iterations for PBKDF2
 
@@ -89,20 +89,9 @@ def decrypt_data(key: bytes, encrypted_data: bytes) -> str:
         # Log error appropriately
         raise ValueError(f"Decryption failed. Invalid key, tampered data, or incorrect data type: {e}")
 
-# --- Password Hashing and Verification (Placeholders) ---
-def hash_password(password: str) -> str:
-    """Hashes a password (Placeholder)."""
-    logging.warning("Encryption service 'hash_password' is a placeholder.")
-    # TODO: Implement actual password hashing using a secure library (e.g., bcrypt, argon2)
-    # This placeholder just returns the password prefixed, NOT secure
-    return f"hashed_placeholder_{password}"
-
-def verify_password(password: str, hashed_password: str) -> bool:
-    """Verifies a password against a hashed password (Placeholder)."""
-    logging.warning("Encryption service 'verify_password' is a placeholder.")
-    # TODO: Implement actual password verification using the same secure library as hashing
-    # This placeholder just checks the prefix, NOT secure
-    return hashed_password == f"hashed_placeholder_{password}"
+# --- Password Hashing and Verification (REMOVED PLACEHOLDERS) ---
+# The actual password hashing and verification logic is handled within
+# the UserManagement class in src/user_management.py using bcrypt.
 
 
 # --- Example Usage (Optional) ---
@@ -129,7 +118,6 @@ if __name__ == "__main__":
         print(f"Original: {secret}")
 
         encrypted = encrypt_data(loaded_key, secret)
-        # Fixed F541: Added placeholder or removed f-prefix
         print(f"Encrypted: {encrypted}") # Show bytes representation
 
         decrypted = decrypt_data(loaded_key, encrypted)
@@ -157,14 +145,7 @@ if __name__ == "__main__":
         assert data_for_derived == decrypted_derived
         print("Encryption/Decryption with derived key successful.")
 
-        # Example Password Hashing/Verification (using placeholders)
-        test_password = "securepassword123"
-        hashed = hash_password(test_password)
-        print(f"\nTest Password: {test_password}")
-        print(f"Placeholder Hashed: {hashed}")
-        print(f"Verification (correct): {verify_password(test_password, hashed)}")
-        print(f"Verification (incorrect): {verify_password('wrongpassword', hashed)}")
-
+        # Password hashing/verification examples are now in user_management.py
 
     except FileNotFoundError as e:
         print(f"Error: {e}")
@@ -172,4 +153,3 @@ if __name__ == "__main__":
         print(f"Error: {e}")
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
-

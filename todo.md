@@ -17,13 +17,13 @@ Complex Operations
 
 [x] Tree Traversal:
 
-[x] get_ancestors(db: Session, person_id: int, depth: int): Get the ancestors of a person up to a certain depth. (Implemented with iterative logic.)
+[x] get_ancestors(db: Session, person_id: int, depth: int): Get the ancestors of a person up to a certain depth. (Implemented with iterative logic, returns list of dicts.)
 
-[x] get_descendants(db: Session, person_id: int, depth: int): Get the descendants of a person up to a certain depth. (Implemented with iterative logic.)
+[x] get_descendants(db: Session, person_id: int, depth: int): Get the descendants of a person up to a certain depth. (Implemented with iterative logic, returns list of dicts.)
 
-[ ] get_extended_family(db: Session, person_id: int, depth: int): Get the extended family of a person up to a certain depth (siblings, cousins, etc). (Function not found in services.py.)
+[ ] get_extended_family(db: Session, person_id: int, depth: int): Get the extended family of a person up to a certain depth (siblings, cousins, etc). (Placeholder added in services.py.)
 
-[ ] get_related(db: Session, person_id: int, depth: int): Get the related people of a person up to a certain depth (in-laws, step-relations, etc). (Function not found in services.py.)
+[ ] get_related(db: Session, person_id: int, depth: int): Get the related people of a person up to a certain depth (in-laws, step-relations, etc). (Placeholder added in services.py.)
 
 Enhanced Logging and Tracing
 [ ] Implement enhanced logging throughout the application. (Basic logging is present, but "enhanced" implies more structured/detailed logging.)
@@ -39,9 +39,9 @@ Security
 
 [ ] Implement Security audit logging. (Basic file-based audit logging is implemented in src/audit_log.py, but "Security audit logging" might imply a more robust system.)
 
-[ ] Implement actual password hashing in encryption.py. (The hash_password function in src/encryption.py is explicitly a placeholder. The hashing logic is in user_management.py.)
+[x] Implement actual password hashing. (Implemented in user_management.py using bcrypt.)
 
-[ ] Implement actual password verification in encryption.py. (The verify_password function in src/encryption.py is explicitly a placeholder. The verification logic is in user_management.py.)
+[x] Implement actual password verification. (Implemented in user_management.py using bcrypt.)
 
 Frontend
 [ ] Redesign the dashboard:
@@ -204,7 +204,7 @@ Database
 
 [x] Add PostgreSQL as the database to the (This task seems incomplete in its description, but PostgreSQL is configured in docker-compose.yml.)
 
-[ ] Create User CRUD API endpoints. (Basic GET endpoints are in main.py, but POST, PUT, DELETE are not fully implemented as endpoints.)
+[x] Create User CRUD API endpoints. (Basic GET endpoints are in main.py, but POST, PUT, DELETE are not fully implemented as endpoints.) (Implemented POST, PUT /users/{id}/role, and DELETE endpoints in main.py, calling UserManagement methods.)
 
 [ ] Create Person CRUD API endpoints. (GET and POST endpoints are in main.py, but PUT and DELETE are not fully implemented as endpoints.)
 
@@ -225,69 +225,73 @@ Database
 Backend Services
 [x] Refactor db_utils.py to correctly use encryption functions. (Completed.)
 
-[ ] Implement get_all_events logic in services.py. (Placeholder.)
+[x] Implement get_all_events logic in services.py. (Implemented.)
 
-[ ] Implement get_event_by_id logic in services.py. (Placeholder.)
+[x] Implement get_event_by_id logic in services.py. (Implemented.)
 
-[ ] Implement create_event logic in services.py. (Placeholder.)
+[x] Implement create_event logic in services.py. (Implemented.)
 
-[ ] Implement update_event logic in services.py. (Placeholder.)
+[x] Implement update_event logic in services.py. (Implemented.)
 
-[ ] Implement delete_event logic in services.py. (Placeholder.)
+[x] Implement delete_event logic in services.py. (Implemented.)
 
-[ ] Implement get_all_sources logic in services.py. (Placeholder.)
+[x] Implement get_all_sources logic in services.py. (Implemented.)
 
-[ ] Implement get_source_by_id logic in services.py. (Placeholder.)
+[x] Implement get_source_by_id logic in services.py. (Implemented.)
 
-[ ] Implement create_source logic in services.py. (Placeholder.)
+[x] Implement create_source logic in services.py. (Implemented.)
 
-[ ] Implement update_source logic in services.py. (Placeholder.)
+[x] Implement update_source logic in services.py. (Implemented.)
 
-[ ] Implement delete_source logic in services.py. (Placeholder.)
+[x] Implement delete_source logic in services.py. (Implemented.)
 
-[ ] Implement get_all_citations logic in services.py. (Placeholder.)
+[x] Implement get_all_citations logic in services.py. (Implemented.)
 
-[ ] Implement get_citation_by_id logic in services.py. (Placeholder.)
+[x] Implement get_citation_by_id logic in services.py. (Implemented.)
 
-[ ] Implement create_citation logic in services.py. (Placeholder.)
+[x] Implement create_citation logic in services.py. (Implemented.)
 
-[ ] Implement update_citation logic in services.py. (Placeholder.)
+[x] Implement update_citation logic in services.py. (Implemented.)
 
-[ ] Implement delete_citation logic in services.py. (Placeholder.)
+[x] Implement delete_citation logic in services.py. (Implemented.)
 
-[ ] Implement create_person_attribute logic in services.py. (Placeholder.)
+[x] Implement create_person_attribute logic in services.py. (Implemented.)
 
-[ ] Implement update_person_attribute logic in services.py. (Placeholder.)
+[x] Implement update_person_attribute logic in services.py. (Implemented.)
 
-[ ] Implement delete_person_attribute logic in services.py. (Placeholder.)
+[x] Implement delete_person_attribute logic in services.py. (Implemented.)
 
-[ ] Implement get_relationship_by_id logic in services.py. (Placeholder.)
+[x] Implement get_relationship_by_id logic in services.py. (Implemented.)
 
-[ ] Implement create_relationship logic in services.py. (Placeholder.)
+[x] Implement create_relationship logic in services.py. (Implemented.)
 
-[ ] Implement update_relationship logic in services.py. (Placeholder.)
+[x] Implement update_relationship logic in services.py. (Implemented.)
 
-[ ] Implement delete_relationship logic in services.py. (Placeholder.)
+[x] Implement delete_relationship logic in services.py. (Implemented.)
 
-[ ] Implement get_relationship_attribute logic in services.py. (Placeholder.)
+[x] Implement get_relationship_attribute logic in services.py. (Implemented.)
 
-[ ] Implement create_relationship_attribute logic in services.py. (Placeholder.)
+[x] Implement create_relationship_attribute logic in services.py. (Implemented.)
 
-[ ] Implement update_relationship_attribute logic in services.py. (Placeholder.)
+[x] Implement update_relationship_attribute logic in services.py. (Implemented.)
 
-[ ] Implement delete_relationship_attribute logic in services.py. (Placeholder.)
+[x] Implement delete_relationship_attribute logic in services.py. (Implemented.)
 
-[ ] Implement get_all_media logic in services.py. (Placeholder.)
+[x] Implement get_all_media logic in services.py. (Implemented.)
 
-[ ] Implement get_media_by_id logic in services.py. (Placeholder.)
+[x] Implement get_media_by_id logic in services.py. (Implemented.)
 
-[ ] Implement create_media logic in services.py. (Placeholder.)
+[x] Implement create_media logic in services.py. (Implemented.)
 
-[ ] Implement update_media logic in services.py. (Placeholder.)
+[x] Implement update_media logic in services.py. (Implemented.)
 
-[ ] Implement delete_media logic in services.py. (Placeholder.)
+[x] Implement delete_media logic in services.py. (Implemented.)
 
 [ ] Implement get_partial_tree logic in services.py. (Placeholder.)
+
+[ ] Implement get_extended_family logic in services.py. (Placeholder added.)
+
+[ ] Implement get_related logic in services.py. (Placeholder added.)
 
 Testing and Reliability
 [ ] Create a comprehensive test suite with high coverage. (Tests exist, but coverage needs to be assessed.)

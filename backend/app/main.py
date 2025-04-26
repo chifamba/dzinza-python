@@ -8,7 +8,7 @@ from datetime import date, timedelta, datetime
 from logging.handlers import RotatingFileHandler
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError, NoResultFound
 from sqlalchemy.orm import sessionmaker, Session as DbSession
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text # Import text for health check
 from werkzeug.exceptions import HTTPException, Unauthorized, InternalServerError, NotFound, BadRequest, Forbidden
 from typing import Optional, List, Any
 
@@ -17,9 +17,13 @@ from typing import Optional, List, Any
 # Assuming these are correctly implemented in services.py
 try:
     from app.services import (
-        get_all_users, get_user_by_id, create_user, # User services
-        get_all_people_db, get_person_by_id_db, create_person_db, # Person services (add update/delete if available)
-        # update_person_db, delete_person_db, # Uncomment if implemented in services.py
+        # User services (UserManagement handles most of this now)
+        get_all_users, # Keep for GET /users list
+        # get_user_by_id, # Use UserManagement.find_user_by_id instead
+        # create_user, # Use UserManagement.create_user instead
+
+        get_all_people_db, get_person_by_id_db, create_person_db, # Person services
+        update_person_db, delete_person_db, # Import update and delete person services
         get_all_events, get_event_by_id, create_event, update_event, delete_event, # Event services
         get_all_sources, get_source_by_id, create_source, update_source, delete_source, # Source services
         get_all_citations, get_citation_by_id, create_citation, update_citation, delete_citation, # Citation services
@@ -471,9 +475,10 @@ def api_check_session():
 def get_users():
     """Get all users (Admin only)."""
     try:
-        users = get_all_users(g.db) # Use session from g
-        # Convert User objects to dicts for JSON response
-        return jsonify([u.to_dict() for u in users]) # Use to_dict method
+        # Use UserManagement to list users
+        user_manager = UserManagement(g.db, AUDIT_LOG_FILE)
+        users_list = user_manager.list_all_users() # Assuming this returns list of dicts
+        return jsonify(users_list)
     except Exception as e:
         # Error handled by generic handlers, logging happens there
         # Re-raise or let it propagate
@@ -484,7 +489,9 @@ def get_users():
 def get_user(user_id: int):
     """Get a specific user (Admin only)."""
     try:
-        user = get_user_by_id(g.db, user_id) # Use session from g
+        # Use UserManagement to find user by ID
+        user_manager = UserManagement(g.db, AUDIT_LOG_FILE)
+        user = user_manager.find_user_by_id(user_id) # Assuming this returns User object or None
         if not user:
             abort(404, "User not found")
         return jsonify(user.to_dict()) # Use to_dict method
@@ -493,8 +500,130 @@ def get_user(user_id: int):
     except Exception as e:
         raise e # Let the error handlers catch it
 
-# --- Implement POST /users, PUT /users/{id}/role, DELETE /users/{id} similarly ---
-# Remember to use g.db for the session
+# ADDED: POST /api/users endpoint for creating users
+@app.route('/api/users', methods=['POST'])
+# @api_admin_required # Decide if only admin can create users, or if registration handles basic
+# Assuming this endpoint is for Admin to create users, hence admin_required
+@api_admin_required
+def create_user_api():
+    """Create a new user (Admin only)."""
+    data = request.get_json()
+    if not data or not data.get('username') or not data.get('password'):
+        abort(400, description="Username and password required.")
+
+    username = data['username']
+    password = data['password']
+    role = data.get('role', 'basic') # Allow admin to specify role, default to basic
+
+    user_manager = UserManagement(g.db, AUDIT_LOG_FILE)
+    performing_user = session.get('username', 'unknown_user')
+
+    try:
+        # Call UserManagement method to create user
+        new_user = user_manager.create_user(username, password, role)
+        if new_user:
+            log_audit(AUDIT_LOG_FILE, performing_user, 'create_user_admin', f'success - username: {username}, role: {role}')
+            app.logger.info(f"Admin '{performing_user}' created user '{username}' with role '{role}'.")
+            return jsonify(new_user.to_dict()), 201 # Return created user details
+        else:
+            # UserManagement.create_user returns None on duplicate username
+            log_audit(AUDIT_LOG_FILE, performing_user, 'create_user_admin', f'failure - username already exists: {username}')
+            abort(409, description=f"Username '{username}' is already taken.")
+    except ValueError as ve:
+        # Catch invalid role from UserManagement
+        log_audit(AUDIT_LOG_FILE, performing_user, 'create_user_admin', f'failure - validation error: {ve}')
+        abort(400, description=str(ve))
+    except HTTPException: # Re-raise Flask HTTP exceptions
+        raise
+    except Exception as e:
+        # Generic error handler will catch SQLAlchemyError
+        app.logger.error(f"Unexpected error creating user via admin endpoint: {e}", exc_info=True)
+        abort(500) # Let generic handler manage response
+
+
+# ADDED: PUT /api/users/<int:user_id>/role endpoint for changing user role
+@app.route('/api/users/<int:user_id>/role', methods=['PUT'])
+@api_admin_required
+def change_user_role_api(user_id: int):
+    """Change the role of a specific user (Admin only)."""
+    data = request.get_json()
+    if not data or 'role' not in data:
+        abort(400, description="Role field is required.")
+
+    new_role = data['role']
+    performing_user_id = session.get('user_id')
+    performing_username = session.get('username', 'unknown_user')
+
+    user_manager = UserManagement(g.db, AUDIT_LOG_FILE)
+
+    try:
+        # Call UserManagement method to change role by ID
+        updated_user = user_manager.change_user_role_by_id(user_id, new_role, performing_user_id)
+
+        if updated_user:
+             # UserManagement method handles success logging
+             return jsonify(updated_user.to_dict()), 200
+        else:
+             # UserManagement method returns None if target user not found or self-modification attempt
+             # It also logs the failure
+             # Need to differentiate between user not found and self-modification attempt
+             # Let's assume returning None from change_user_role_by_id means it was a self-modification attempt
+             # If user not found, the service method should raise 404
+             # Re-fetch the user to check if they exist if service doesn't raise 404
+             target_user_check = user_manager.find_user_by_id(user_id)
+             if not target_user_check:
+                  abort(404, description=f"User with ID {user_id} not found.")
+             # If user exists but updated_user is None, it was likely a self-modification attempt
+             abort(403, description="Admins cannot change their own role via this endpoint.")
+
+
+    except ValueError as ve:
+        # Catch invalid role from UserManagement
+        log_audit(AUDIT_LOG_FILE, performing_username, 'change_role_failed', f'validation error: {ve} for user ID {user_id}')
+        abort(400, description=str(ve))
+    except HTTPException: # Re-raise Flask HTTP exceptions (like 404 if service raises it)
+        raise
+    except Exception as e:
+        # Generic error handler will catch SQLAlchemyError
+        app.logger.error(f"Unexpected error changing role for user ID {user_id}: {e}", exc_info=True)
+        abort(500) # Let generic handler manage response
+
+
+# ADDED: DELETE /api/users/<int:user_id> endpoint for deleting users
+@app.route('/api/users/<int:user_id>', methods=['DELETE'])
+@api_admin_required
+def delete_user_api(user_id: int):
+    """Delete a specific user (Admin only)."""
+    performing_user_id = session.get('user_id')
+    performing_username = session.get('username', 'unknown_user')
+
+    user_manager = UserManagement(g.db, AUDIT_LOG_FILE)
+
+    try:
+        # Call UserManagement method to delete user by ID
+        success = user_manager.delete_user_by_id(user_id, performing_user_id)
+
+        if success:
+            # UserManagement method handles success logging
+            return jsonify({"message": "User deleted successfully"}), 204 # 204 No Content
+        else:
+            # UserManagement method returns False if target user not found or self-deletion attempt
+            # It also logs the failure
+            # Need to differentiate between user not found and self-modification attempt
+            # Re-fetch the user to check if they exist if service returns False
+            target_user_check = user_manager.find_user_by_id(user_id)
+            if not target_user_check:
+                 abort(404, description=f"User with ID {user_id} not found.")
+            # If user exists but delete_user_by_id returned False, it was a self-deletion attempt
+            abort(403, description="Admins cannot delete their own account via this endpoint.")
+
+    except HTTPException: # Re-raise Flask HTTP exceptions (like 404 if service raises it)
+        raise
+    except Exception as e:
+        # Generic error handler will catch SQLAlchemyError
+        app.logger.error(f"Unexpected error deleting user ID {user_id}: {e}", exc_info=True)
+        abort(500) # Let generic handler manage response
+
 
 # --- People Endpoints ---
 @app.route('/api/people', methods=['GET'])
@@ -604,8 +733,73 @@ def create_person_api():
         abort(500) # Let generic handler manage response
 
 
-# --- Implement PUT /people/{id} and DELETE /people/{id} similarly ---
-# Remember to use g.db, handle validation, logging, auditing, and exceptions
+# ADDED: PUT /api/people/{person_id} endpoint for updating a person
+@app.route('/api/people/<int:person_id>', methods=['PUT'])
+@api_login_required
+def update_person_api(person_id: int):
+    """Update an existing person."""
+    data = request.get_json()
+    if not data:
+        abort(400, description="Request body must be valid JSON.")
+
+    # Validate incoming data for update (only validate fields that are present)
+    validation_errors = validate_person_data(data, is_edit=True)
+    if validation_errors:
+        abort(400, description=validation_errors)
+
+    username = session.get('username', 'unknown')
+
+    try:
+        # Call the service function to update the person
+        updated_person_data = update_person_db(g.db, person_id, data)
+
+        if updated_person_data:
+            log_audit(AUDIT_LOG_FILE, username, 'update_person', f'success - id: {person_id}')
+            app.logger.info(f"User '{username}' updated person ID {person_id}")
+            return jsonify(updated_person_data), 200 # Return the updated person data
+        else:
+            # Service should raise 404 if person not found, but as a fallback:
+            abort(404, description=f"Person with ID {person_id} not found.")
+
+    except HTTPException: # Re-raise Flask HTTP exceptions (like 404 from service)
+        raise
+    except IntegrityError as ie: # Catch potential DB integrity errors during update
+         db = g.get('db')
+         if db: db.rollback()
+         app.logger.error(f"Integrity error updating person {person_id}: {ie}", exc_info=True)
+         abort(409, description="Failed to update person due to data conflict.")
+    except Exception as e:
+        # Generic error handler will catch SQLAlchemyError
+        app.logger.error(f"Unexpected error updating person ID {person_id}: {e}", exc_info=True)
+        abort(500) # Let generic handler manage response
+
+
+# ADDED: DELETE /api/people/{person_id} endpoint for deleting a person
+@app.route('/api/people/<int:person_id>', methods=['DELETE'])
+@api_login_required
+def delete_person_api(person_id: int):
+    """Delete a person."""
+    username = session.get('username', 'unknown')
+
+    try:
+        # Call the service function to delete the person
+        success = delete_person_db(g.db, person_id)
+
+        if success:
+            log_audit(AUDIT_LOG_FILE, username, 'delete_person', f'success - id: {person_id}')
+            app.logger.info(f"User '{username}' deleted person ID {person_id}")
+            return jsonify({"message": "Person deleted successfully"}), 204 # 204 No Content
+        else:
+             # Service should raise 404 if person not found, but as a fallback:
+             abort(404, description=f"Person with ID {person_id} not found.")
+
+    except HTTPException: # Re-raise Flask HTTP exceptions (like 404 from service)
+        raise
+    except Exception as e:
+        # Generic error handler will catch SQLAlchemyError
+        app.logger.error(f"Unexpected error deleting person ID {person_id}: {e}", exc_info=True)
+        abort(500) # Let generic handler manage response
+
 
 # --- Person Attributes Endpoints ---
 @app.route("/api/person_attributes", methods=['GET'])
@@ -1070,4 +1264,3 @@ if __name__ == '__main__':
     # Debug mode is automatically enabled if FLASK_DEBUG=1 env var is set
     # app.run(debug=True) handles this.
     app.run(host='0.0.0.0', port=port) # Debug determined by FLASK_DEBUG env var
-
