@@ -653,7 +653,7 @@ if not DATABASE_URL:
     exit(1)
     
 # Create the SQLAlchemy engine and session factory
-engine = create_engine(DATABASE_URL)
+engine = create_engine(DATABASE_URL,pool_size=32)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 @app.before_request
