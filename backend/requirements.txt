@@ -1,22 +1,31 @@
-
 # backend/requirements.txt
 
-Flask>=3.1 # Or your specific Flask version
-SQLAlchemy>=2.0 # Or your specific SQLAlchemy version
-psycopg2-binary>=2.9 # Or your specific PostgreSQL driver
-bcrypt>=4.3 # For password hashing
-cryptography>=44.0 # For data encryption
-python-dotenv>=1.1 # Optional: For loading environment variables
+# Core Dependencies
+Flask>=3.1  # Web framework
+SQLAlchemy>=2.0  # ORM and database interaction
+psycopg2-binary>=2.9  # PostgreSQL driver
+bcrypt>=4.3  # Password hashing
+cryptography>=44.0  # Data encryption
+python-dotenv>=1.1  # Load environment variables
 
 # Logging & Tracing
-structlog>=25.3 # For structured logging
-opentelemetry-api>=1.32
-opentelemetry-sdk>=1.32
-opentelemetry-exporter-otlp-proto-grpc>=1.32 # Or opentelemetry-exporter-otlp-proto-http
-# Optional but recommended for web apps/DBs:
-opentelemetry-instrumentation-flask>=0.53b1
-opentelemetry-instrumentation-sqlalchemy>=0.53b1
-opentelemetry-instrumentation-requests>=0.53b1 # If making external HTTP requests
-opentelemetry-instrumentation-logging>=0.53b1 # To correlate logs with traces
+structlog>=25.3  # Structured logging
+opentelemetry-api>=1.32  # OpenTelemetry API
+opentelemetry-sdk>=1.32  # OpenTelemetry SDK
+opentelemetry-exporter-otlp-proto-grpc>=1.32  # OpenTelemetry OTLP exporter (gRPC)
+opentelemetry-instrumentation-flask>=0.53b1  # OpenTelemetry Flask instrumentation
+opentelemetry-instrumentation-sqlalchemy>=0.53b1  # OpenTelemetry SQLAlchemy instrumentation
+opentelemetry-instrumentation-requests>=0.53b1  # OpenTelemetry HTTP requests instrumentation
+opentelemetry-instrumentation-logging>=0.53b1  # OpenTelemetry logging instrumentation
 
-# Add any other dependencies you have (e.g., gunicorn, requests)
+# Optional Dependencies
+Flask-Limiter  # Rate limiting
+Flask-WTF  # CSRF protection and form validation
+Flask-Talisman  # Security headers
+Flask-CORS  # Cross-Origin Resource Sharing
+
+# Development Dependencies
+pytest  # Testing framework
+pytest-flask  # Flask testing utilities
+mypy  # Type checking
+flake8  # Linting

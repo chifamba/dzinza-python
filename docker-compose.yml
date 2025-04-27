@@ -1,7 +1,7 @@
 # docker-compose.yml (in project root: dzinza-python/)
 
 services:
-  db:
+  dbservice:
     image: postgres:15-alpine
     container_name: dzinza-db
     ports:
@@ -30,9 +30,9 @@ services:
     ports:
       - "8090:8090" # Map host port 8090 to container port 8090
     depends_on:
-      - db # Ensure the database is started before the backend
+      - dbservice # Ensure the database is started before the backend
     healthcheck: # Added backend healthcheck
-      test: ["CMD", "curl", "-f", "http://localhost:8090/health"] # Check the new /health endpoint
+      test: ["CMD", "curl", "-f", "http://backend:8090/health"] # Check the new /health endpoint
       interval: 30s # How often to run the check
       timeout: 10s   # How long to wait for the check to pass
       retries: 5    # How many times to retry before marking as unhealthy
@@ -54,7 +54,7 @@ services:
       - EMAIL_PORT=${EMAIL_PORT:-587}
       - MAIL_SENDER=${MAIL_SENDER}
       - APP_URL=${APP_URL:-http://localhost:5173} # URL frontend uses
-      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB} # Connection string for PostgreSQL
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@dbservice:5432/${POSTGRES_DB} # Connection string for PostgreSQL
       # Add any other environment variables your backend needs
     restart: unless-stopped # Restart policy
 

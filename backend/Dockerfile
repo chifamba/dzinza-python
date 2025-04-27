@@ -41,3 +41,4 @@ EXPOSE 8090
 # RUN pytest /app/tests
 RUN python -m app.db_init
 CMD ["flask", "run", "--host=0.0.0.0"]
+# CMD ["gunicorn", "--bind", "0.0.0.0:8090", "app:main"]
