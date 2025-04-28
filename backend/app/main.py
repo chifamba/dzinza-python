@@ -24,6 +24,8 @@ from werkzeug.exceptions import HTTPException # Assuming Flask context for abort
 from collections import deque
 import enum
 from dotenv import load_dotenv
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
 # --- Enhanced Logging & Tracing Imports ---
 import structlog
@@ -856,7 +858,7 @@ def teardown_db_hook(exception=None): # Renamed slightly
 @app.route('/health', methods=['GET'])
 def health_check(): # Renamed slightly
     """Performs health checks on the application and its dependencies."""
-    logger.info("Health check requested.")
+
     service_status = "healthy"
     db_status = "unknown"
     db_latency_ms = None
@@ -896,7 +898,12 @@ def health_check(): # Renamed slightly
 
     # Return 503 if unhealthy, 200 if healthy
     http_status = 200 if service_status == "healthy" else 503
+    logger.info(
+        "===> Health check. Status: %s, DB Status: %s, Latency: %.2f ms, Dependencies: %s",
+        service_status, db_status, db_latency_ms, dependencies
+    )
     return response_data, http_status
+
 
 # --- Main Execution Guard ---
 if __name__ == '__main__':
