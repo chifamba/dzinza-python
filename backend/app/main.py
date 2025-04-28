@@ -1,1266 +1,910 @@
-# backend/app/main.py
-import os
+# backend/main.py
 import logging
-from functools import wraps
-from flask import Flask, request, session, jsonify, abort, g, current_app # Use Flask's g for request context
-from flask_cors import CORS
-from datetime import date, timedelta, datetime
-from logging.handlers import RotatingFileHandler
-from sqlalchemy.exc import SQLAlchemyError, IntegrityError, NoResultFound
-from sqlalchemy.orm import sessionmaker, Session as DbSession
-from sqlalchemy import create_engine, text # Import text for health check
-from werkzeug.exceptions import HTTPException, Unauthorized, InternalServerError, NotFound, BadRequest, Forbidden
-from typing import Optional, List, Any
+import bcrypt
+import os
+import json
+import uuid
+import time # Added for manual timing example
+from flask import Flask, abort, request, g
+from sqlalchemy import create_engine
+from urllib.parse import urljoin
+from sqlalchemy.orm import Session, load_only, sessionmaker, joinedload, selectinload
+from sqlalchemy.exc import SQLAlchemyError, NoResultFound, IntegrityError
+from sqlalchemy import (
+    or_, and_, desc, asc, Enum as SQLAlchemyEnum, TypeDecorator, String, Text, func, inspect, text,
+    Column, Integer, Boolean, DateTime, Date, ForeignKey, JSON, LargeBinary, UniqueConstraint
+)
+from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy.ext.declarative import declarative_base
+from cryptography.fernet import Fernet, InvalidToken, InvalidSignature
+from cryptography.exceptions import InvalidSignature
+from typing import Optional, List, Dict, Any, Set
+from datetime import date, datetime, timedelta, timezone
+from werkzeug.exceptions import HTTPException # Assuming Flask context for abort
+from collections import deque
+import enum
+from dotenv import load_dotenv
 
-# --- Service Imports ---
-# Import functions from services using their actual names
-# Assuming these are correctly implemented in services.py
-try:
-    from app.services import (
-        # User services (UserManagement handles most of this now)
-        get_all_users, # Keep for GET /users list
-        # get_user_by_id, # Use UserManagement.find_user_by_id instead
-        # create_user, # Use UserManagement.create_user instead
+# --- Enhanced Logging & Tracing Imports ---
+import structlog
+from opentelemetry import trace, metrics
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader, ConsoleMetricExporter
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+# from opentelemetry.instrumentation.flask import FlaskInstrumentor
+# from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
+# from opentelemetry.instrumentation.logging import LoggingInstrumentor
 
-        get_all_people_db, get_person_by_id_db, create_person_db, # Person services
-        update_person_db, delete_person_db, # Import update and delete person services
-        get_all_events, get_event_by_id, create_event, update_event, delete_event, # Event services
-        get_all_sources, get_source_by_id, create_source, update_source, delete_source, # Source services
-        get_all_citations, get_citation_by_id, create_citation, update_citation, delete_citation, # Citation services
-        search_people, get_person_relationships_and_attributes, # Search/Detail services
-        get_descendants, get_ancestors, # Tree traversal services (ensure these exist in services.py)
-        get_partial_tree, # Keep if implemented in services.py
-        # get_extended_family, get_related, get_branch # Removed - Not found in services.py previously
-        get_all_person_attributes, get_person_attribute as get_person_attribute_by_id, # Person Attribute services
-        create_person_attribute, update_person_attribute, delete_person_attribute,
-        get_all_relationships, get_relationship_by_id, create_relationship, update_relationship, delete_relationship, # Relationship services
-        get_all_relationship_attributes, get_relationship_attribute as get_relationship_attribute_by_id, # Relationship Attribute services
-        create_relationship_attribute, update_relationship_attribute, delete_relationship_attribute,
-        get_all_media, get_media_by_id, create_media, update_media, delete_media # Media services
-    )
-except ImportError as e:
-    # Log which specific import failed if possible
-    logging.critical(f"Failed to import function(s) from app.services: {e}. Ensure all listed functions exist in services.py.", exc_info=True)
-    raise # Re-raise to prevent app from starting incorrectly
+# --- Load Environment Variables ---
+load_dotenv()
 
-# --- Model Imports ---
-try:
-    from app.models.base import Base # Import shared Base
-    from app.models.user import User
-    from app.models.person import Person
-    from app.models.relationship import Relationship as RelationshipModel # Alias is good
-    # Import other models if needed directly (though usually accessed via services)
-except ImportError as e:
-    logging.critical(f"Failed to import models: {e}", exc_info=True)
-    raise
-
-# --- Other Imports ---
-try:
-    from app.db_init import populate_database
-    # Import from src (Assuming these exist and are needed, e.g., for UserManagement in login)
-    from src.user_management import UserManagement, VALID_ROLES # Keep if UserManagement is used in login
-    # from src.family_tree import FamilyTree # Remove if FamilyTree logic is fully within services.py
-    from src.relationship import VALID_RELATIONSHIP_TYPES # Keep if used for validation constants
-    from src.audit_log import log_audit # Keep for auditing
-except ImportError as e:
-    logging.critical(f"Failed to import from db_init or src: {e}", exc_info=True)
-    raise
-
-# --- Configuration & Constants ---
-SECRET_KEY = os.environ.get('FLASK_SECRET_KEY', 'a_very_strong_dev_secret_key_39$@5_v2')
-if SECRET_KEY == 'a_very_strong_dev_secret_key_39$@5_v2':
-    logging.warning("SECURITY WARNING: Using default Flask secret key. Set FLASK_SECRET_KEY environment variable for production.")
-
-APP_ROOT = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.dirname(APP_ROOT)
-LOG_DIR = os.path.join(PROJECT_ROOT, 'logs', 'backend')
-AUDIT_LOG_FILE = os.path.join(LOG_DIR, 'audit.log')
-APP_LOG_FILE = os.path.join(LOG_DIR, 'app.log')
-DATABASE_URL = os.environ.get('DATABASE_URL')
-
-if not DATABASE_URL:
-    logging.critical("DATABASE_URL environment variable not set. Exiting.")
-    exit(1)
-
-# --- Application Setup ---
-app = Flask(__name__) # Use Flask app instance
-app.secret_key = SECRET_KEY
+# --- Flask App Setup ---
+app = Flask(__name__)
+app.config['SECRET_KEY'] = os.getenv("FLASK_SECRET_KEY", "your_default_secret_key")
+# FlaskInstrumentor().instrument_app(app) # Call during app startup
+# SQLAlchemyInstrumentor().instrument(engine=db.engine) # Call during app startup
 app.config.update(
     SESSION_COOKIE_SECURE=os.environ.get('FLASK_ENV') == 'production',
     SESSION_COOKIE_HTTPONLY=True,
-    SESSION_COOKIE_SAMESITE='Lax', # Use 'Strict' if possible, 'Lax' is a good default
+    SESSION_COOKIE_SAMESITE='Lax',
     PERMANENT_SESSION_LIFETIME=timedelta(days=7)
 )
 
-# --- Configure CORS ---
-# Allow requests from the typical Vite dev server port
-CORS(app, supports_credentials=True, origins=["http://localhost:5173", "http://127.0.0.1:5173"])
-logging.info("CORS configured for development origins.")
+# --- Logging Setup (Using Structlog) ---
+logging.basicConfig(level=logging.INFO, format='%(message)s', handlers=[logging.StreamHandler()])
+structlog.configure(
+    processors=[
+        structlog.contextvars.merge_contextvars,
+        structlog.stdlib.add_logger_name,
+        structlog.stdlib.add_log_level,
+        structlog.processors.add_log_level,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.dict_tracebacks, # Render tracebacks better
+        # --- OpenTelemetry Log Correlation ---
+        structlog.contextvars.merge_contextvars,
+        structlog.processors.CallsiteParameterAdder(
+            parameters={
+                structlog.processors.CallsiteParameter.FILENAME,
+                structlog.processors.CallsiteParameter.LINENO,
+            },
+        ),
+        # --- End OpenTelemetry ---
+        structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
+    ],
+    logger_factory=structlog.stdlib.LoggerFactory(),
+    wrapper_class=structlog.stdlib.BoundLogger,
+    cache_logger_on_first_use=True,
+)
+formatter = structlog.stdlib.ProcessorFormatter(
+    processor=structlog.processors.JSONRenderer(),
+    foreign_pre_chain=[]
+)
+handler = logging.getLogger().handlers[0]; handler.setFormatter(formatter)
+logger = structlog.get_logger() # Use this logger
 
-# --- Configure Logging ---
-os.makedirs(LOG_DIR, exist_ok=True)
-log_formatter = logging.Formatter('%(asctime)s %(levelname)-8s [%(name)s] %(message)s [in %(pathname)s:%(lineno)d]')
-# App Log (File)
-file_handler = RotatingFileHandler(APP_LOG_FILE, maxBytes=1024*1024*5, backupCount=5, encoding='utf-8')
-file_handler.setFormatter(log_formatter)
-file_handler.setLevel(logging.INFO)
-# Console Log
-console_handler = logging.StreamHandler()
-console_handler.setFormatter(log_formatter)
-console_handler.setLevel(logging.DEBUG if os.environ.get('FLASK_DEBUG') == '1' else logging.INFO)
+# --- OpenTelemetry Setup (Conceptual) ---
+resource = Resource(attributes={ "service.name": os.getenv("OTEL_SERVICE_NAME", "family-tree-backend") })
+def configure_tracer_provider():
+    """Configure the tracer provider for OpenTelemetry."""
+    pass  # Implement the tracer provider configuration here
 
-# Configure Flask's logger
-app.logger.handlers.clear() # Clear default handlers if any
-app.logger.addHandler(file_handler)
-app.logger.addHandler(console_handler)
-app.logger.setLevel(logging.DEBUG if os.environ.get('FLASK_DEBUG') == '1' else logging.INFO)
+def configure_meter_provider():
+    """Configure the meter provider for OpenTelemetry."""
+    pass  # Implement the meter provider configuration here
 
-# Redirect root logger output (used by SQLAlchemy etc.) to Flask's logger handlers
-# root_logger = logging.getLogger()
-# if root_logger.handlers: root_logger.handlers.clear()
-# root_logger.addHandler(file_handler)
-# root_logger.addHandler(console_handler)
-# root_logger.setLevel(logging.DEBUG if os.environ.get('FLASK_DEBUG') == '1' else logging.INFO)
-# OR more simply:
-logging.basicConfig(level=logging.DEBUG if os.environ.get('FLASK_DEBUG') == '1' else logging.INFO, handlers=[file_handler, console_handler])
+# configure_tracer_provider() # Call during app startup
+# configure_meter_provider() # Call during app startup
+# LoggingInstrumentor().instrument(set_logging_format=True) # Call during app startup
+tracer = trace.get_tracer(__name__)
+meter = metrics.get_meter(__name__)
+user_registration_counter = meter.create_counter(
+    name="app.user.registration",
+    description="Counts user registration attempts and successes",
+    unit="1"
+)
+db_operation_duration_histogram = meter.create_histogram(
+    name="db.operation.duration",
+    description="Records the duration of database operations",
+    unit="ms"
+)
+auth_failure_counter = meter.create_counter( # New metric for auth failures
+    name="app.auth.failures",
+    description="Counts authentication failures",
+    unit="1"
+)
+role_change_counter = meter.create_counter( # New metric for role changes
+    name="app.auth.role_changes",
+    description="Counts user role changes",
+    unit="1"
+)
+# --- End OpenTelemetry Setup ---
 
+# --- Encryption Setup ---
+ENCRYPTION_KEY_ENV_VAR = "ENCRYPTION_KEY"
+ENCRYPTION_KEY_FILE = "/backend/data/encryption_key.json"
 
-app.logger.info("Application starting up...")
+def load_encryption_key():
+    """Load encryption key from environment variable or file."""
+    key = os.getenv(ENCRYPTION_KEY_ENV_VAR)
+    if key:
+        return key
 
-# --- Database Engine & Session ---
-db_engine = None
-db_session_factory = None
+    try:
+        with open(ENCRYPTION_KEY_FILE, 'r') as f:
+            data = json.load(f)
+            key_b64 = data.get('key_b64')
+            if key_b64:
+                logger.info(f"Key [***{key_b64[:6]}] found in JSON file.")
+                return key_b64
+            else:
+                logger.error("Key not found in JSON file.")
+                return None
+    except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
+        logger.error(f"Failed to load encryption key from file: {e}")
+        return None
+
 try:
-    db_engine = create_engine(DATABASE_URL)
-    # Create tables if they don't exist
-    Base.metadata.create_all(bind=db_engine)
-    # Create a configured "Session" class
-    db_session_factory = sessionmaker(autocommit=False, autoflush=False, bind=db_engine)
-    app.logger.info("Database engine and session factory created successfully.")
-except SQLAlchemyError as e:
-    app.logger.critical(f"CRITICAL ERROR: Database engine creation failed: {e}", exc_info=True)
-    exit(1)
-except NameError as e:
-    app.logger.critical(f"CRITICAL ERROR: Database Base model not defined or imported correctly: {e}", exc_info=True)
-    exit(1)
-
-# --- Flask DB Session Management ---
-@app.before_request
-def create_session():
-    """Create a database session for the current request context."""
-    if not db_session_factory:
-        app.logger.error("Database session factory not initialized before request.")
-        # Abort might be too early here, consider how to handle startup failure
-        abort(503, description="Database connection not available.")
-    g.db = db_session_factory() # Store the session in Flask's 'g' object
-    app.logger.debug(f"DB Session created for request {request.path}")
-
-@app.teardown_request
-def close_session(exception=None):
-    """Close the database session at the end of the request."""
-    db = g.pop('db', None) # Get session from g, removing it
-    if db is not None:
-        if exception:
-            # Rollback on error before closing
-            app.logger.warning(f"Rolling back DB session due to exception: {exception}")
-            try:
-                db.rollback()
-            except Exception as rb_exc:
-                app.logger.error(f"Error during session rollback: {rb_exc}", exc_info=True)
-        # Always close the session
-        try:
-            db.close()
-            app.logger.debug(f"DB Session closed for request {request.path}")
-        except Exception as close_exc:
-            app.logger.error(f"Error closing DB session: {close_exc}", exc_info=True)
-    elif exception:
-         # Log the exception even if no db session was found in g
-         app.logger.error(f"Request ended with exception but no DB session found in g: {exception}", exc_info=True)
-
-
-# --- Initial data population ---
-# Use a context manager to ensure the session is closed after population
-try:
-    with db_session_factory() as initial_session:
-        populate_database(initial_session) # Use the imported function
+    _encryption_key = load_encryption_key()
+    if _encryption_key:
+        fernet_suite = Fernet(_encryption_key)
+    else:
+        logger.critical("Encryption key is missing. Fernet cannot be initialized.")
+        fernet_suite = None
 except Exception as e:
-    app.logger.error(f"Error during initial database population: {e}", exc_info=True)
+    logger.critical(f"Failed to init Fernet: {e}")
+    fernet_suite = None
 
-# --- Decorators ---
-def api_login_required(f):
-    """Decorator to ensure user is logged in via Flask session."""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if 'user_id' not in session:
-            app.logger.warning(f"API Authentication Required: Endpoint '{request.endpoint}' accessed without login (IP: {request.remote_addr}).")
-            # Use the imported log_audit function
-            log_audit(AUDIT_LOG_FILE, 'anonymous', 'api_access_denied', f'login required for API endpoint {request.endpoint}')
-            abort(401, description="Authentication required.")
-        # Check if db session is available via g (should be due to before_request)
-        if 'db' not in g or g.db is None:
-             app.logger.error(f"API Service Unavailable: Endpoint '{request.endpoint}' accessed but DB session not found in g.")
-             abort(503, description="Service temporarily unavailable. Please try again later.")
-        return f(*args, **kwargs)
-    return decorated_function
+if fernet_suite is None:
+    logger.critical("ENCRYPTION DISABLED.")
 
-def api_admin_required(f):
-    """Decorator to ensure user is logged in and has 'admin' role."""
-    @wraps(f)
-    @api_login_required # Ensures login and db checks first
-    def decorated_function(*args, **kwargs):
-        user_role = session.get("user_role")
-        username = session.get('username', 'unknown_user')
-        if user_role != 'admin':
-            app.logger.warning(f"API Authorization Failed: User '{username}' (Role: {user_role}) attempted to access admin endpoint '{request.endpoint}'.")
-            # Use the imported log_audit function
-            log_audit(AUDIT_LOG_FILE, username, 'api_access_denied', f'admin required (role: {user_role}) for API endpoint {request.endpoint}')
-            abort(403, description="Administrator privileges required.")
-        return f(*args, **kwargs)
-    return decorated_function
+class EncryptedString(TypeDecorator):
+    """SQLAlchemy type for encrypted strings"""
+    impl = String
 
-# --- Validation Helper ---
-def validate_person_data(data: dict, is_edit: bool = False) -> dict:
-    """Validates incoming person data. Returns a dict of errors if any."""
-    errors = {}
-    first_name = data.get('first_name')
-    dob_str = data.get('birth_date')
-    dod_str = data.get('death_date')
-    gender = data.get('gender')
+    def process_bind_param(self, value, dialect):
+        if value is not None and fernet_suite:
+            try:
+                return fernet_suite.encrypt(value.encode()).decode()
+            except Exception as e:
+                logger.error("Encryption failed for value.", error=str(e))
+                return value
+        return value
 
-    # Validate required fields on create
-    if not is_edit and (first_name is None or not str(first_name).strip()):
-        errors['first_name'] = 'First name is required.'
-    # Validate non-empty if provided on edit
-    elif 'first_name' in data and (first_name is None or not str(first_name).strip()):
-        errors['first_name'] = 'First name cannot be empty if provided.'
+    def process_result_value(self, value, dialect):
+        if value is not None and fernet_suite:
+            try:
+                return fernet_suite.decrypt(value.encode()).decode()
+            except InvalidToken:
+                logger.error("Decryption failed for value.")
+                return value
+        return value
 
-    # Validate dates
-    dob, dod = None, None
-    if dob_str:
+# --- Enums & Models ---
+Base = declarative_base()
+
+class RoleEnum(str, enum.Enum):
+    user = "user"
+    admin = "admin"
+    researcher = "researcher"
+    guest = "guest"
+
+class RelationshipTypeEnum(str, enum.Enum):
+    biological_parent = "biological_parent"
+    adoptive_parent = "adoptive_parent"
+    step_parent = "step_parent"
+    foster_parent = "foster_parent"
+    guardian = "guardian"
+    spouse_current = "spouse_current"
+    spouse_former = "spouse_former"
+    partner = "partner"
+    biological_child = "biological_child"
+    adoptive_child = "adoptive_child"
+    step_child = "step_child"
+    foster_child = "foster_child"
+    sibling_full = "sibling_full"
+    sibling_half = "sibling_half"
+    sibling_step = "sibling_step"
+    sibling_adoptive = "sibling_adoptive"
+    other = "other"
+
+class PrivacyLevelEnum(str, enum.Enum):
+    inherit = "inherit"
+    private = "private"
+    public = "public"
+    connections = "connections"
+    researchers = "researchers"
+
+class MediaTypeEnum(str, enum.Enum):
+    photo = "photo"
+    document = "document"
+    audio = "audio"
+    video = "video"
+    other = "other"
+
+# Reusing UserRole enum defined earlier for consistency
+class UserRole(enum.Enum):
+    USER = "user"
+    ADMIN = "admin"
+
+class User(Base):
+    __tablename__ = "users"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    username = Column(String(100), nullable=False, unique=True)
+    email = Column(String(255), nullable=False, unique=True)
+    password_hash = Column(String(255), nullable=False)
+    full_name = Column(String(255))
+    # Use RoleEnum for consistency if possible, otherwise keep UserRole
+    # Assuming UserRole from above is the intended one for the service logic
+    role = Column(SQLAlchemyEnum(UserRole), default=UserRole.USER, nullable=False)
+    is_active = Column(Boolean, default=True)
+    email_verified = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_login = Column(DateTime)
+    preferences = Column(JSONB, default=dict)
+    profile_image_path = Column(String(255))
+
+    def to_dict(self): # Example method, needs to be defined in the actual model
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+
+class Tree(Base):
+    __tablename__ = "trees"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(255), nullable=False)
+    description = Column(Text)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    is_public = Column(Boolean, default=False)
+    default_privacy_level = Column(SQLAlchemyEnum(PrivacyLevelEnum), default=PrivacyLevelEnum.private)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+class TreeAccess(Base):
+    __tablename__ = "tree_access"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tree_id = Column(UUID(as_uuid=True), ForeignKey("trees.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    access_level = Column(String(50), nullable=False, default="view") # Consider an Enum here too
+    granted_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    granted_at = Column(DateTime, default=datetime.utcnow)
+    __table_args__ = (UniqueConstraint("tree_id", "user_id", name="tree_user_unique"),)
+
+class Person(Base):
+    __tablename__ = "people"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tree_id = Column(UUID(as_uuid=True), ForeignKey("trees.id", ondelete="CASCADE"), nullable=False)
+    first_name = Column(String(100))
+    middle_names = Column(String(255))
+    last_name = Column(String(100))
+    maiden_name = Column(String(100))
+    nickname = Column(String(100))
+    gender = Column(String(20)) # Consider Enum
+    birth_date = Column(Date)
+    birth_date_approx = Column(Boolean, default=False)
+    birth_place = Column(String(255))
+    death_date = Column(Date)
+    death_date_approx = Column(Boolean, default=False)
+    death_place = Column(String(255))
+    burial_place = Column(String(255))
+    privacy_level = Column(SQLAlchemyEnum(PrivacyLevelEnum), default=PrivacyLevelEnum.inherit)
+    is_living = Column(Boolean)
+    notes = Column(Text)
+    custom_attributes = Column(JSONB, default=dict)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+class Relationship(Base):
+    __tablename__ = "relationships"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tree_id = Column(UUID(as_uuid=True), ForeignKey("trees.id", ondelete="CASCADE"), nullable=False)
+    person1_id = Column(UUID(as_uuid=True), ForeignKey("people.id", ondelete="CASCADE"), nullable=False)
+    person2_id = Column(UUID(as_uuid=True), ForeignKey("people.id", ondelete="CASCADE"), nullable=False)
+    relationship_type = Column(SQLAlchemyEnum(RelationshipTypeEnum), nullable=False)
+    start_date = Column(Date)
+    end_date = Column(Date)
+    certainty_level = Column(Integer) # Consider range/enum
+    custom_attributes = Column(JSONB, default=dict)
+    notes = Column(Text)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+class Event(Base):
+    __tablename__ = "events"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tree_id = Column(UUID(as_uuid=True), ForeignKey("trees.id", ondelete="CASCADE"), nullable=False)
+    person_id = Column(UUID(as_uuid=True), ForeignKey("people.id", ondelete="CASCADE"), nullable=False)
+    event_type = Column(String(100), nullable=False) # Consider Enum
+    date = Column(Date)
+    date_approx = Column(Boolean, default=False)
+    date_range_start = Column(Date)
+    date_range_end = Column(Date)
+    place = Column(String(255))
+    description = Column(Text)
+    custom_attributes = Column(JSONB, default=dict)
+    privacy_level = Column(SQLAlchemyEnum(PrivacyLevelEnum), default=PrivacyLevelEnum.inherit)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+class Media(Base):
+    __tablename__ = "media"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tree_id = Column(UUID(as_uuid=True), ForeignKey("trees.id", ondelete="CASCADE"), nullable=False)
+    file_path = Column(String(512), nullable=False)
+    storage_bucket = Column(String(255), nullable=False)
+    media_type = Column(SQLAlchemyEnum(MediaTypeEnum), nullable=False)
+    original_filename = Column(String(255))
+    file_size = Column(Integer)
+    mime_type = Column(String(100))
+    title = Column(String(255))
+    description = Column(Text)
+    date_taken = Column(Date)
+    location = Column(String(255))
+    media_metadata = Column(JSONB, default=dict)
+    privacy_level = Column(SQLAlchemyEnum(PrivacyLevelEnum), default=PrivacyLevelEnum.inherit)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    uploaded_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+class Citation(Base):
+    __tablename__ = "citations"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tree_id = Column(UUID(as_uuid=True), ForeignKey("trees.id", ondelete="CASCADE"), nullable=False)
+    source_id = Column(UUID(as_uuid=True), ForeignKey("media.id", ondelete="CASCADE"), nullable=False) # Assuming link to Media table
+    citation_text = Column(Text, nullable=False)
+    page_number = Column(String(50))
+    confidence_level = Column(Integer) # Consider range/enum
+    notes = Column(Text)
+    custom_attributes = Column(JSONB, default=dict)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+class ActivityLog(Base):
+    __tablename__ = "activity_log"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tree_id = Column(UUID(as_uuid=True), ForeignKey("trees.id")) # Optional tree link
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id")) # Optional user link
+    entity_type = Column(String(50), nullable=False)
+    entity_id = Column(UUID(as_uuid=True), nullable=False) # Index this maybe?
+    action_type = Column(String(50), nullable=False) # Consider Enum
+    previous_state = Column(JSONB)
+    new_state = Column(JSONB)
+    ip_address = Column(String(50))
+    user_agent = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+# --- Placeholder Model Definitions from app.models ---
+# These were originally imported from 'app.models'. Ensure they are defined correctly
+# (either here or in the actual app.models) and consistent with the services.
+# We'll assume the Base and Enum definitions above cover the needs, but verify this.
+
+
+# --- Utility Functions ---
+def _handle_sqlalchemy_error(e: SQLAlchemyError, context: str, db: Session):
+    if isinstance(e, IntegrityError):
+        if hasattr(e.orig, 'pgcode') and e.orig.pgcode == '23505':  # Unique violation (PostgreSQL-specific)
+            if 'users_username_key' in str(e.orig): abort(409, description="Username already exists.")
+            elif 'users_email_key' in str(e.orig): abort(409, description="Email already exists.")
+            else: abort(409, description=f"Database conflict {context}.")
+        elif "NOT NULL constraint failed" in str(e) or "null value in column" in str(e):
+            abort(400, description=f"Missing required field during {context}: {e}")
+        else:
+            abort(409, description=f"Integrity error during {context}.")
+    elif isinstance(e, NoResultFound):
+        abort(404, description="Resource not found.")
+    else:
+        abort(500, description=f"Database error {context}.")
+
+def _get_or_404(db: Session, model: Any, model_id: int) -> Any:
+    with tracer.start_as_current_span(f"db.get.{model.__name__}") as span:
+        span.set_attribute("db.system", "postgresql")
+        span.set_attribute(f"{model.__name__}.id", model_id)
         try:
-            # Handle empty string explicitly
-            if dob_str == "": dob = None
-            else: dob = date.fromisoformat(dob_str)
-        except (ValueError, TypeError):
-            errors['birth_date'] = 'Invalid date format (YYYY-MM-DD).'
-    if dod_str:
+            start_time = time.monotonic()
+            query = db.query(model)
+            obj = query.filter(model.id == model_id).one_or_none()
+            duration = (time.monotonic() - start_time) * 1000
+            db_operation_duration_histogram.record(duration, {"db.operation": f"get.{model.__name__}", "db.status": "success"})
+            if obj is None:
+                logger.warning("Resource not found", model_name=model.__name__, model_id=model_id)
+                span.set_attribute("db.found", False)
+                abort(404, description=f"{model.__name__} not found")
+            span.set_attribute("db.found", True)
+            return obj
+        except SQLAlchemyError as e:
+            duration = (time.monotonic() - start_time) * 1000
+            db_operation_duration_histogram.record(duration, {"db.operation": f"get.{model.__name__}", "db.status": "error"})
+            span.record_exception(e)
+            span.set_status(trace.Status(trace.StatusCode.ERROR, f"DB Error: {e}"))
+            _handle_sqlalchemy_error(e, f"fetching {model.__name__} ID {model_id}", db)
+        except Exception as e:
+            span.record_exception(e)
+            span.set_status(trace.Status(trace.StatusCode.ERROR, "Non-DB Error"))
+            raise e
+
+import re
+
+def _validate_password_complexity(password: str) -> None:
+    """Validates the complexity of a password."""
+    if len(password) < 8:
+        raise ValueError("Password must be at least 8 characters long.")
+    if not re.search(r'[A-Z]', password):
+        raise ValueError("Password must contain at least one uppercase letter.")
+    if not re.search(r'[a-z]', password):
+        raise ValueError("Password must contain at least one lowercase letter.")
+    if not re.search(r'[0-9]', password):
+        raise ValueError("Password must contain at least one digit.")
+    if not re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
+        raise ValueError("Password must contain at least one special character.")
+
+def _hash_password(password: str) -> str:
+    """Hashes a password using bcrypt."""
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+def _verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verifies a plain password against a hashed password."""
+    return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
+
+# --- User Services ---
+
+def register_user_db(db: Session, user_data: dict) -> Dict[str, Any]:
+    """Registers a new user, hashing the password."""
+    with tracer.start_as_current_span("service.register_user") as span:
+        username = user_data.get('username', '[unknown]')
+        email = user_data.get('email', '[unknown]')
+        logger.info("User registration attempt", username=username, email=email)
+
+        plain_password = user_data.get('password')
+        if not plain_password:
+            logger.warning("Registration failed: Missing password", username=username, email=email)
+            abort(400, description="Password is required.")
+
         try:
-             # Handle empty string explicitly
-            if dod_str == "": dod = None
-            else: dod = date.fromisoformat(dod_str)
-        except (ValueError, TypeError):
-            errors['death_date'] = 'Invalid date format (YYYY-MM-DD).'
+            _validate_password_complexity(plain_password)
+        except ValueError as e:
+            logger.warning("Registration failed: Password complexity requirements not met", reason=str(e), username=username)
+            abort(400, description=str(e))
 
-    # Validate date logic if both are valid dates
-    if dob and dod and 'birth_date' not in errors and 'death_date' not in errors:
-        if dod < dob:
-            errors['date_comparison'] = 'Date of Death cannot be before Date of Birth.'
+        hashed_password = _hash_password(plain_password)
+        create_data = user_data.copy()
+        create_data.pop('password', None)
+        create_data['password_hash'] = hashed_password
+        create_data['created_at'] = datetime.utcnow()
+        create_data['updated_at'] = datetime.utcnow() # Add updated_at on creation
+        create_data['is_active'] = True
+        create_data.setdefault('role', UserRole.USER)
 
-    # Validate gender if provided
-    if gender and gender not in ['Male', 'Female', 'Other']:
-        errors['gender'] = 'Invalid gender. Use Male, Female, or Other.'
-
-    # Add more validation as needed (e.g., length limits)
-
-    return errors
-
-# --- Custom Error Handlers (Flask Style) ---
-@app.errorhandler(BadRequest) # Catch specific Werkzeug exception
-@app.errorhandler(400)
-def handle_bad_request(error):
-    # Extract description safely
-    description = getattr(error, 'description', "Invalid request format or data.")
-    app.logger.warning(f"API Bad Request (400): {description} - Endpoint: {request.endpoint}, IP: {request.remote_addr}")
-    # Prepare JSON response
-    response_data = {"error": "Bad Request", "message": description}
-    if isinstance(description, dict): # Handle validation error dicts
-        response_data = {"error": "Validation failed", "details": description}
-    response = jsonify(response_data)
-    response.status_code = 400
-    return response
-
-@app.errorhandler(Unauthorized)
-@app.errorhandler(401)
-def handle_unauthorized(error):
-    description = getattr(error, 'description', "Authentication required.")
-    app.logger.warning(f"API Unauthorized (401): {description} - Endpoint: {request.endpoint}, IP: {request.remote_addr}")
-    response = jsonify({"error": "Unauthorized", "message": description})
-    response.status_code = 401
-    return response
-
-@app.errorhandler(Forbidden)
-@app.errorhandler(403)
-def handle_forbidden(error):
-    description = getattr(error, 'description', "Permission denied.")
-    app.logger.warning(f"API Forbidden (403): {description} - Endpoint: {request.endpoint}, User: {session.get('username', 'anonymous')}, IP: {request.remote_addr}")
-    response = jsonify({"error": "Forbidden", "message": description})
-    response.status_code = 403
-    return response
-
-@app.errorhandler(NotFound)
-@app.errorhandler(404)
-def handle_not_found(error):
-    app.logger.warning(f"API Not Found (404): Path '{request.path}' - IP: {request.remote_addr}, Referrer: {request.referrer}")
-    response = jsonify({"error": "Not Found", "message": f"The requested URL '{request.path}' was not found on this server."})
-    response.status_code = 404
-    return response
-
-@app.errorhandler(SQLAlchemyError) # Catch database errors specifically
-def handle_database_error(error):
-    app.logger.error(
-        f"API Database Error: Endpoint: {request.endpoint}, User: {session.get('username', 'anonymous')}, IP: {request.remote_addr}",
-        exc_info=error # Log the specific SQLAlchemy error
-    )
-    # Avoid exposing detailed DB errors to the client
-    response = jsonify({"error": "Database Error", "message": "A database error occurred."})
-    response.status_code = 500
-    # Rollback might have already happened in teardown, but ensure it happens if teardown fails
-    db = g.get('db', None)
-    if db:
         try:
-            db.rollback()
-            db.close() # Ensure closed if teardown fails
-            g.pop('db', None) # Remove from g
-        except Exception as rb_exc:
-            app.logger.error(f"Error during rollback/close in SQLAlchemy error handler: {rb_exc}")
-    return response
+            # Ensure role is the correct Enum type
+            create_data['role'] = UserRole(create_data['role'])
+        except ValueError:
+            logger.error("Registration failed: Invalid role specified", role=create_data['role'])
+            abort(400, description=f"Invalid role: {create_data['role']}")
 
-@app.errorhandler(InternalServerError) # Catch generic 500s
-@app.errorhandler(500)
-def handle_internal_server_error(error):
-    # Log the original exception if available
-    original_exception = getattr(error, 'original_exception', error)
-    app.logger.error(
-        f"API Internal Server Error (500): Endpoint: {request.endpoint}, User: {session.get('username', 'anonymous')}, IP: {request.remote_addr}",
-        exc_info=original_exception
-    )
-    response = jsonify({"error": "Internal Server Error", "message": "An unexpected error occurred."})
-    response.status_code = 500
-    return response
+        try:
+            new_user = User(**create_data)
+            db.add(new_user)
+            db.commit()
+            db.refresh(new_user)
 
-@app.errorhandler(503)
-def handle_service_unavailable(error):
-    description = getattr(error, 'description', "Service temporarily unavailable.")
-    app.logger.error(f"API Service Unavailable (503): {description} - Endpoint: {request.endpoint}, IP: {request.remote_addr}")
-    response = jsonify({"error": "Service Unavailable", "message": description})
-    response.status_code = 503
-    return response
+            logger.info(
+                "User registration successful",
+                user_id=new_user.id,
+                username=username,
+                email=email,
+                assigned_role=new_user.role.value,
+                event_type="USER_REGISTRATION_SUCCESS"
+            )
+            span.set_attribute("app.user.id", new_user.id)
+            user_registration_counter.add(1, {"registration.type": "success"})
+
+            user_dict = new_user.to_dict()
+            user_dict.pop('password_hash', None)
+            return user_dict
+        except SQLAlchemyError as e:
+            logger.error(
+                "User registration failed due to database error",
+                username=username, email=email, event_type="USER_REGISTRATION_FAILURE",
+                reason="database_error", exc_info=False
+            )
+            user_registration_counter.add(1, {"registration.type": "failure", "reason": "db_error"})
+            span.record_exception(e)
+            span.set_status(trace.Status(trace.StatusCode.ERROR, "DB Error"))
+            _handle_sqlalchemy_error(e, f"registering user {username}", db)
+        except Exception as e:
+            logger.error(
+                "User registration failed due to unexpected error",
+                username=username, email=email, event_type="USER_REGISTRATION_FAILURE",
+                reason="unknown", exc_info=True
+            )
+            user_registration_counter.add(1, {"registration.type": "failure", "reason": "unknown"})
+            span.record_exception(e)
+            span.set_status(trace.Status(trace.StatusCode.ERROR, "Unknown Error"))
+            abort(500, "An unexpected error occurred during registration.")
+
+def authenticate_user_db(db: Session, identifier: str, password: str) -> Optional[Dict[str, Any]]:
+    """Authenticates a user by username or email and password."""
+    with tracer.start_as_current_span("service.authenticate_user") as span:
+        span.set_attribute("app.user.identifier", identifier)
+        logger.info("User authentication attempt", identifier=identifier, event_type="USER_AUTHENTICATION_ATTEMPT")
+
+        try:
+            # Load only necessary fields for auth check
+            user_obj = db.query(User).options(
+                load_only(User.id, User.username, User.password_hash, User.is_active, User.last_login) # Added last_login
+            ).filter(
+                or_(User.username == identifier, User.email == identifier)
+            ).first()
+
+            auth_success = False
+            failure_reason = "unknown"
+
+            if user_obj:
+                if not user_obj.is_active:
+                    failure_reason = "inactive_account"
+                elif _verify_password(password, user_obj.password_hash):
+                    auth_success = True
+                else:
+                    failure_reason = "invalid_credentials"
+            else:
+                failure_reason = "user_not_found"
+
+            if auth_success:
+                logger.info("User authentication successful", user_id=user_obj.id, username=user_obj.username, event_type="USER_AUTHENTICATION_SUCCESS")
+                span.set_attribute("app.user.id", user_obj.id)
+                span.set_attribute("app.auth.success", True)
+                # Update last login time
+                user_obj.last_login = datetime.utcnow()
+                db.commit()
+                db.refresh(user_obj) # Refresh to get the updated last_login if needed in the returned dict
+                # Fetch full user details after successful auth
+                full_user = db.query(User).filter(User.id == user_obj.id).one()
+                user_dict = full_user.to_dict()
+                user_dict.pop('password_hash', None)
+                return user_dict
+            else:
+                logger.warning("User authentication failed", identifier=identifier, reason=failure_reason, event_type="USER_AUTHENTICATION_FAILURE")
+                auth_failure_counter.add(1, {"reason": failure_reason})
+                span.set_attribute("app.auth.success", False)
+                span.set_attribute("app.auth.failure_reason", failure_reason)
+                return None
+        except SQLAlchemyError as e:
+            logger.error("Database error during authentication", identifier=identifier, event_type="USER_AUTHENTICATION_FAILURE", reason="database_error", exc_info=True)
+            auth_failure_counter.add(1, {"reason": "database_error"})
+            span.record_exception(e)
+            span.set_status(trace.Status(trace.StatusCode.ERROR, "DB Error"))
+            abort(500, "An error occurred during authentication.")
+        except Exception as e:
+            logger.error("Unknown error during authentication", identifier=identifier, event_type="USER_AUTHENTICATION_FAILURE", reason="unknown", exc_info=True)
+            auth_failure_counter.add(1, {"reason": "unknown"})
+            span.record_exception(e)
+            span.set_status(trace.Status(trace.StatusCode.ERROR, "Unknown Error"))
+            abort(500, "An unexpected error occurred during authentication.")
+
+
+def update_user_role_db(db: Session, user_id: int, new_role: str) -> Dict[str, Any]:
+    """Updates only the role of a specific user."""
+    with tracer.start_as_current_span("service.update_user_role") as span:
+        span.set_attribute("app.user.id", user_id)
+        span.set_attribute("app.user.new_role", new_role)
+
+        calling_user_id = getattr(g, 'user_id', '[unknown]') # Example of getting caller context
+
+        try:
+            # Get the user first using the utility function
+            user_obj = _get_or_404(db, User, user_id)
+            original_role = user_obj.role.value # Assuming role is an enum
+
+            span.set_attribute("app.user.original_role", original_role)
+            logger.info(
+                "Attempting role update",
+                target_user_id=user_id, new_role=new_role, original_role=original_role,
+                performed_by_user_id=calling_user_id, event_type="USER_ROLE_CHANGE_ATTEMPT"
+            )
+
+            try:
+                # Convert string role to Enum
+                role_enum = UserRole(new_role)
+            except ValueError:
+                logger.error("Role update failed: Invalid role specified", invalid_role=new_role)
+                abort(400, description=f"Invalid role specified: {new_role}")
+
+            if user_obj.role != role_enum:
+                user_obj.role = role_enum
+                user_obj.updated_at = datetime.utcnow() # Update timestamp
+                db.commit()
+                db.refresh(user_obj)
+
+                logger.info(
+                    "User role updated successfully",
+                    target_user_id=user_id, username=user_obj.username,
+                    original_role=original_role, new_role=new_role,
+                    performed_by_user_id=calling_user_id, event_type="USER_ROLE_CHANGE_SUCCESS"
+                )
+                role_change_counter.add(1, {"status": "success", "role": new_role})
+            else:
+                logger.info(
+                    "User role update skipped: User already has the specified role",
+                    target_user_id=user_id, role=new_role, event_type="USER_ROLE_CHANGE_NOOP"
+                )
+                role_change_counter.add(1, {"status": "noop", "role": new_role})
+
+            user_dict = user_obj.to_dict()
+            user_dict.pop('password_hash', None)
+            return user_dict
+
+        except SQLAlchemyError as e:
+            logger.error(
+                "User role update failed due to database error",
+                target_user_id=user_id, new_role=new_role, performed_by_user_id=calling_user_id,
+                event_type="USER_ROLE_CHANGE_FAILURE", reason="database_error", exc_info=False
+            )
+            role_change_counter.add(1, {"status": "failure", "role": new_role, "reason": "db_error"})
+            span.record_exception(e)
+            span.set_status(trace.Status(trace.StatusCode.ERROR, "DB Error"))
+            _handle_sqlalchemy_error(e, f"updating role for user ID {user_id}", db)
+        except Exception as e:
+            # Check for specific exceptions like HTTPException from _get_or_404 if needed
+            if isinstance(e, HTTPException) and e.code == 404:
+                 # Already handled by _get_or_404, just re-raise or log differently
+                 logger.warning(f"Role update failed: User {user_id} not found.")
+                 raise e # Re-raise the abort
+            logger.error(
+                "User role update failed due to unexpected error",
+                target_user_id=user_id, new_role=new_role, performed_by_user_id=calling_user_id,
+                event_type="USER_ROLE_CHANGE_FAILURE", reason="unknown", exc_info=True
+            )
+            role_change_counter.add(1, {"status": "failure", "role": new_role, "reason": "unknown"})
+            span.record_exception(e)
+            span.set_status(trace.Status(trace.StatusCode.ERROR, "Unknown Error"))
+            abort(500, "An unexpected error occurred during role update.")
+
+
+def delete_user_db(db: Session, user_id: int) -> bool:
+    """Deletes a user."""
+    with tracer.start_as_current_span("service.delete_user") as span:
+        span.set_attribute("app.user.id", user_id)
+        calling_user_id = getattr(g, 'user_id', '[unknown]')
+        logger.info("Attempting user deletion", target_user_id=user_id, performed_by_user_id=calling_user_id, event_type="USER_DELETE_ATTEMPT")
+
+        # Use _get_or_404 to handle not found case and log internally
+        user_obj = _get_or_404(db, User, user_id)
+        username_for_log = user_obj.username # Get username before potential deletion
+
+        try:
+            db.delete(user_obj)
+            db.commit()
+            logger.info("User deleted successfully", target_user_id=user_id, username=username_for_log, performed_by_user_id=calling_user_id, event_type="USER_DELETE_SUCCESS")
+            return True
+        except SQLAlchemyError as e:
+            db.rollback() # Rollback on error
+            logger.error(
+                "User deletion failed due to database error", target_user_id=user_id, username=username_for_log,
+                performed_by_user_id=calling_user_id, event_type="USER_DELETE_FAILURE", reason="database_error", exc_info=False
+            )
+            if isinstance(e, IntegrityError):
+                # More specific check for FK violation if possible based on DB dialect
+                if 'foreign key constraint' in str(e.orig).lower():
+                    logger.warning(f"Cannot delete User {user_id} ({username_for_log}) due to foreign key constraints.")
+                    abort(409, "Cannot delete user: related data exists.")
+                else:
+                    logger.warning(f"Cannot delete User {user_id} ({username_for_log}) due to database integrity issues.")
+                    abort(409, "Cannot delete user: integrity issues.")
+            else:
+                _handle_sqlalchemy_error(e, f"deleting user {user_id} ({username_for_log})", db)
+        except Exception as e:
+            db.rollback() # Rollback on unexpected error
+            # Check for specific exceptions like HTTPException from _get_or_404
+            if isinstance(e, HTTPException) and e.code == 404:
+                logger.warning(f"User deletion failed: User {user_id} not found.")
+                raise e # Re-raise the abort
+            logger.error(
+                "User deletion failed due to unexpected error", target_user_id=user_id, username=username_for_log,
+                performed_by_user_id=calling_user_id, event_type="USER_DELETE_FAILURE", reason="unknown", exc_info=True
+            )
+            span.record_exception(e)
+            span.set_status(trace.Status(trace.StatusCode.ERROR, "Unknown Error"))
+            abort(500, "An unexpected error occurred during user deletion.")
+
+
+# Example comment for web vulns/rate limiting (remains relevant)
+# --- Security Note: API Layer Responsibilities ---
+
+# --- (Rest of service functions template) ---
+def example_service_function(db: Session, example_param: str) -> Dict[str, Any]:
+    """Example service function template."""
+    with tracer.start_as_current_span("service.example_function") as span:
+        span.set_attribute("example.param", example_param)
+        logger.info("Example service function called", example_param=example_param)
+        try:
+            # Perform database operations or business logic here
+            result = {"example_key": "example_value"}
+            return result
+        except SQLAlchemyError as e:
+            logger.error("Database error in example service function", exc_info=True)
+            _handle_sqlalchemy_error(e, "example_service_function", db)
+        except Exception as e:
+            logger.error("Unexpected error in example service function", exc_info=True)
+            abort(500, "An unexpected error occurred in the example service function.")
+
+# --- Database Setup ---
+DATABASE_URL = os.environ.get('DATABASE_URL')
+logger.info(f"Database URL: {'<set>' if DATABASE_URL else '<not set>'}") # Avoid logging full URL potentially
+if not DATABASE_URL:
+    logger.critical("DATABASE_URL environment variable is not set. Exiting.")
+    exit(1)
+
+# Create the SQLAlchemy engine and session factory
+engine = create_engine(DATABASE_URL, pool_size=32, echo=False) # echo=False is common for production
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# --- Database Initialization Functions ---
+def create_tables(engine_to_use):
+    """Creates all tables defined in Base metadata."""
+    logger.info("Attempting to create database tables if they don't exist...")
+    try:
+        Base.metadata.create_all(bind=engine_to_use)
+        logger.info("Database tables check/creation complete.")
+    except Exception as e:
+        logger.error(f"Error creating database tables: {e}", exc_info=True)
+        # Decide if the application should exit or continue without tables
+        raise # Re-raise the exception to potentially halt startup if critical
+
+def populate_initial_data(session_factory):
+    """Populates the database with initial data if necessary."""
+    logger.info("Checking if initial data population is needed...")
+    session = session_factory()
+    try:
+        # Check if any user exists
+        user_count = session.query(func.count(User.id)).scalar()
+        if user_count == 0:
+            logger.info("No users found. Populating initial admin data...")
+            # **SECURITY WARNING:** Never hardcode passwords. Use environment variables or a secure config system.
+            # Hash the password securely.
+            admin_password = os.getenv("INITIAL_ADMIN_PASSWORD", "default_unsafe_password")
+            if admin_password == "default_unsafe_password":
+                 logger.warning("Using default unsafe password for initial admin user. SET INITIAL_ADMIN_PASSWORD env var.")
+            hashed_password = _hash_password(admin_password)
+
+            admin_user = User(
+                username=os.getenv("INITIAL_ADMIN_USERNAME", "admin"),
+                email=os.getenv("INITIAL_ADMIN_EMAIL", "admin@example.com"),
+                password_hash=hashed_password,
+                # Use the correct Enum based on model definition (UserRole or RoleEnum)
+                role=UserRole.ADMIN, # Or RoleEnum.admin if that's the model's enum
+                is_active=True,
+                email_verified=True # Assume admin email is verified initially
+            )
+            session.add(admin_user)
+            session.commit()
+            logger.info(f"Initial admin user '{admin_user.username}' created successfully.")
+        else:
+            logger.info(f"Database already contains {user_count} users. Skipping initial data population.")
+    except SQLAlchemyError as e:
+        logger.error(f"Database error during initial data population: {e}", exc_info=True)
+        session.rollback()
+    except Exception as e:
+        logger.error(f"Unexpected error during initial data population: {e}", exc_info=True)
+        session.rollback() # Rollback on any error
+    finally:
+        session.close()
+
+def initialize_database(engine_to_use, session_factory):
+    """Checks table existence and initializes DB if needed."""
+    logger.info("Initializing database...")
+    try:
+        inspector = inspect(engine_to_use)
+        required_tables = Base.metadata.tables.keys() # Get tables defined in models
+        existing_tables = inspector.get_table_names()
+
+        missing_tables = set(required_tables) - set(existing_tables)
+
+        if not existing_tables or missing_tables:
+            if not existing_tables:
+                 logger.info("No tables found in the database.")
+            else:
+                 logger.warning(f"Missing required tables: {missing_tables}. Attempting creation.")
+            create_tables(engine_to_use) # Create tables
+            populate_initial_data(session_factory) # Populate data *after* tables are created
+        else:
+            logger.info("Database tables already exist. Skipping creation and initial data population.")
+        logger.info("Database initialization complete.")
+    except Exception as e:
+        logger.critical(f"Database initialization failed: {e}", exc_info=True)
+        # Depending on severity, might want to exit
+        # exit(1)
+
+# Call the database initialization logic during app startup
+# Ensure this runs *after* models are defined and engine/session are created
+initialize_database(engine, SessionLocal)
+
+
+# --- Flask Request Lifecycle Hooks ---
+@app.before_request
+def before_request_hook(): # Renamed slightly to avoid conflict if imported elsewhere
+    """Initialize the database session and attach it to Flask's `g` object."""
+    g.db = SessionLocal()
+    logger.debug("Database session opened for request.") # Example debug log
+
+@app.teardown_appcontext
+def teardown_db_hook(exception=None): # Renamed slightly
+    """Close the database session after the request is complete."""
+    db = g.pop('db', None)
+    if db is not None:
+        try:
+            # Optionally commit or rollback based on exception
+            # if exception is None:
+            #     db.commit() # Be careful with auto-commit
+            # else:
+            #     db.rollback()
+            db.close()
+            logger.debug("Database session closed for request.")
+        except Exception as e:
+             logger.error(f"Error closing database session: {e}", exc_info=True)
+    if exception:
+        # Log the exception that occurred during the request teardown if desired
+        logger.error(f"Exception during request teardown: {exception}", exc_info=True)
 
 
 # --- Health Check Endpoint ---
 @app.route('/health', methods=['GET'])
-def health_check():
-    """Basic health check endpoint including database connection status and version."""
-    db_session = None
+def health_check(): # Renamed slightly
+    """Performs health checks on the application and its dependencies."""
+    logger.info("Health check requested.")
+    service_status = "healthy"
+    db_status = "unknown"
+    db_latency_ms = None
+    dependencies = {}
+
+    # Check Database Connection and Latency
+    start_time = time.monotonic()
     try:
-        # Attempt to get a database session
-        if not db_session_factory:
-            app.logger.error("Health check: Database session factory not initialized.")
-            return jsonify({"status": "error", "database": "Database session factory not initialized"}), 503
-
-        db_session = db_session_factory()
-
-        # Execute a simple query to check connection and get DB version
-        # For PostgreSQL, SELECT version(); is common
-        db_version_result = db_session.execute(text("SELECT version();")).scalar()
-
-        # If we reach here, the database connection and basic query were successful
-        response_data = {
-            "status": "ok",
-            "database": "connected",
-            "database_version": db_version_result
-        }
-        app.logger.info(f"Health check response: {response_data}") # Log response
-        return jsonify(response_data), 200
-
+        with engine.connect() as connection:
+            # Simple query to check connectivity and basic function
+            connection.execute(text("SELECT 1"))
+            db_status = "healthy"
+    except SQLAlchemyError as e:
+        db_status = "unhealthy"
+        service_status = "unhealthy" # If DB is critical, service is unhealthy
+        logger.error(f"Database health check failed: {e}", exc_info=False) # Don't need full trace usually
     except Exception as e:
-        # Catch any exception during database connection or query
-        app.logger.error(f"Health check failed: Database connection or query failed: {e}", exc_info=True)
-        return jsonify({
-            "status": "error",
-            "database": "connection_failed",
-            "message": f"Database connection or query failed: {e}"
-        }), 503 # Use 503 Service Unavailable for dependency issues
-
+        db_status = "error"
+        service_status = "unhealthy"
+        logger.error(f"Unexpected error during DB health check: {e}", exc_info=True)
     finally:
-        # Ensure the database session is closed
-        if db_session:
-            try:
-                db_session.close()
-                app.logger.debug("Health check: Database session closed.")
-            except Exception as close_exc:
-                app.logger.error(f"Health check: Error closing DB session: {close_exc}", exc_info=True)
-
-
-
-# --- API Routes (Flask Style) ---
-
-@app.route('/api/login', methods=['POST'])
-def api_login():
-    """Handles user login using Flask session."""
-    data = request.get_json()
-    if not data or not data.get('username') or not data.get('password'):
-        abort(400, description="Username and password required.")
-
-    username = data['username']
-    password = data['password']
-
-    # Instantiate UserManagement here, passing the request's DB session
-    # Ensure UserManagement is adapted to accept a session or works stateless
-    try:
-        # Assuming UserManagement needs audit log file path
-        user_manager = UserManagement(g.db, AUDIT_LOG_FILE) # Pass session from g
-        user = user_manager.login_user(username, password)
-
-        if user:
-            session.permanent = True # Make session last longer than browser session
-            session['user_id'] = user.id # Use the correct attribute name (id from Base)
-            session['username'] = user.username
-            session['user_role'] = user.role
-            # Log successful login audit
-            log_audit(AUDIT_LOG_FILE, username, 'login_success', f'User {username} logged in successfully.')
-            app.logger.info(f"User '{username}' logged in successfully.")
-            # Return user info (without password hash)
-            return jsonify({
-                "message": "Login successful!",
-                "user": user.to_dict() # Use to_dict method if available
-            }), 200
-        else:
-            # Log failed login attempt audit
-            log_audit(AUDIT_LOG_FILE, username, 'login_failed', f'Invalid credentials for user {username}.')
-            app.logger.warning(f"Invalid login attempt for user '{username}'.")
-            abort(401, description="Invalid credentials.")
-    except Exception as e:
-        # Catch potential errors during login process (e.g., DB error handled by generic handler)
-        app.logger.error(f"Error during login process for user {username}: {e}", exc_info=True)
-        abort(500, description="An error occurred during login.")
-
-
-@app.route('/api/logout', methods=['POST'])
-@api_login_required # Ensure user is logged in to log out
-def api_logout():
-    """Handles user logout by clearing the Flask session."""
-    username = session.get('username', 'unknown_user')
-    user_id = session.get('user_id')
-
-    # Clear the session
-    session.clear()
-
-    # Log logout audit
-    log_audit(AUDIT_LOG_FILE, username, 'logout_success', f'User {username} (ID: {user_id}) logged out.')
-    app.logger.info(f"User '{username}' (ID: {user_id}) logged out.")
-    return jsonify({"message": "Logout successful!"}), 200
-
-@app.route('/api/session', methods=['GET'])
-def api_check_session():
-    """Checks if a user session is active."""
-    if 'user_id' in session:
-        # Optionally refresh session lifetime on activity
-        session.permanent = True
-        # Return user info if logged in
-        user_info = {
-            "id": session['user_id'],
-            "username": session.get('username'),
-            "role": session.get('user_role')
-        }
-        return jsonify({"logged_in": True, "user": user_info}), 200
-    else:
-        return jsonify({"logged_in": False}), 200
-
-
-# --- User Management Endpoints (Admin Only) ---
-
-@app.route('/api/users', methods=['GET'])
-@api_admin_required
-def get_users():
-    """Get all users (Admin only)."""
-    try:
-        # Use UserManagement to list users
-        user_manager = UserManagement(g.db, AUDIT_LOG_FILE)
-        users_list = user_manager.list_all_users() # Assuming this returns list of dicts
-        return jsonify(users_list)
-    except Exception as e:
-        # Error handled by generic handlers, logging happens there
-        # Re-raise or let it propagate
-        raise e # Let the error handlers catch it
-
-@app.route('/api/users/<int:user_id>', methods=['GET'])
-@api_admin_required
-def get_user(user_id: int):
-    """Get a specific user (Admin only)."""
-    try:
-        # Use UserManagement to find user by ID
-        user_manager = UserManagement(g.db, AUDIT_LOG_FILE)
-        user = user_manager.find_user_by_id(user_id) # Assuming this returns User object or None
-        if not user:
-            abort(404, "User not found")
-        return jsonify(user.to_dict()) # Use to_dict method
-    except HTTPException: # Re-raise HTTP exceptions like 404
-        raise
-    except Exception as e:
-        raise e # Let the error handlers catch it
-
-# ADDED: POST /api/users endpoint for creating users
-@app.route('/api/users', methods=['POST'])
-# @api_admin_required # Decide if only admin can create users, or if registration handles basic
-# Assuming this endpoint is for Admin to create users, hence admin_required
-@api_admin_required
-def create_user_api():
-    """Create a new user (Admin only)."""
-    data = request.get_json()
-    if not data or not data.get('username') or not data.get('password'):
-        abort(400, description="Username and password required.")
-
-    username = data['username']
-    password = data['password']
-    role = data.get('role', 'basic') # Allow admin to specify role, default to basic
-
-    user_manager = UserManagement(g.db, AUDIT_LOG_FILE)
-    performing_user = session.get('username', 'unknown_user')
-
-    try:
-        # Call UserManagement method to create user
-        new_user = user_manager.create_user(username, password, role)
-        if new_user:
-            log_audit(AUDIT_LOG_FILE, performing_user, 'create_user_admin', f'success - username: {username}, role: {role}')
-            app.logger.info(f"Admin '{performing_user}' created user '{username}' with role '{role}'.")
-            return jsonify(new_user.to_dict()), 201 # Return created user details
-        else:
-            # UserManagement.create_user returns None on duplicate username
-            log_audit(AUDIT_LOG_FILE, performing_user, 'create_user_admin', f'failure - username already exists: {username}')
-            abort(409, description=f"Username '{username}' is already taken.")
-    except ValueError as ve:
-        # Catch invalid role from UserManagement
-        log_audit(AUDIT_LOG_FILE, performing_user, 'create_user_admin', f'failure - validation error: {ve}')
-        abort(400, description=str(ve))
-    except HTTPException: # Re-raise Flask HTTP exceptions
-        raise
-    except Exception as e:
-        # Generic error handler will catch SQLAlchemyError
-        app.logger.error(f"Unexpected error creating user via admin endpoint: {e}", exc_info=True)
-        abort(500) # Let generic handler manage response
-
-
-# ADDED: PUT /api/users/<int:user_id>/role endpoint for changing user role
-@app.route('/api/users/<int:user_id>/role', methods=['PUT'])
-@api_admin_required
-def change_user_role_api(user_id: int):
-    """Change the role of a specific user (Admin only)."""
-    data = request.get_json()
-    if not data or 'role' not in data:
-        abort(400, description="Role field is required.")
-
-    new_role = data['role']
-    performing_user_id = session.get('user_id')
-    performing_username = session.get('username', 'unknown_user')
-
-    user_manager = UserManagement(g.db, AUDIT_LOG_FILE)
-
-    try:
-        # Call UserManagement method to change role by ID
-        updated_user = user_manager.change_user_role_by_id(user_id, new_role, performing_user_id)
-
-        if updated_user:
-             # UserManagement method handles success logging
-             return jsonify(updated_user.to_dict()), 200
-        else:
-             # UserManagement method returns None if target user not found or self-modification attempt
-             # It also logs the failure
-             # Need to differentiate between user not found and self-modification attempt
-             # Let's assume returning None from change_user_role_by_id means it was a self-modification attempt
-             # If user not found, the service method should raise 404
-             # Re-fetch the user to check if they exist if service doesn't raise 404
-             target_user_check = user_manager.find_user_by_id(user_id)
-             if not target_user_check:
-                  abort(404, description=f"User with ID {user_id} not found.")
-             # If user exists but updated_user is None, it was likely a self-modification attempt
-             abort(403, description="Admins cannot change their own role via this endpoint.")
-
-
-    except ValueError as ve:
-        # Catch invalid role from UserManagement
-        log_audit(AUDIT_LOG_FILE, performing_username, 'change_role_failed', f'validation error: {ve} for user ID {user_id}')
-        abort(400, description=str(ve))
-    except HTTPException: # Re-raise Flask HTTP exceptions (like 404 if service raises it)
-        raise
-    except Exception as e:
-        # Generic error handler will catch SQLAlchemyError
-        app.logger.error(f"Unexpected error changing role for user ID {user_id}: {e}", exc_info=True)
-        abort(500) # Let generic handler manage response
-
-
-# ADDED: DELETE /api/users/<int:user_id> endpoint for deleting users
-@app.route('/api/users/<int:user_id>', methods=['DELETE'])
-@api_admin_required
-def delete_user_api(user_id: int):
-    """Delete a specific user (Admin only)."""
-    performing_user_id = session.get('user_id')
-    performing_username = session.get('username', 'unknown_user')
-
-    user_manager = UserManagement(g.db, AUDIT_LOG_FILE)
-
-    try:
-        # Call UserManagement method to delete user by ID
-        success = user_manager.delete_user_by_id(user_id, performing_user_id)
-
-        if success:
-            # UserManagement method handles success logging
-            return jsonify({"message": "User deleted successfully"}), 204 # 204 No Content
-        else:
-            # UserManagement method returns False if target user not found or self-deletion attempt
-            # It also logs the failure
-            # Need to differentiate between user not found and self-modification attempt
-            # Re-fetch the user to check if they exist if service returns False
-            target_user_check = user_manager.find_user_by_id(user_id)
-            if not target_user_check:
-                 abort(404, description=f"User with ID {user_id} not found.")
-            # If user exists but delete_user_by_id returned False, it was a self-deletion attempt
-            abort(403, description="Admins cannot delete their own account via this endpoint.")
-
-    except HTTPException: # Re-raise Flask HTTP exceptions (like 404 if service raises it)
-        raise
-    except Exception as e:
-        # Generic error handler will catch SQLAlchemyError
-        app.logger.error(f"Unexpected error deleting user ID {user_id}: {e}", exc_info=True)
-        abort(500) # Let generic handler manage response
-
-
-# --- People Endpoints ---
-@app.route('/api/people', methods=['GET'])
-@api_login_required
-def get_people():
-    """Get all people with pagination, filtering, sorting, and field selection."""
-    try:
-        # Extract and validate query parameters
-        page = request.args.get('page', 1, type=int)
-        page_size = request.args.get('page_size', 10, type=int)
-        order_by = request.args.get('order_by', 'id', type=str)
-        order_direction = request.args.get('order_direction', 'asc', type=str)
-        name = request.args.get('name', type=str)
-        gender = request.args.get('gender', type=str)
-        birth_date_str = request.args.get('birth_date')
-        death_date_str = request.args.get('death_date')
-        fields_str = request.args.get('fields')
-
-        if page < 1 or page_size < 1:
-            abort(400, description="Page and page_size must be positive integers.")
-        if order_direction not in ('asc', 'desc'):
-            abort(400, description="order_direction must be 'asc' or 'desc'.")
-
-        # Validate date formats
-        birth_date, death_date = None, None
-        if birth_date_str:
-            try: birth_date = date.fromisoformat(birth_date_str)
-            except ValueError: abort(400, description="Invalid birth_date format (YYYY-MM-DD).")
-        if death_date_str:
-            try: death_date = date.fromisoformat(death_date_str)
-            except ValueError: abort(400, description="Invalid death_date format (YYYY-MM-DD).")
-
-        # Parse fields
-        fields = fields_str.split(',') if fields_str else None
-
-        # Call the service function with the request's DB session
-        result = get_all_people_db(
-            db=g.db, # Use session from g
-            page=page, page_size=page_size, order_by=order_by,
-            order_direction=order_direction, name=name, gender=gender,
-            birth_date=birth_date, death_date=death_date, fields=fields
-        )
-        # Service function should return a serializable dict
-        return jsonify(result)
-    except HTTPException: # Re-raise HTTP exceptions like 400, 404
-        raise
-    except Exception as e:
-        # Logged and handled by generic error handlers
-        raise e
-
-@app.route('/api/people/<int:person_id>', methods=['GET'])
-@api_login_required
-def get_person_api(person_id: int):
-    """Get a specific person by ID."""
-    try:
-        fields_str = request.args.get('fields')
-        fields = fields_str.split(',') if fields_str else None
-
-        person_data = get_person_by_id_db(g.db, person_id, fields=fields) # Use session from g
-        if not person_data:
-            # Service function might raise HTTPException(404) or return None
-            abort(404, "Person not found")
-        # Service function should return a serializable dict
-        return jsonify(person_data)
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise e
-
-@app.route('/api/people', methods=['POST'])
-@api_login_required
-def create_person_api():
-    """Create a new person."""
-    data = request.get_json()
-    if not data:
-        abort(400, description="Request body must be valid JSON.")
-
-    # Validate incoming data
-    validation_errors = validate_person_data(data, is_edit=False)
-    if validation_errors:
-        # Abort with validation details
-        abort(400, description=validation_errors)
-
-    # Add creator user_id from session
-    data['created_by'] = session.get('user_id')
-    username = session.get('username', 'unknown')
-
-    try:
-        new_person = create_person_db(g.db, data) # Use session from g
-        # Log audit trail
-        log_audit(AUDIT_LOG_FILE, username, 'create_person', f'success - id: {new_person.id}')
-        app.logger.info(f"User '{username}' created person ID {new_person.id}")
-        # Return the created person data using to_dict
-        return jsonify(new_person.to_dict()), 201
-    except HTTPException as he: # Catch potential 409 Conflict from service
-         db = g.get('db')
-         if db: db.rollback() # Ensure rollback on handled HTTP errors during creation
-         raise he
-    except IntegrityError as ie: # Catch potential DB integrity errors
-         db = g.get('db')
-         if db: db.rollback()
-         app.logger.error(f"Integrity error creating person: {ie}", exc_info=True)
-         abort(409, description="Failed to create person due to data conflict (e.g., unique constraint).")
-    except Exception as e:
-        # Rollback should happen in teardown_request or SQLAlchemyError handler
-        app.logger.error(f"Unexpected error creating person: {e}", exc_info=True)
-        abort(500) # Let generic handler manage response
-
-
-# ADDED: PUT /api/people/{person_id} endpoint for updating a person
-@app.route('/api/people/<int:person_id>', methods=['PUT'])
-@api_login_required
-def update_person_api(person_id: int):
-    """Update an existing person."""
-    data = request.get_json()
-    if not data:
-        abort(400, description="Request body must be valid JSON.")
-
-    # Validate incoming data for update (only validate fields that are present)
-    validation_errors = validate_person_data(data, is_edit=True)
-    if validation_errors:
-        abort(400, description=validation_errors)
-
-    username = session.get('username', 'unknown')
-
-    try:
-        # Call the service function to update the person
-        updated_person_data = update_person_db(g.db, person_id, data)
-
-        if updated_person_data:
-            log_audit(AUDIT_LOG_FILE, username, 'update_person', f'success - id: {person_id}')
-            app.logger.info(f"User '{username}' updated person ID {person_id}")
-            return jsonify(updated_person_data), 200 # Return the updated person data
-        else:
-            # Service should raise 404 if person not found, but as a fallback:
-            abort(404, description=f"Person with ID {person_id} not found.")
-
-    except HTTPException: # Re-raise Flask HTTP exceptions (like 404 from service)
-        raise
-    except IntegrityError as ie: # Catch potential DB integrity errors during update
-         db = g.get('db')
-         if db: db.rollback()
-         app.logger.error(f"Integrity error updating person {person_id}: {ie}", exc_info=True)
-         abort(409, description="Failed to update person due to data conflict.")
-    except Exception as e:
-        # Generic error handler will catch SQLAlchemyError
-        app.logger.error(f"Unexpected error updating person ID {person_id}: {e}", exc_info=True)
-        abort(500) # Let generic handler manage response
-
-
-# ADDED: DELETE /api/people/{person_id} endpoint for deleting a person
-@app.route('/api/people/<int:person_id>', methods=['DELETE'])
-@api_login_required
-def delete_person_api(person_id: int):
-    """Delete a person."""
-    username = session.get('username', 'unknown')
-
-    try:
-        # Call the service function to delete the person
-        success = delete_person_db(g.db, person_id)
-
-        if success:
-            log_audit(AUDIT_LOG_FILE, username, 'delete_person', f'success - id: {person_id}')
-            app.logger.info(f"User '{username}' deleted person ID {person_id}")
-            return jsonify({"message": "Person deleted successfully"}), 204 # 204 No Content
-        else:
-             # Service should raise 404 if person not found, but as a fallback:
-             abort(404, description=f"Person with ID {person_id} not found.")
-
-    except HTTPException: # Re-raise Flask HTTP exceptions (like 404 from service)
-        raise
-    except Exception as e:
-        # Generic error handler will catch SQLAlchemyError
-        app.logger.error(f"Unexpected error deleting person ID {person_id}: {e}", exc_info=True)
-        abort(500) # Let generic handler manage response
-
-
-# --- Person Attributes Endpoints ---
-@app.route("/api/person_attributes", methods=['GET'])
-@api_login_required
-def get_all_person_attributes_api():
-    """Get all person attributes with pagination and filtering."""
-    try:
-        # Extract and validate query parameters
-        page = request.args.get('page', 1, type=int)
-        page_size = request.args.get('page_size', 10, type=int)
-        order_by = request.args.get('order_by', 'id', type=str)
-        order_direction = request.args.get('order_direction', 'asc', type=str)
-        key = request.args.get('key')
-        value = request.args.get('value')
-        person_id_str = request.args.get('person_id') # Get as string first
-        fields_str = request.args.get('fields')
-        include_person_str = request.args.get('include_person', 'false')
-
-        if page < 1 or page_size < 1:
-            abort(400, description="Page and page_size must be positive integers.")
-        if order_direction not in ('asc', 'desc'):
-            abort(400, description="order_direction must be 'asc' or 'desc'.")
-
-        # Validate person_id if provided
-        person_id = None
-        if person_id_str:
-            try: person_id = int(person_id_str)
-            except ValueError: abort(400, description="Invalid person_id format.")
-
-        fields = fields_str.split(',') if fields_str else None
-        include_person = include_person_str.lower() == 'true'
-
-        result = get_all_person_attributes(
-            db=g.db, page=page, page_size=page_size, order_by=order_by,
-            order_direction=order_direction, key=key, value=value,
-            person_id=person_id, fields=fields, include_person=include_person
-        )
-        return jsonify(result)
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise e
-
-@app.route("/api/person_attributes/<int:person_attribute_id>", methods=['GET'])
-@api_login_required
-def get_person_attribute_api(person_attribute_id: int):
-    """Get a specific person attribute by ID."""
-    try:
-        fields_str = request.args.get('fields')
-        fields = fields_str.split(',') if fields_str else None
-        include_person_str = request.args.get('include_person', 'false')
-        include_person = include_person_str.lower() == 'true'
-
-        result = get_person_attribute_by_id(
-            db=g.db, person_attribute_id=person_attribute_id,
-            fields=fields, include_person=include_person
-        )
-        if result is None:
-            abort(404, description="Person attribute not found.")
-        return jsonify(result) # Service returns dict or ORM object converted by service
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise e
-
-# --- Implement POST, PUT, DELETE for /person_attributes similarly ---
-
-# --- Relationship Endpoints ---
-@app.route("/api/relationships", methods=['GET'])
-@api_login_required
-def get_relationships_api():
-    """Get all relationships with pagination and filtering."""
-    try:
-        # Extract and validate query parameters
-        page = request.args.get('page', 1, type=int)
-        page_size = request.args.get('page_size', 10, type=int)
-        order_by = request.args.get('order_by', 'id', type=str)
-        order_direction = request.args.get('order_direction', 'asc', type=str)
-        rel_type = request.args.get('type') # Use 'type' as query param name
-        person1_id_str = request.args.get('person1_id')
-        person2_id_str = request.args.get('person2_id')
-        fields_str = request.args.get('fields')
-        include_person1 = request.args.get('include_person1', 'false').lower() == 'true'
-        include_person2 = request.args.get('include_person2', 'false').lower() == 'true'
-
-        if page < 1 or page_size < 1:
-            abort(400, description="Page and page_size must be positive integers.")
-        if order_direction not in ('asc', 'desc'):
-            abort(400, description="order_direction must be 'asc' or 'desc'.")
-
-        # Validate IDs if provided
-        person1_id = None
-        if person1_id_str:
-            try: person1_id = int(person1_id_str)
-            except ValueError: abort(400, description="Invalid person1_id format.")
-        person2_id = None
-        if person2_id_str:
-            try: person2_id = int(person2_id_str)
-            except ValueError: abort(400, description="Invalid person2_id format.")
-
-        fields = fields_str.split(',') if fields_str else None
-
-        # Remove 'request' argument from service call, Flask request is global
-        result = get_all_relationships(
-            db=g.db, page=page, page_size=page_size, order_by=order_by,
-            order_direction=order_direction, type=rel_type, # Pass rel_type as 'type'
-            person1_id=person1_id, person2_id=person2_id, fields=fields,
-            include_person1=include_person1, include_person2=include_person2
-        )
-        return jsonify(result)
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise e
-
-# --- Implement GET /relationships/{id}, POST, PUT, DELETE similarly ---
-
-# --- Relationship Attributes Endpoints ---
-@app.route("/api/relationship_attributes", methods=['GET'])
-@api_login_required
-def get_relationship_attributes_api():
-    """Get all relationship attributes with pagination and filtering."""
-    try:
-        # Extract and validate query parameters
-        page = request.args.get('page', 1, type=int)
-        page_size = request.args.get('page_size', 10, type=int)
-        order_by = request.args.get('order_by', 'id', type=str)
-        order_direction = request.args.get('order_direction', 'asc', type=str)
-        key = request.args.get('key')
-        value = request.args.get('value')
-        relationship_id_str = request.args.get('relationship_id')
-        fields_str = request.args.get('fields')
-        include_relationship = request.args.get('include_relationship', 'false').lower() == 'true'
-
-        if page < 1 or page_size < 1:
-            abort(400, description="Page and page_size must be positive integers.")
-        if order_direction not in ('asc', 'desc'):
-            abort(400, description="order_direction must be 'asc' or 'desc'.")
-
-        # Validate ID if provided
-        relationship_id = None
-        if relationship_id_str:
-            try: relationship_id = int(relationship_id_str)
-            except ValueError: abort(400, description="Invalid relationship_id format.")
-
-        fields = fields_str.split(',') if fields_str else None
-
-        result = get_all_relationship_attributes(
-            db=g.db, page=page, page_size=page_size, order_by=order_by,
-            order_direction=order_direction, key=key, value=value,
-            relationship_id=relationship_id, fields=fields,
-            include_relationship=include_relationship
-        )
-        return jsonify(result)
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise e
-
-# --- Implement GET /relationship_attributes/{id}, POST, PUT, DELETE similarly ---
-
-# --- Media Endpoints ---
-@app.route("/api/media", methods=['GET'])
-@api_login_required
-def get_media_api():
-    """Get all media with pagination and filtering."""
-    try:
-        # Extract and validate query parameters
-        page = request.args.get('page', 1, type=int)
-        page_size = request.args.get('page_size', 10, type=int)
-        order_by = request.args.get('order_by', 'id', type=str)
-        order_direction = request.args.get('order_direction', 'asc', type=str)
-        file_name = request.args.get('file_name')
-        file_type = request.args.get('file_type')
-        description = request.args.get('description')
-        fields_str = request.args.get('fields')
-
-        if page < 1 or page_size < 1:
-            abort(400, description="Page and page_size must be positive integers.")
-        if order_direction not in ('asc', 'desc'):
-            abort(400, description="order_direction must be 'asc' or 'desc'.")
-
-        fields = fields_str.split(',') if fields_str else None
-
-        result = get_all_media(
-            db=g.db, page=page, page_size=page_size, order_by=order_by,
-            order_direction=order_direction, file_name=file_name,
-            file_type=file_type, description=description, fields=fields
-        )
-        return jsonify(result)
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise e
-
-# --- Implement GET /media/{id}, POST, PUT, DELETE similarly ---
-
-# --- Event Endpoints ---
-@app.route("/api/events", methods=['GET'])
-@api_login_required
-def get_events_api():
-    """Get all events with pagination and filtering."""
-    try:
-        # Extract and validate query parameters
-        page = request.args.get('page', 1, type=int)
-        page_size = request.args.get('page_size', 10, type=int)
-        order_by = request.args.get('order_by', 'id', type=str)
-        order_direction = request.args.get('order_direction', 'asc', type=str)
-        event_type = request.args.get('type') # Use 'type' as query param
-        place = request.args.get('place')
-        description = request.args.get('description')
-        fields_str = request.args.get('fields')
-
-        if page < 1 or page_size < 1:
-            abort(400, description="Page and page_size must be positive integers.")
-        if order_direction not in ('asc', 'desc'):
-            abort(400, description="order_direction must be 'asc' or 'desc'.")
-
-        fields = fields_str.split(',') if fields_str else None
-
-        result = get_all_events(
-            db=g.db, page=page, page_size=page_size, order_by=order_by,
-            order_direction=order_direction, type=event_type, place=place,
-            description=description, fields=fields
-        )
-        return jsonify(result)
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise e
-
-# --- Implement GET /events/{id}, POST, PUT, DELETE similarly ---
-
-# --- Source Endpoints ---
-@app.route("/api/sources", methods=['GET'])
-@api_login_required
-def get_sources_api():
-    """Get all sources with pagination and filtering."""
-    try:
-        # Extract and validate query parameters
-        page = request.args.get('page', 1, type=int)
-        page_size = request.args.get('page_size', 10, type=int)
-        order_by = request.args.get('order_by', 'id', type=str)
-        order_direction = request.args.get('order_direction', 'asc', type=str)
-        title = request.args.get('title')
-        author = request.args.get('author')
-        fields_str = request.args.get('fields')
-
-        if page < 1 or page_size < 1:
-            abort(400, description="Page and page_size must be positive integers.")
-        if order_direction not in ('asc', 'desc'):
-            abort(400, description="order_direction must be 'asc' or 'desc'.")
-
-        fields = fields_str.split(',') if fields_str else None
-
-        result = get_all_sources(
-            db=g.db, page=page, page_size=page_size, order_by=order_by,
-            order_direction=order_direction, title=title, author=author,
-            fields=fields
-        )
-        return jsonify(result)
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise e
-
-# --- Implement GET /sources/{id}, POST, PUT, DELETE similarly ---
-
-# --- Citation Endpoints ---
-@app.route("/api/citations", methods=['GET'])
-@api_login_required
-def get_citations_api():
-    """Get all citations with pagination and filtering."""
-    try:
-        # Extract and validate query parameters
-        page = request.args.get('page', 1, type=int)
-        page_size = request.args.get('page_size', 10, type=int)
-        order_by = request.args.get('order_by', 'id', type=str)
-        order_direction = request.args.get('order_direction', 'asc', type=str)
-        source_id_str = request.args.get('source_id')
-        person_id_str = request.args.get('person_id')
-        event_id_str = request.args.get('event_id')
-        description = request.args.get('description') # Assuming maps to citation_text
-        fields_str = request.args.get('fields')
-        include_source = request.args.get('include_source', 'false').lower() == 'true'
-        include_person = request.args.get('include_person', 'false').lower() == 'true'
-        include_event = request.args.get('include_event', 'false').lower() == 'true' # Add include for event
-
-        if page < 1 or page_size < 1:
-            abort(400, description="Page and page_size must be positive integers.")
-        if order_direction not in ('asc', 'desc'):
-            abort(400, description="order_direction must be 'asc' or 'desc'.")
-
-        # Validate IDs if provided
-        source_id = None
-        if source_id_str:
-            try: source_id = int(source_id_str)
-            except ValueError: abort(400, description="Invalid source_id format.")
-        person_id = None
-        if person_id_str:
-            try: person_id = int(person_id_str)
-            except ValueError: abort(400, description="Invalid person_id format.")
-        event_id = None
-        if event_id_str:
-            try: event_id = int(event_id_str)
-            except ValueError: abort(400, description="Invalid event_id format.")
-
-        fields = fields_str.split(',') if fields_str else None
-
-        # Remove 'request' argument from service call
-        result = get_all_citations(
-            db=g.db, page=page, page_size=page_size, order_by=order_by,
-            order_direction=order_direction, source_id=source_id,
-            person_id=person_id, event_id=event_id, # Add event_id filter
-            description=description, fields=fields,
-            include_source=include_source, include_person=include_person,
-            include_event=include_event # Pass include_event flag
-        )
-        return jsonify(result)
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise e
-
-# --- Implement GET /citations/{id}, POST, PUT, DELETE similarly ---
-
-# --- Tree Traversal & Search Endpoints ---
-@app.route('/api/people/<int:person_id>/ancestors', methods=['GET'])
-@api_login_required
-def get_ancestors_api(person_id: int):
-    """API endpoint to get ancestors of a person."""
-    try:
-        depth_str = request.args.get('depth', default='5') # Default depth
-        try:
-            depth = int(depth_str)
-            if depth < 0: raise ValueError("Depth cannot be negative")
-        except ValueError:
-            abort(400, description="Invalid depth parameter. Must be a non-negative integer.")
-
-        app.logger.info(f"Getting ancestors for person {person_id} with depth {depth}")
-        ancestor_list = get_ancestors(g.db, person_id, depth)
-        # Convert Person objects to dicts
-        return jsonify([p.to_dict() for p in ancestor_list])
-    except NoResultFound: # Catch if the initial person_id is not found
-        abort(404, description=f"Person with ID {person_id} not found.")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise e
-
-@app.route('/api/people/<int:person_id>/descendants', methods=['GET'])
-@api_login_required
-def get_descendants_api(person_id: int):
-    """API endpoint to get descendants of a person."""
-    try:
-        depth_str = request.args.get('depth', default='5') # Default depth
-        try:
-            depth = int(depth_str)
-            if depth < 0: raise ValueError("Depth cannot be negative")
-        except ValueError:
-            abort(400, description="Invalid depth parameter. Must be a non-negative integer.")
-
-        app.logger.info(f"Getting descendants for person {person_id} with depth {depth}")
-        descendant_list = get_descendants(g.db, person_id, depth)
-        # Convert Person objects to dicts
-        return jsonify([p.to_dict() for p in descendant_list])
-    except NoResultFound: # Catch if the initial person_id is not found
-        abort(404, description=f"Person with ID {person_id} not found.")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise e
-
-# --- Add other traversal endpoints similarly (partial_tree, etc.) if implemented in services ---
-# Example for partial_tree (if implemented in services.py)
-# @app.route('/api/people/<int:person_id>/partial_tree', methods=['GET'])
-# @api_login_required
-# def get_partial_tree_api(person_id: int):
-#     """API endpoint to get a partial tree (ancestors and descendants)."""
-#     try:
-#         depth_str = request.args.get('depth', default='3') # Default depth
-#         try:
-#             depth = int(depth_str)
-#             if depth < 0: raise ValueError("Depth cannot be negative")
-#         except ValueError:
-#             abort(400, description="Invalid depth parameter. Must be a non-negative integer.")
-#
-#         # Assuming get_partial_tree exists in services.py
-#         # from app.services import get_partial_tree
-#         partial_tree_data = get_partial_tree(g.db, person_id, depth)
-#         # Ensure service returns serializable data (dicts)
-#         return jsonify(partial_tree_data)
-#     except NoResultFound:
-#         abort(404, description=f"Person with ID {person_id} not found.")
-#     except HTTPException:
-#         raise
-#     except Exception as e:
-#         raise e
-
-
-@app.route('/api/people/search', methods=['GET'])
-@api_login_required
-def search_people_api():
-    """API endpoint to search for people based on various criteria."""
-    try:
-        # Extract search parameters from query string
-        name = request.args.get('name')
-        birth_date_str = request.args.get('birth_date')
-        death_date_str = request.args.get('death_date')
-        gender = request.args.get('gender')
-        place_of_birth = request.args.get('place_of_birth')
-        place_of_death = request.args.get('place_of_death')
-        notes = request.args.get('notes')
-        attribute_key = request.args.get('attribute_key')
-        attribute_value = request.args.get('attribute_value')
-
-        # Validate date formats
-        birth_date, death_date = None, None
-        if birth_date_str:
-            try: birth_date = date.fromisoformat(birth_date_str)
-            except ValueError: abort(400, description="Invalid birth_date format (YYYY-MM-DD).")
-        if death_date_str:
-            try: death_date = date.fromisoformat(death_date_str)
-            except ValueError: abort(400, description="Invalid death_date format (YYYY-MM-DD).")
-
-        # Call the service function
-        results = search_people(
-            db=g.db, name=name, birth_date=birth_date, death_date=death_date,
-            gender=gender, place_of_birth=place_of_birth,
-            place_of_death=place_of_death, notes=notes,
-            attribute_key=attribute_key, attribute_value=attribute_value
-        )
-        # Convert results (Person objects) to dicts
-        return jsonify([p.to_dict() for p in results])
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise e
-
-@app.route('/api/people/<int:person_id>/relationships_and_attributes', methods=['GET'])
-@api_login_required
-def get_person_relationships_and_attributes_api(person_id: int):
-    """API endpoint to get all relationships and attributes of a specific person."""
-    try:
-        app.logger.info(f"Getting relationships and attributes for person {person_id}")
-        # Service function should handle fetching and structuring the data
-        data = get_person_relationships_and_attributes(g.db, person_id)
-        # Service should return a serializable dict
-        return jsonify(data)
-    except HTTPException as he: # Catch 404 from service if person not found
-        raise he
-    except Exception as e:
-        raise e
-
+        end_time = time.monotonic()
+        db_latency_ms = (end_time - start_time) * 1000
+
+    dependencies["database"] = {
+        "status": db_status,
+        "latency_ms": round(db_latency_ms, 2) if db_latency_ms is not None else None
+    }
+
+    # Add checks for other critical dependencies (e.g., external APIs, message queues) here
+
+    response_data = {
+        "status": service_status,
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "dependencies": dependencies
+    }
+
+    # Return 503 if unhealthy, 200 if healthy
+    http_status = 200 if service_status == "healthy" else 503
+    return response_data, http_status
 
 # --- Main Execution Guard ---
 if __name__ == '__main__':
-    # Suitable for direct execution (`python backend/app/main.py`)
-    # For production, use a WSGI server like Gunicorn or Waitress
-    app.logger.warning("Running Flask development server directly. Use a WSGI server (like Gunicorn) for production.")
-    port = int(os.environ.get('PORT', 8090)) # Use PORT env var or default
-    # Debug mode is automatically enabled if FLASK_DEBUG=1 env var is set
-    # app.run(debug=True) handles this.
-    app.run(host='0.0.0.0', port=port) # Debug determined by FLASK_DEBUG env var
+    # Use environment variables for host and port, provide defaults
+    host = os.environ.get('FLASK_RUN_HOST', '127.0.0.1')
+    port = int(os.environ.get('FLASK_RUN_PORT', 5000))
+    debug_mode = os.environ.get('FLASK_DEBUG', 'false').lower() in ['true', '1', 't']
+
+    logger.info(f"Starting Flask server on {host}:{port} (Debug: {debug_mode})")
+    # Use Flask's built-in server for development, Gunicorn/uWSGI for production
+    app.run(host=host, port=port, debug=debug_mode)
