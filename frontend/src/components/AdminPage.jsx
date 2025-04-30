@@ -8,39 +8,47 @@ function AdminPage() {
   const [error, setError] = useState(null);
   const { user } = useAuth(); // Get current user info from context
 
-  // Define valid roles for the dropdown
-  const validRoles = ['basic', 'admin']; // Match roles defined in backend/user.py
+  // Define valid roles for the dropdown (should match backend's UserRole enum)
+  const validRoles = ['user', 'admin', 'researcher', 'guest']; // Match roles defined in backend/main.py
 
-  // Fetch users when component mounts
+  // Fetch users when component mounts or user context changes
   useEffect(() => {
+    let isMounted = true;
     const fetchUsers = async () => {
       // Double-check if the user is an admin before fetching
       if (user?.role !== 'admin') {
-          setError("Access Denied: You do not have permission to view this page.");
-          setLoading(false);
+          if (isMounted) {
+              setError("Access Denied: You do not have permission to view this page.");
+              setLoading(false);
+          }
           return;
       }
       setLoading(true);
       setError(null);
       try {
         const fetchedUsers = await api.getAllUsers();
-        setUsers(fetchedUsers || []); // Ensure users is an array
+        if (isMounted) {
+            setUsers(Array.isArray(fetchedUsers) ? fetchedUsers : []); // Ensure users is an array
+        }
       } catch (err) {
-        const errorMsg = err.response?.data?.message || err.message || "Failed to load users.";
-        setError(errorMsg);
-        console.error("Error fetching users:", err);
+        console.error("Error fetching users:", err.response || err);
+        if (isMounted) {
+            const errorMsg = err.response?.data?.message || err.message || "Failed to load users.";
+            setError(errorMsg);
+        }
       } finally {
-        setLoading(false);
+        if (isMounted) setLoading(false);
       }
     };
 
     fetchUsers();
+    return () => { isMounted = false; };
   }, [user]); // Re-fetch if user context changes (e.g., on login/logout)
 
   // Handler for deleting a user
   const handleDeleteUser = async (userIdToDelete, usernameToDelete) => {
     // Prevent admin from deleting themselves via UI
-    if (user?.user_id === userIdToDelete) {
+    if (user?.id === userIdToDelete) { // Use user.id from context
         alert("Admins cannot delete their own account through this interface.");
         return;
     }
@@ -49,12 +57,12 @@ function AdminPage() {
       try {
         await api.deleteUser(userIdToDelete);
         // Refresh user list after deletion
-        setUsers(prevUsers => prevUsers.filter(u => u.user_id !== userIdToDelete));
+        setUsers(prevUsers => prevUsers.filter(u => u.id !== userIdToDelete)); // Filter by user.id
         alert(`User "${usernameToDelete}" deleted successfully.`);
       } catch (err) {
+        console.error("Error deleting user:", err.response || err);
         const errorMsg = err.response?.data?.message || err.message || "Failed to delete user.";
         setError(`Error deleting user "${usernameToDelete}": ${errorMsg}`);
-        console.error("Error deleting user:", err);
       }
     }
   };
@@ -62,25 +70,34 @@ function AdminPage() {
   // Handler for changing a user's role
   const handleRoleChange = async (userIdToChange, usernameToChange, newRole) => {
      // Prevent admin from changing their own role via UI
-     if (user?.user_id === userIdToChange) {
+     if (user?.id === userIdToChange) { // Use user.id from context
          alert("Admins cannot change their own role through this interface.");
          // Optionally revert the dropdown visually if needed
          return;
      }
 
+     // Validate new role
+     if (!validRoles.includes(newRole)) {
+         setError(`Invalid role selected: ${newRole}`);
+         // Optionally revert the dropdown visually
+         return;
+     }
+
+
     try {
+      // api.setUserRole expects userId and role
       await api.setUserRole(userIdToChange, newRole);
       // Update local state to reflect the change immediately
       setUsers(prevUsers =>
         prevUsers.map(u =>
-          u.user_id === userIdToChange ? { ...u, role: newRole } : u
+          u.id === userIdToChange ? { ...u, role: newRole } : u // Update user.id and role
         )
       );
       alert(`Role for user "${usernameToChange}" updated to "${newRole}".`);
     } catch (err) {
+      console.error("Error updating role:", err.response || err);
       const errorMsg = err.response?.data?.message || err.message || "Failed to update role.";
       setError(`Error updating role for user "${usernameToChange}": ${errorMsg}`);
-      console.error("Error updating role:", err);
        // Optionally revert the dropdown visually on error
        // You might need to store the original role temporarily or refetch users
     }
@@ -89,63 +106,66 @@ function AdminPage() {
 
   // Render loading state
   if (loading) {
-    return <div>Loading users...</div>;
+    return <div className="main-content-area">Loading users...</div>;
   }
 
   // Render error state
   if (error) {
-    return <div style={{ color: 'red' }}>Error: {error}</div>;
+    return <div className="main-content-area message error-message">Error: {error}</div>;
   }
 
   // Render Admin Page content
   return (
-    <div>
+    <div className="main-content-area"> {/* Use main-content-area padding */}
       <h1>Admin - User Management</h1>
       {users.length === 0 ? (
         <p>No users found.</p>
       ) : (
-        <table border="1" style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr>
-              <th>User ID</th>
-              <th>Username</th>
-              <th>Role</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((u) => (
-              <tr key={u.user_id}>
-                <td>{u.user_id}</td>
-                <td>{u.username}</td>
-                <td>
-                  {/* Role changer dropdown */}
-                  <select
-                    value={u.role}
-                    onChange={(e) => handleRoleChange(u.user_id, u.username, e.target.value)}
-                    disabled={user?.user_id === u.user_id} // Disable changing own role
-                  >
-                    {validRoles.map(roleOption => (
-                      <option key={roleOption} value={roleOption}>
-                        {roleOption.charAt(0).toUpperCase() + roleOption.slice(1)}
-                      </option>
-                    ))}
-                  </select>
-                </td>
-                <td>
-                  {/* Delete button - disable deleting self */}
-                  <button
-                    onClick={() => handleDeleteUser(u.user_id, u.username)}
-                    disabled={user?.user_id === u.user_id}
-                    style={{ color: user?.user_id === u.user_id ? 'grey' : 'red' }}
-                  >
-                    Delete
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="admin-table-container"> {/* Added container for responsiveness */}
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}> {/* Removed border="1" */}
+              <thead>
+                <tr>
+                  <th>User ID</th>
+                  <th>Username</th>
+                  <th>Role</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {users.map((u) => (
+                  <tr key={u.id}> {/* Use u.id */}
+                    <td>{u.id}</td> {/* Display u.id */}
+                    <td>{u.username}</td>
+                    <td>
+                      {/* Role changer dropdown */}
+                      <select
+                        value={u.role}
+                        onChange={(e) => handleRoleChange(u.id, u.username, e.target.value)} // Pass u.id
+                        disabled={user?.id === u.id || saving} // Disable changing own role or while saving
+                      >
+                        {validRoles.map(roleOption => (
+                          <option key={roleOption} value={roleOption}>
+                            {roleOption.charAt(0).toUpperCase() + roleOption.slice(1)}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      {/* Delete button - disable deleting self or while saving */}
+                      <button
+                        onClick={() => handleDeleteUser(u.id, u.username)} // Pass u.id
+                        disabled={user?.id === u.id || saving}
+                        style={{ color: (user?.id === u.id || saving) ? 'var(--color-secondary)' : 'var(--color-error-text)', cursor: (user?.id === u.id || saving) ? 'not-allowed' : 'pointer' }}
+                        className="secondary-button" // Use secondary button style
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+        </div>
       )}
     </div>
   );
