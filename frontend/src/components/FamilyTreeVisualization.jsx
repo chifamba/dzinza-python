@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import dagre from 'dagre';
 import ReactFlow, {
   Background,
@@ -13,6 +13,7 @@ import 'reactflow/dist/style.css'; // Ensure styles are imported
 import PersonDetails from './PersonDetails';
 import PersonNode from './PersonNode'; // Ensure PersonNode uses CSS vars/classes
 import api from '../api';
+import { useAuth } from '../context/AuthContext'; // Import useAuth
 
 // Define node types used in the flow
 const nodeTypes = {
@@ -28,6 +29,12 @@ const rankdir = 'TB'; // Top to Bottom ranking is standard for family trees
 
 // Function to calculate layout using Dagre with dummy nodes for spouses
 const getLayoutedElements = (nodes, edges, direction = 'TB') => {
+  // Input validation
+  if (!Array.isArray(nodes) || !Array.isArray(edges)) {
+      console.error("Invalid input to getLayoutedElements: nodes and edges must be arrays.");
+      return { nodes: [], edges: [] };
+  }
+
   const dagreGraph = new dagre.graphlib.Graph({ compound: true }); // Use compound graph for potential grouping
   dagreGraph.setDefaultEdgeLabel(() => ({}));
   dagreGraph.setGraph({
@@ -37,8 +44,9 @@ const getLayoutedElements = (nodes, edges, direction = 'TB') => {
       align: 'UL', // Align nodes to upper-left in their rank cell
   });
 
-  const spouseEdges = edges.filter(edge => edge.data?.rel_type?.toLowerCase() === 'spouse' || edge.data?.rel_type?.toLowerCase() === 'partner');
-  const parentChildEdges = edges.filter(edge => edge.data?.rel_type?.toLowerCase() === 'parent' || edge.data?.rel_type?.toLowerCase() === 'child');
+  const spouseEdges = edges.filter(edge => edge.data?.rel_type?.toLowerCase() === 'spouse_current' || edge.data?.rel_type?.toLowerCase() === 'spouse_former' || edge.data?.rel_type?.toLowerCase() === 'partner');
+  // Correctly identify parent/child edges based on relationship_type enum
+  const parentChildEdges = edges.filter(edge => edge.data?.rel_type?.toLowerCase().includes('parent') || edge.data?.rel_type?.toLowerCase().includes('child'));
   const otherEdges = edges.filter(edge => !spouseEdges.includes(edge) && !parentChildEdges.includes(edge));
 
   const processedNodes = new Set(); // Keep track of nodes already added
@@ -46,12 +54,22 @@ const getLayoutedElements = (nodes, edges, direction = 'TB') => {
 
   // 1. Add Person Nodes to Dagre Graph
   nodes.forEach((node) => {
-    dagreGraph.setNode(node.id, { label: node.data.label, width: nodeWidth, height: nodeHeight });
-    processedNodes.add(node.id);
+    // Ensure node and node.id exist before setting
+    if (node && node.id) {
+        dagreGraph.setNode(node.id, { label: node.data?.label || node.id, width: nodeWidth, height: nodeHeight });
+        processedNodes.add(node.id);
+    } else {
+        console.warn("Skipping invalid node in layout:", node);
+    }
   });
 
   // 2. Process Spouse Relationships and Create Dummy Nodes
   spouseEdges.forEach((edge) => {
+    // Ensure edge, source, and target exist
+    if (!edge || !edge.source || !edge.target) {
+        console.warn("Skipping invalid spouse edge in layout:", edge);
+        return;
+    }
     const sourceId = edge.source;
     const targetId = edge.target;
     const sortedIds = [sourceId, targetId].sort().join('-'); // Unique key for the pair
@@ -66,7 +84,6 @@ const getLayoutedElements = (nodes, edges, direction = 'TB') => {
         processedNodes.add(dummyNodeId);
 
         // Connect spouses to the dummy node in Dagre (invisible edges)
-        // These edges help dagre place the dummy node between spouses
         dagreGraph.setEdge(sourceId, dummyNodeId, { weight: 5 }); // Higher weight to keep spouses close
         dagreGraph.setEdge(targetId, dummyNodeId, { weight: 5 });
     }
@@ -74,8 +91,14 @@ const getLayoutedElements = (nodes, edges, direction = 'TB') => {
 
   // 3. Process Parent/Child Relationships, connecting via Dummy Nodes if applicable
   parentChildEdges.forEach((edge) => {
-      const parentId = edge.data?.rel_type?.toLowerCase() === 'parent' ? edge.source : edge.target;
-      const childId = edge.data?.rel_type?.toLowerCase() === 'parent' ? edge.target : edge.source;
+    if (!edge || !edge.source || !edge.target || !edge.data?.rel_type) {
+        console.warn("Skipping invalid parent/child edge in layout:", edge);
+        return;
+    }
+      // Determine parent and child based on relationship type string
+      const isParentRel = edge.data.rel_type.toLowerCase().includes('parent');
+      const parentId = isParentRel ? edge.source : edge.target;
+      const childId = isParentRel ? edge.target : edge.source;
 
       // Find if the parent is part of a spouse pair with a dummy node
       let parentUnitNodeId = parentId; // Default to parent node itself
@@ -88,15 +111,29 @@ const getLayoutedElements = (nodes, edges, direction = 'TB') => {
 
       // Add edge to Dagre graph connecting child to the parent unit (parent node or dummy node)
       // Ensure direction is correct (Parent -> Child in TB layout)
-      dagreGraph.setEdge(parentUnitNodeId, childId, { weight: 1 }); // Standard weight
+      // Check if nodes exist in the graph before adding edge
+      if (dagreGraph.hasNode(parentUnitNodeId) && dagreGraph.hasNode(childId)) {
+           dagreGraph.setEdge(parentUnitNodeId, childId, { weight: 1 }); // Standard weight
+      } else {
+           console.warn(`Skipping edge in layout due to missing node: ${parentUnitNodeId} -> ${childId}`);
+      }
   });
 
   // 4. Add Other Relationship Types (e.g., siblings) directly between people
   otherEdges.forEach((edge) => {
+      if (!edge || !edge.source || !edge.target || !edge.data?.rel_type) {
+          console.warn("Skipping invalid 'other' edge in layout:", edge);
+          return;
+      }
       // Avoid adding edges already implicitly handled via dummy nodes if necessary
       // For siblings, connect them directly
-      if (edge.data?.rel_type?.toLowerCase() === 'sibling') {
-           dagreGraph.setEdge(edge.source, edge.target, { weight: 0.5 }); // Lower weight for siblings?
+      if (edge.data.rel_type.toLowerCase().includes('sibling')) {
+           // Check if nodes exist
+           if (dagreGraph.hasNode(edge.source) && dagreGraph.hasNode(edge.target)) {
+                dagreGraph.setEdge(edge.source, edge.target, { weight: 0.5 }); // Lower weight for siblings?
+           } else {
+                console.warn(`Skipping sibling edge in layout due to missing node: ${edge.source} -> ${edge.target}`);
+           }
       }
       // Handle other types as needed
   });
@@ -106,33 +143,40 @@ const getLayoutedElements = (nodes, edges, direction = 'TB') => {
   dagre.layout(dagreGraph);
 
   // 6. Apply Positions to Original Nodes (excluding dummy nodes)
-  nodes.forEach((node) => {
+  const layoutedNodes = nodes.map((node) => {
+    if (!node || !node.id) return node; // Skip invalid nodes
+
     const nodeWithPosition = dagreGraph.node(node.id);
-    if (nodeWithPosition) { // Check if node exists in graph (it should)
-        node.targetPosition = direction === 'LR' ? 'left' : 'top';
-        node.sourcePosition = direction === 'LR' ? 'right' : 'bottom';
-        // Center the node based on its dimensions
-        node.position = {
-            x: nodeWithPosition.x - nodeWidth / 2,
-            y: nodeWithPosition.y - nodeHeight / 2,
+    if (nodeWithPosition) { // Check if node exists in graph
+        return {
+            ...node,
+            targetPosition: direction === 'LR' ? 'left' : 'top',
+            sourcePosition: direction === 'LR' ? 'right' : 'bottom',
+            // Center the node based on its dimensions
+            position: {
+                x: nodeWithPosition.x - nodeWidth / 2,
+                y: nodeWithPosition.y - nodeHeight / 2,
+            },
         };
     } else {
         console.warn(`Node ${node.id} not found in Dagre graph after layout.`);
         // Assign default position?
-        node.position = { x: Math.random() * 400, y: Math.random() * 400 };
+        return {
+            ...node,
+            position: { x: Math.random() * 400, y: Math.random() * 400 },
+        };
     }
   });
 
   // Return original nodes with updated positions and original edges
   // React Flow doesn't need the dummy nodes or modified edges for rendering
-  return { nodes, edges };
+  return { nodes: layoutedNodes, edges };
 };
 
 
-const FamilyTreeVisualization = () => {
-  const [selectedPerson, setSelectedPerson] = useState(null);
-  const [people, setPeople] = useState([]);
-  const [relationships, setRelationships] = useState([]);
+const FamilyTreeVisualization = ({ activeTreeId }) => { // Receive activeTreeId as prop
+  const [selectedPersonData, setSelectedPersonData] = useState(null); // Store full data for details pane
+  const [allNodesData, setAllNodesData] = useState([]); // Store all node data for lookups
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [loading, setLoading] = useState(true);
@@ -141,6 +185,7 @@ const FamilyTreeVisualization = () => {
   const [isDarkMode, setIsDarkMode] = useState(
       window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
   );
+  const isInitialMount = useRef(true); // Ref to track initial mount
 
   // Listen for theme changes (optional)
   useEffect(() => {
@@ -151,116 +196,140 @@ const FamilyTreeVisualization = () => {
   }, []);
 
 
-  // Fetch data from API
+  // Fetch data using the single /tree_data endpoint
   useEffect(() => {
     let isMounted = true;
     const fetchData = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const [peopleData, relationshipsData] = await Promise.all([
-          api.getAllPeople(),
-          api.getAllRelationships()
-        ]);
-        if (isMounted) {
-          setPeople(Array.isArray(peopleData) ? peopleData : []);
-          setRelationships(Array.isArray(relationshipsData) ? relationshipsData : []);
+        // Only fetch if activeTreeId is provided
+        if (!activeTreeId) {
+            if (isMounted) {
+                setNodes([]);
+                setEdges([]);
+                setAllNodesData([]);
+                setSelectedPersonData(null);
+                setLoading(false);
+                setError(null); // Clear error when no tree is selected
+            }
+            return;
         }
-      } catch (err) {
-        console.error("Error fetching data:", err);
-        if (isMounted) {
-            setError("Failed to load family tree data.");
-            setPeople([]);
-            setRelationships([]);
+
+        setLoading(true);
+        setError(null);
+        try {
+            // Use the getTreeData API call
+            const treeData = await api.getTreeData(activeTreeId);
+
+            if (isMounted) {
+                // Validate response structure
+                if (!treeData || !Array.isArray(treeData.nodes) || !Array.isArray(treeData.links)) {
+                    throw new Error("Invalid data structure received from API.");
+                }
+
+                // Process nodes (already formatted by backend, just use them)
+                const initialNodes = treeData.nodes.map(node => ({
+                    ...node, // Use node structure from backend
+                    // Ensure position is initialized if backend doesn't provide it
+                    position: node.position || { x: 0, y: 0 },
+                }));
+
+                // Process edges (links from backend)
+                const initialEdges = treeData.links.map(link => ({
+                    ...link, // Use link structure from backend
+                    id: link.id || `e-${link.source}-${link.target}-${link.label || 'rel'}`, // Ensure unique ID
+                    type: link.type || 'default', // Default edge type
+                    style: getEdgeStyle(link.label || link.data?.rel_type), // Apply styles
+                    // Ensure data.rel_type exists for layout function
+                    data: {
+                        ...link.data,
+                        rel_type: link.label || link.data?.rel_type,
+                    }
+                }));
+
+                // Store all node data for PersonDetails lookup
+                setAllNodesData(initialNodes.map(n => n.data)); // Store the 'data' part
+
+                // Calculate layout if nodes exist
+                if (initialNodes.length > 0) {
+                    const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(
+                        initialNodes, initialEdges, rankdir
+                    );
+                    setNodes(layoutedNodes);
+                    setEdges(initialEdges); // Use original edges for rendering
+
+                    // Fit view only on initial load or when treeId changes significantly
+                    if (isInitialMount.current) {
+                         setTimeout(() => fitView({ padding: 0.2, duration: 800 }), 100);
+                         isInitialMount.current = false;
+                    }
+
+                } else {
+                    setNodes([]);
+                    setEdges([]);
+                    setAllNodesData([]);
+                }
+                setSelectedPersonData(null); // Clear selection when tree changes
+            }
+        } catch (err) {
+            console.error("Error fetching tree data:", err);
+            if (isMounted) {
+                setError(err.response?.data?.message || err.message || "Failed to load family tree data.");
+                setNodes([]);
+                setEdges([]);
+                setAllNodesData([]);
+                setSelectedPersonData(null);
+            }
+        } finally {
+            if (isMounted) setLoading(false);
         }
-      } finally {
-        if (isMounted) setLoading(false);
-      }
     };
+
     fetchData();
-    return () => { isMounted = false; };
-  }, []);
 
-  // Update nodes and edges when data changes
-  useEffect(() => {
-    if (loading || error || people.length === 0) return; // Wait for data
+    // Reset initial mount flag when activeTreeId changes
+    const initialMountTimer = setTimeout(() => {
+        isInitialMount.current = true;
+    }, 0);
 
-    // Create initial nodes from people data
-    const initialNodes = people
-        .filter(person => person && person.person_id)
-        .map((person) => ({
-            id: person.person_id.toString(),
-            type: 'personNode', // Use custom node type
-            position: { x: 0, y: 0 }, // Initial position, layout engine will override
-            data: { // Data to pass to PersonNode component
-                id: person.person_id,
-                label: `${person.first_name || ''} ${person.last_name || ''}`.trim(),
-                dob: person.birth_date,
-                dod: person.death_date,
-                // Add photoUrl or other needed data here
-                // photoUrl: person.photo_url || defaultAvatar,
-            },
-        }));
 
-    // Create initial edges from relationships data
-    const initialEdges = relationships
-      .filter(rel => rel && rel.rel_id && rel.person1_id && rel.person2_id)
-      .map((relationship) => ({
-        id: `e-${relationship.rel_id}`, // Ensure unique edge IDs, prefix with 'e-'
-        source: relationship.person1_id.toString(),
-        target: relationship.person2_id.toString(),
-        type: 'default', // Use 'smoothstep' or 'step' for different edge shapes
-        // markerEnd: { // Add arrow heads if desired
-        //   type: MarkerType.ArrowClosed,
-        // },
-        animated: false, // Optional animation
-        label: relationship.rel_type, // Display relationship type on edge
-        style: getEdgeStyle(relationship.rel_type), // Apply styles based on type
-        data: { // Pass relationship data if needed (e.g., for edge click handlers)
-            ...relationship,
-            rel_type: relationship.rel_type // Ensure rel_type is in data for layout function
-        }
-      }));
+    return () => {
+        isMounted = false;
+        clearTimeout(initialMountTimer);
+    };
+    // Dependency: Fetch data when activeTreeId changes
+  }, [activeTreeId, setNodes, setEdges, fitView]);
 
-    // Calculate layout if nodes exist
-    if (initialNodes.length > 0) {
-        const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(
-            initialNodes, initialEdges, rankdir
-        );
-        setNodes(layoutedNodes);
-        // Use the original edges for rendering, not the modified ones used by Dagre
-        setEdges(initialEdges);
-        // Fit view after a short delay to allow rendering
-        setTimeout(() => fitView({ padding: 0.2, duration: 800 }), 100);
-    } else {
-        setNodes([]);
-        setEdges([]);
-    }
-  // Dependencies for re-running layout: people, relationships, loading state, errors, and React Flow setters/methods
-  }, [people, relationships, loading, error, fitView, setNodes, setEdges]);
-
-  // Edge styling function (remains the same)
+  // Edge styling function
   const getEdgeStyle = (relationshipType) => {
     const typeLower = relationshipType?.toLowerCase();
     switch (typeLower) {
-      case 'spouse': case 'partner': return { stroke: '#e63946', strokeWidth: 2 }; // Red for partners
-      case 'parent': case 'child': return { stroke: '#457b9d', strokeWidth: 2 }; // Blue for parent/child
-      case 'sibling': return { stroke: '#2a9d8f', strokeWidth: 1.5, strokeDasharray: '5,5' }; // Green dashed for siblings
+      // Use CSS variables for colors
+      case 'spouse_current': case 'spouse_former': case 'partner':
+        return { stroke: 'var(--color-relationship-spouse)', strokeWidth: 2 };
+      case 'biological_parent': case 'adoptive_parent': case 'step_parent': case 'foster_parent': case 'guardian':
+      case 'biological_child': case 'adoptive_child': case 'step_child': case 'foster_child':
+        return { stroke: 'var(--color-relationship-parentchild)', strokeWidth: 2 };
+      case 'sibling_full': case 'sibling_half': case 'sibling_step': case 'sibling_adoptive':
+        return { stroke: 'var(--color-relationship-sibling)', strokeWidth: 1.5, strokeDasharray: '5,5' };
       default: return { stroke: 'var(--color-border)', strokeWidth: 1 }; // Default grey
     }
   };
 
-  // Node click handler (remains the same)
+  // Node click handler
   const onNodeClick = useCallback((event, node) => {
-    // Find the full person object from the people array using the node id
-    const personData = people.find(p => p.person_id === node.id);
-    setSelectedPerson(personData || node.data); // Pass the full person object
-  }, [people]); // Dependency on people array
+    // Find the full person data from the stored allNodesData array using the node id
+    // The node object passed here is the React Flow node, use its id
+    const personData = allNodesData.find(p => p.id === node.id);
+    setSelectedPersonData(personData || node.data); // Pass the full person data object
+    console.log("Selected Person Data:", personData || node.data);
+  }, [allNodesData]); // Dependency on allNodesData array
 
   // Loading and error display
-  if (loading) return <div style={{ padding: '20px', textAlign: 'center' }}>Loading family tree...</div>;
-  if (error) return <div style={{ padding: '20px', textAlign: 'center', color: 'var(--color-error-text)' }}>Error: {error}</div>;
-  if (nodes.length === 0 && !loading) return <div style={{ padding: '20px', textAlign: 'center' }}>No people found in the family tree.</div>;
+  if (loading) return <div className="card" style={{ padding: '20px', textAlign: 'center' }}>Loading family tree...</div>;
+  // Show message if no tree is selected AFTER checking loading state
+  if (!activeTreeId && !loading) return <div className="card" style={{ padding: '20px', textAlign: 'center' }}>Please select or create a family tree.</div>;
+  if (error) return <div className="card message error-message" style={{ padding: '20px', textAlign: 'center' }}>Error: {error}</div>;
+  if (nodes.length === 0 && !loading && !error && activeTreeId) return <div className="card" style={{ padding: '20px', textAlign: 'center' }}>No people found in this family tree. Add someone to get started!</div>;
+
 
   // React Flow specific theme adjustments (optional, CSS variables might suffice)
   const flowBgColor = isDarkMode ? 'var(--color-reactflow-bg)' : 'var(--color-reactflow-bg)';
@@ -268,10 +337,8 @@ const FamilyTreeVisualization = () => {
 
   return (
     // Use dashboard-main class for flex layout defined in index.css
-    <div className="dashboard-main" style={{ height: '100%' }}>
-      {/* React Flow container */}
-      {/* Use dashboard-viz-container class */}
-      <div className="dashboard-viz-container">
+    // This component itself doesn't need dashboard-main, it sits within dashboard-viz-container
+    <>
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -279,11 +346,12 @@ const FamilyTreeVisualization = () => {
           onEdgesChange={onEdgesChange}
           nodeTypes={nodeTypes} // Register custom node types
           onNodeClick={onNodeClick}
-          fitView // Fit view on initial load
+          fitView // Fit view on initial load (handled by effect now)
           fitViewOptions={{ padding: 0.2 }} // Add padding around the graph
           proOptions={{ hideAttribution: true }} // Hide React Flow attribution
           minZoom={0.1} // Set min/max zoom levels
           maxZoom={2}
+          style={{ background: flowBgColor }} // Apply background color via style prop
         >
           <MiniMap
               // nodeColor handled by node style or CSS
@@ -299,18 +367,18 @@ const FamilyTreeVisualization = () => {
               gap={16}
           />
         </ReactFlow>
-      </div>
-      {/* Person Details Sidebar */}
-      {/* Use dashboard-details-sidebar and card classes */}
-      <div className="dashboard-details-sidebar card">
-        <PersonDetails selectedPerson={selectedPerson} people={people} />
-      </div>
-    </div>
+
+        {/* Person Details Sidebar - Rendered by DashboardPage */}
+        {/* We manage the selectedPersonData state here and pass it up or render details directly */}
+        {/* For now, assume DashboardPage renders the sidebar and passes selectedPersonData */}
+        {/* If this component should render the sidebar itself, move the sidebar div here */}
+         <div className="dashboard-details-sidebar card">
+             {/* Pass the selected person's data and the full list of node data */}
+             <PersonDetails selectedPerson={selectedPersonData} allNodesData={allNodesData} activeTreeId={activeTreeId} />
+         </div>
+    </>
   );
 };
 
 // Wrap with ReactFlowProvider in the parent component (DashboardPage)
-// export default FamilyTreeVisualization; // Export without provider here
-
-// Correct: Export the component directly
 export default FamilyTreeVisualization;

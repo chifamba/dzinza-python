@@ -29,6 +29,7 @@ from dotenv import load_dotenv
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from functools import wraps # Import wraps for decorators
+from flask_cors import CORS
 
 # --- Enhanced Logging & Tracing Imports ---
 import structlog
@@ -51,16 +52,23 @@ load_dotenv()
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv("FLASK_SECRET_KEY", "your_default_secret_key")
 app.config.update(
-    SESSION_COOKIE_SECURE=os.environ.get('FLASK_ENV') == 'production',
+    SESSION_COOKIE_SECURE=os.environ.get('FLASK_ENV') == 'development',
     SESSION_COOKIE_HTTPONLY=True,
-    SESSION_COOKIE_SAMESITE='Lax',
+    SESSION_COOKIE_SAMESITE='None',
     PERMANENT_SESSION_LIFETIME=timedelta(days=7)
 )
+
+# Enable CORS for the Flask app
+CORS(app, resources={r"/api/*": {"origins": "http://localhost:5173"}}, supports_credentials=True)
+
+redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")  # Default to local Redis
+
 
 # --- Rate Limiter Setup ---
 limiter = Limiter(
     get_remote_address,
     app=app,
+    storage_uri=redis_url,  # Use Redis as the storage backend
     default_limits=["200 per day", "50 per hour"],
 )
 
@@ -102,9 +110,9 @@ otlp_exporter_trace = OTLPSpanExporter() # Assuming default endpoint or configur
 # span_processor = BatchSpanProcessor(otlp_exporter_trace)
 span_processor = BatchSpanProcessor(
     otlp_exporter_trace,
-    max_export_batch_size=512,
-    max_queue_size=2048,
-    export_timeout_millis=30000,
+    max_export_batch_size=64,
+    max_queue_size=128,
+    export_timeout_millis=300,
 )
 trace.get_tracer_provider().add_span_processor(span_processor)
 
@@ -740,6 +748,213 @@ def require_tree_access(level: str = 'view'):
 
 # register_user_db, authenticate_user_db, update_user_role_db, delete_user_db remain the same
 
+
+
+def get_activity_log_db(db: Session, tree_id: Optional[uuid.UUID] = None, user_id: Optional[uuid.UUID] = None) -> List[Dict[str, Any]]:
+    """Retrieves activity logs for a tree or user."""
+    with tracer.start_as_current_span("service.get_activity_log") as span:
+        logger.info("Fetching activity logs", tree_id=tree_id, user_id=user_id)
+
+        try:
+            query = db.query(ActivityLog)
+            if tree_id:
+                query = query.filter(ActivityLog.tree_id == tree_id)
+            if user_id:
+                query = query.filter(ActivityLog.user_id == user_id)
+
+            logs = query.order_by(ActivityLog.created_at.desc()).all()
+            return [log.to_dict() for log in logs]
+        except SQLAlchemyError as e:
+            logger.error("Database error fetching activity logs.", exc_info=True)
+            _handle_sqlalchemy_error(e, "fetching activity logs", db)
+        except Exception as e:
+            logger.error("Unexpected error fetching activity logs.", exc_info=True)
+            abort(500, description="An unexpected error occurred while fetching activity logs.")
+
+def delete_tree_db(db: Session, tree_id: uuid.UUID) -> None:
+    """Deletes a tree from the database."""
+    with tracer.start_as_current_span("service.delete_tree") as span:
+        span.set_attribute("tree.id", str(tree_id))
+        logger.info("Deleting tree", tree_id=tree_id)
+
+        tree = _get_or_404(db, Tree, tree_id)
+        try:
+            db.delete(tree)
+            db.commit()
+            logger.info("Tree deleted successfully", tree_id=tree_id)
+        except SQLAlchemyError as e:
+            db.rollback()
+            logger.error("Database error during tree deletion.", tree_id=tree_id, exc_info=True)
+            _handle_sqlalchemy_error(e, "deleting tree", db)
+        except Exception as e:
+            db.rollback()
+            logger.error("Unexpected error during tree deletion.", tree_id=tree_id, exc_info=True)
+            abort(500, description="An unexpected error occurred while deleting the tree.")
+
+def update_tree_db(db: Session, tree_id: uuid.UUID, tree_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Updates the details of a tree."""
+    with tracer.start_as_current_span("service.update_tree") as span:
+        span.set_attribute("tree.id", str(tree_id))
+        logger.info("Updating tree", tree_id=tree_id)
+
+        tree = _get_or_404(db, Tree, tree_id)
+        try:
+            for key, value in tree_data.items():
+                if hasattr(tree, key):
+                    setattr(tree, key, value)
+
+            tree.updated_at = datetime.utcnow()
+            db.commit()
+            db.refresh(tree)
+
+            logger.info("Tree updated successfully", tree_id=tree.id)
+            return tree.to_dict()
+        except SQLAlchemyError as e:
+            db.rollback()
+            logger.error("Database error during tree update.", tree_id=tree_id, exc_info=True)
+            _handle_sqlalchemy_error(e, "updating tree", db)
+        except Exception as e:
+            db.rollback()
+            logger.error("Unexpected error during tree update.", tree_id=tree_id, exc_info=True)
+            abort(500, description="An unexpected error occurred while updating the tree.")
+
+def delete_user_db(db: Session, user_id: uuid.UUID) -> None:
+    """Deletes a user from the database."""
+    with tracer.start_as_current_span("service.delete_user") as span:
+        span.set_attribute("app.user.id", str(user_id))
+        logger.info("Deleting user", user_id=user_id)
+
+        user = _get_or_404(db, User, user_id)
+        try:
+            db.delete(user)
+            db.commit()
+            logger.info("User deleted successfully", user_id=user_id)
+        except SQLAlchemyError as e:
+            db.rollback()
+            logger.error("Database error during user deletion.", user_id=user_id, exc_info=True)
+            _handle_sqlalchemy_error(e, "deleting user", db)
+        except Exception as e:
+            db.rollback()
+            logger.error("Unexpected error during user deletion.", user_id=user_id, exc_info=True)
+            abort(500, description="An unexpected error occurred while deleting the user.")
+
+def update_user_role_db(db: Session, user_id: uuid.UUID, new_role: str) -> Dict[str, Any]:
+    """Updates the role of a user."""
+    with tracer.start_as_current_span("service.update_user_role") as span:
+        span.set_attribute("app.user.id", str(user_id))
+        span.set_attribute("app.user.new_role", new_role)
+        logger.info("Updating user role", user_id=user_id, new_role=new_role)
+
+        try:
+            user = _get_or_404(db, User, user_id)
+            user.role = UserRole(new_role)
+            user.updated_at = datetime.utcnow()
+            db.commit()
+            db.refresh(user)
+
+            logger.info("User role updated successfully", user_id=user.id, new_role=user.role.value)
+            return user.to_dict()
+        except ValueError:
+            logger.warning("Invalid role specified.", user_id=user_id, new_role=new_role)
+            abort(400, description=f"Invalid role specified: {new_role}")
+        except Exception as e:
+            db.rollback()
+            logger.error("Unexpected error during user role update.", user_id=user_id, exc_info=True)
+            abort(500, description="An unexpected error occurred while updating the user role.")
+
+def register_user_db(db: Session, user_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Registers a new user."""
+    with tracer.start_as_current_span("service.register_user") as span:
+        span.set_attribute("app.user.username", user_data['username'])
+        logger.info("Registering new user", username=user_data['username'])
+
+        # Validate password complexity
+        try:
+            _validate_password_complexity(user_data['password'])
+        except ValueError as e:
+            logger.warning("User registration failed: Password complexity requirements not met.", username=user_data['username'], reason=str(e))
+            abort(400, description=str(e))
+
+        # Hash the password
+        hashed_password = _hash_password(user_data['password'])
+
+        try:
+            new_user = User(
+                username=user_data['username'],
+                email=user_data['email'],
+                password_hash=hashed_password,
+                full_name=user_data.get('full_name'),
+                role=UserRole(user_data.get('role', UserRole.USER.value)),
+                is_active=True,
+                email_verified=False,
+                created_at=datetime.utcnow()
+            )
+            db.add(new_user)
+            db.commit()
+            db.refresh(new_user)
+
+            logger.info("User registered successfully", user_id=new_user.id, username=new_user.username)
+            return new_user.to_dict()
+        except IntegrityError as e:
+            db.rollback()
+            logger.warning("User registration failed: Integrity error.", username=user_data['username'], exc_info=True)
+            _handle_sqlalchemy_error(e, "registering user", db)
+        except Exception as e:
+            db.rollback()
+            logger.error("Unexpected error during user registration.", username=user_data['username'], exc_info=True)
+            abort(500, description="An unexpected error occurred during registration.")
+            
+
+
+def authenticate_user_db(db: Session, username_or_email: str, password: str) -> Optional[Dict[str, Any]]:
+    """Authenticates a user by username/email and password."""
+    with tracer.start_as_current_span("service.authenticate_user") as span:
+        span.set_attribute("app.user.identifier", username_or_email)
+        logger.info("Authenticating user", identifier=username_or_email)
+
+        try:
+            # Normalize username/email to lowercase for case-insensitive matching
+            normalized_identifier = username_or_email.lower()
+
+            # Query user by username (case-insensitive) or email (case-insensitive)
+            user = db.query(User).filter(
+                or_(
+                    func.lower(User.username) == normalized_identifier,
+                    func.lower(User.email) == normalized_identifier
+                )
+            ).one_or_none()
+
+            if not user:
+                logger.warning("Authentication failed: User not found", identifier=username_or_email)
+                span.set_attribute("app.user.found", False)
+                return None  # User not found
+
+            span.set_attribute("app.user.found", True)
+            span.set_attribute("app.user.id", str(user.id))
+
+            # Verify password
+            if not _verify_password(password, user.password_hash):
+                logger.warning("Authentication failed: Incorrect password", user_id=user.id, username=user.username)
+                span.set_attribute("app.auth.success", False)
+                return None  # Password mismatch
+
+            span.set_attribute("app.auth.success", True)
+            logger.info("Authentication successful", user_id=user.id, username=user.username)
+
+            # Return user data (excluding sensitive fields)
+            return user.to_dict(include_sensitive=False)
+
+        except SQLAlchemyError as e:
+            logger.error("Database error during user authentication", identifier=username_or_email, exc_info=True)
+            span.record_exception(e)
+            span.set_status(trace.StatusCode.ERROR, "DB Error")
+            raise
+        except Exception as e:
+            logger.error("Unexpected error during user authentication", identifier=username_or_email, exc_info=True)
+            span.record_exception(e)
+            span.set_status(trace.StatusCode.ERROR, "Unknown Error")
+            raise
+
 def get_all_users_db(db: Session) -> List[Dict[str, Any]]:
     """Retrieves all users (admin only)."""
     with tracer.start_as_current_span("service.get_all_users") as span:
@@ -797,7 +1012,7 @@ def request_password_reset_db(db: Session, email_or_username: str) -> bool:
             # --- Email Sending (Placeholder) ---
             # This requires a configured email server.
             # Get app URL from environment variables for the reset link
-            app_url = os.getenv("APP_URL", "http://localhost:5173") # Default frontend URL
+            app_url = os.getenv("FRONTEND_APP_URL", "http://frontend:5173") # Default frontend URL
             reset_link = f"{app_url}/reset-password/{token}"
 
             email_user = os.getenv("EMAIL_USER")
@@ -1692,6 +1907,17 @@ def initialize_database(engine_to_use, session_factory):
 # Call the database initialization logic during app startup
 initialize_database(engine, SessionLocal)
 
+@app.errorhandler(Exception)
+def handle_global_exception(e):
+    """Handles uncaught exceptions globally."""
+    if isinstance(e, HTTPException):
+        # Log HTTP exceptions with their status code
+        logger.warning("HTTP exception occurred", status_code=e.code, description=e.description)
+        return jsonify({"error": e.description}), e.code
+
+    # Log unexpected exceptions
+    logger.error("Unexpected exception occurred", exc_info=True)
+    return jsonify({"error": "An unexpected error occurred. Please try again later."}), 500
 
 # --- Flask Request Lifecycle Hooks ---
 @app.before_request

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom'; // Import Link and useNavigate
 import api from '../api'; // Ensure path is correct
 import { useAuth } from '../context/AuthContext'; // Import useAuth
@@ -14,13 +14,13 @@ function AddRelationshipPage() {
     attributes: {}, // Include attributes if your API supports them
   };
   const [relationship, setRelationship] = useState(initialRelationshipState);
-  const [people, setPeople] = useState([]);
+  const [people, setPeople] = useState([]); // State for people list
   const [successMessage, setSuccessMessage] = useState(null);
   const [error, setError] = useState(null);
   const [validationErrors, setValidationErrors] = useState({}); // For field-specific errors
-  const [loading, setLoading] = useState(false);
-  const [loadingPeople, setLoadingPeople] = useState(true); // Separate loading state for people list
-
+  const [loading, setLoading] = useState(false); // For form submission
+  const [loadingPeople, setLoadingPeople] = useState(false); // Separate loading state for people list
+  const fetchedTreeId = useRef(null); // Ref to store the tree ID for which people were fetched
 
   // Define valid relationship types (should match backend's RelationshipTypeEnum)
   const relationshipTypes = [
@@ -31,14 +31,18 @@ function AddRelationshipPage() {
       'other'
   ];
 
-  // Fetch people list on component mount or when activeTreeId changes
+  // Fetch people list ONLY if activeTreeId changes or people list is empty
   useEffect(() => {
     let isMounted = true;
     const fetchPeople = async () => {
-      if (!activeTreeId) {
-          if (isMounted) {
+      // Only fetch if activeTreeId is set AND (people list is empty OR the activeTreeId has changed)
+      if (!activeTreeId || (people.length > 0 && fetchedTreeId.current === activeTreeId)) {
+          // No need to fetch if tree ID hasn't changed and we already have people
+          // Or if no tree ID is selected
+          if (!activeTreeId && isMounted) {
+              // Clear people list if no tree is active
               setPeople([]);
-              setLoadingPeople(false);
+              fetchedTreeId.current = null;
           }
           return;
       }
@@ -51,6 +55,7 @@ function AddRelationshipPage() {
         // Ensure peopleData is an array before setting state
         if (isMounted) {
              setPeople(Array.isArray(peopleData) ? peopleData : []);
+             fetchedTreeId.current = activeTreeId; // Store the ID for which we fetched
         }
       } catch (err) {
         console.error("Failed to load people:", err.response || err);
@@ -58,6 +63,7 @@ function AddRelationshipPage() {
             const errorMsg = err.response?.data?.message || err.message || 'Failed to load people list.';
             setError(errorMsg);
             setPeople([]); // Set to empty array on error
+            fetchedTreeId.current = null; // Reset fetched ID on error
         }
       } finally {
         if (isMounted) setLoadingPeople(false); // Stop loading after fetch attempt
@@ -66,7 +72,8 @@ function AddRelationshipPage() {
 
     fetchPeople();
     return () => { isMounted = false; };
-  }, [activeTreeId]); // Re-fetch when activeTreeId changes
+  // Dependencies: activeTreeId and the people array itself (to trigger refetch if cleared)
+  }, [activeTreeId, people.length]); // Re-run if activeTreeId changes OR if people array becomes empty
 
   // Handle changes in select dropdowns and other inputs
   const handleInputChange = (event) => {
@@ -75,6 +82,12 @@ function AddRelationshipPage() {
     // Clear validation error for this field when user changes input
      if (validationErrors[name]) {
          setValidationErrors(prevErrors => ({ ...prevErrors, [name]: null }));
+     }
+     // Clear general person ID error if both are now selected
+     if (name === 'person1_id' || name === 'person2_id') {
+         if (validationErrors.person_ids) {
+              setValidationErrors(prevErrors => ({ ...prevErrors, person_ids: null }));
+         }
      }
   };
 
@@ -127,18 +140,18 @@ function AddRelationshipPage() {
     setValidationErrors({});
 
     // Basic client-side validation
+    let currentValidationErrors = {};
     if (!relationship.person1_id || !relationship.person2_id) {
-        setValidationErrors(prev => ({ ...prev, person_ids: "Please select both Person 1 and Person 2." }));
-        setLoading(false);
-        return;
-    }
-    if (relationship.person1_id === relationship.person2_id) {
-        setValidationErrors(prev => ({ ...prev, person_ids: "Cannot create a relationship between the same person." }));
-        setLoading(false);
-        return;
+        currentValidationErrors.person_ids = "Please select both Person 1 and Person 2.";
+    } else if (relationship.person1_id === relationship.person2_id) {
+        currentValidationErrors.person_ids = "Cannot create a relationship between the same person.";
     }
     if (!relationship.relationship_type) {
-        setValidationErrors(prev => ({ ...prev, relationship_type: "Please select a relationship type." }));
+        currentValidationErrors.relationship_type = "Please select a relationship type.";
+    }
+
+    if (Object.keys(currentValidationErrors).length > 0) {
+        setValidationErrors(currentValidationErrors);
         setLoading(false);
         return;
     }
@@ -205,7 +218,7 @@ function AddRelationshipPage() {
       <h1>Add Relationship</h1>
       {/* Use message classes for feedback */}
       {successMessage && <div className="message success-message">{successMessage}</div>}
-      {error && <div className="message error-message">{error}</div>}
+      {error && !validationErrors.person_ids && !validationErrors.relationship_type && <div className="message error-message">{error}</div>}
 
       <form onSubmit={handleSubmit}>
         {/* Person 1 Dropdown */}
@@ -218,19 +231,22 @@ function AddRelationshipPage() {
             onChange={handleInputChange}
             required // Basic HTML5 validation
             disabled={loading || loadingPeople} // Disable while loading people or submitting
+            aria-invalid={!!validationErrors.person_ids} // Indicate invalid field for accessibility
+            aria-describedby={validationErrors.person_ids ? "person-ids-error" : undefined}
           >
             <option value="" disabled>-- Select Person 1 --</option>
             {loadingPeople ? (
                 <option value="" disabled>Loading people...</option>
             ) : (
                  people.map((person) => (
-                   <option key={person.id} value={person.id}> {/* Use person.id */}
+                   // Use person.id which corresponds to the UUID from the backend Person model
+                   <option key={person.id} value={person.id}>
                      {person.first_name} {person.last_name} ({person.id.substring(0, 8)}...)
                    </option>
                  ))
             )}
           </select>
-           {validationErrors.person_ids && <div className="field-error">{validationErrors.person_ids}</div>}
+           {validationErrors.person_ids && <div id="person-ids-error" className="field-error">{validationErrors.person_ids}</div>}
         </div>
 
         {/* Person 2 Dropdown */}
@@ -243,19 +259,22 @@ function AddRelationshipPage() {
             onChange={handleInputChange}
             required
             disabled={loading || loadingPeople}
+            aria-invalid={!!validationErrors.person_ids} // Indicate invalid field for accessibility
+            aria-describedby={validationErrors.person_ids ? "person-ids-error" : undefined}
           >
             <option value="" disabled>-- Select Person 2 --</option>
              {loadingPeople ? (
                 <option value="" disabled>Loading people...</option>
             ) : (
                  people.map((person) => (
-                   <option key={person.id} value={person.id}> {/* Use person.id */}
+                   // Use person.id which corresponds to the UUID from the backend Person model
+                   <option key={person.id} value={person.id}>
                      {person.first_name} {person.last_name} ({person.id.substring(0, 8)}...)
                    </option>
                  ))
             )}
           </select>
-           {validationErrors.person_ids && <div className="field-error">{validationErrors.person_ids}</div>}
+           {/* Error message is displayed under Person 1 dropdown */}
         </div>
 
         {/* Relationship Type Dropdown */}
@@ -268,6 +287,8 @@ function AddRelationshipPage() {
             onChange={handleInputChange}
             required
             disabled={loading}
+            aria-invalid={!!validationErrors.relationship_type} // Indicate invalid field for accessibility
+            aria-describedby={validationErrors.relationship_type ? "rel-type-error" : undefined}
           >
             <option value="" disabled>-- Select Type --</option> {/* Added empty option */}
             {relationshipTypes.map((type) => (
@@ -277,69 +298,62 @@ function AddRelationshipPage() {
               </option>
             ))}
           </select>
-           {validationErrors.relationship_type && <div className="field-error">{validationErrors.relationship_type}</div>}
+           {validationErrors.relationship_type && <div id="rel-type-error" className="field-error">{validationErrors.relationship_type}</div>}
         </div>
-
-        {/* Add fields for attributes if needed here (e.g., start_date, end_date, certainty_level) */}
-        {/* Example for start_date:
-        <div className="form-group">
-          <label htmlFor="start_date">Start Date (Optional):</label>
-          <input
-            type="date"
-            id="start_date"
-            name="start_date" // This would need custom handling for attributes state
-            value={relationship.attributes?.start_date || ''}
-            onChange={handleAttributeChange} // Need to implement handleAttributeChange
-            disabled={loading}
-          />
-        </div>
-        */}
 
          {/* Custom Attributes Section - Similar to Person pages */}
-        <div className="form-group">
-            <label>Custom Attributes:</label>
-            {Object.entries(relationship.attributes).map(([key, value]) => (
-                <div key={key} style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '5px' }}>
-                    <input
-                        type="text"
-                        placeholder="Attribute Name"
-                        value={key}
-                        onChange={(e) => {
-                            const newAttributes = { ...relationship.attributes };
-                            const oldValue = newAttributes[key];
-                            delete newAttributes[key];
-                            newAttributes[e.target.value] = oldValue;
-                            setRelationship({ ...relationship, attributes: newAttributes });
-                        }}
-                        disabled={loading}
-                        style={{ width: '150px' }} // Adjust width for key input
-                    />
+         <div className="form-group">
+             <label>Custom Attributes:</label>
+             {Object.entries(relationship.attributes).map(([key, value], index) => (
+                 <div key={`attr-${index}`} style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '5px' }}>
                      <input
-                        type="text"
-                        placeholder="Attribute Value"
-                        value={value}
-                        onChange={(e) => handleAttributeChange({ target: { name: key, value: e.target.value } })}
+                         type="text"
+                         placeholder="Attribute Name"
+                         value={key}
+                         onChange={(e) => {
+                             const newAttributes = { ...relationship.attributes };
+                             const oldValue = newAttributes[key];
+                             delete newAttributes[key];
+                             newAttributes[e.target.value] = oldValue;
+                             setRelationship({ ...relationship, attributes: newAttributes });
+                         }}
+                         disabled={loading}
+                         style={{ width: '150px' }} // Adjust width for key input
+                         aria-label={`Attribute ${index + 1} Name`}
+                     />
+                      <input
+                         type="text"
+                         placeholder="Attribute Value"
+                         value={value}
+                         onChange={(e) => handleAttributeChange({ target: { name: key, value: e.target.value } })}
+                         disabled={loading}
+                         style={{ flexGrow: 1 }} // Allow value input to take remaining space
+                         aria-label={`Attribute ${index + 1} Value`}
+                     />
+                     <button
+                        type="button"
+                        onClick={() => removeCustomAttribute(key)}
                         disabled={loading}
-                        style={{ flexGrow: 1 }} // Allow value input to take remaining space
-                    />
-                    <button type="button" onClick={() => removeCustomAttribute(key)} disabled={loading} style={{ width: 'auto', padding: '5px 10px', backgroundColor: 'var(--color-error-text)' }}>
-                        Remove
-                    </button>
-                </div>
-            ))}
-            <button type="button" onClick={addCustomAttribute} disabled={loading} style={{ width: 'auto', marginTop: '10px', backgroundColor: 'var(--color-secondary)' }}>
-                Add Attribute
-            </button>
-             {validationErrors.attributes && <div className="field-error">{validationErrors.attributes}</div>}
-        </div>
+                        style={{ width: 'auto', padding: '5px 10px', backgroundColor: 'var(--color-error-text)' }}
+                        aria-label={`Remove attribute ${key}`}
+                     >
+                         Remove
+                     </button>
+                 </div>
+             ))}
+             <button type="button" onClick={addCustomAttribute} disabled={loading} style={{ width: 'auto', marginTop: '10px' }} className="secondary-button">
+                 Add Attribute
+             </button>
+              {validationErrors.attributes && <div className="field-error">{validationErrors.attributes}</div>}
+         </div>
 
 
         {/* Buttons */}
-        <div style={{ display: 'flex', gap: '10px', marginTop: '1.5rem', justifyContent: 'flex-end' }}> {/* Align buttons to the right */}
+        <div style={{ display: 'flex', gap: '10px', marginTop: '1.5rem', justifyContent: 'flex-end', flexWrap: 'wrap' }}> {/* Align buttons to the right, allow wrapping */}
             <Link to="/dashboard" className="button secondary-button"> {/* Use secondary-button class */}
                 Cancel
             </Link>
-            <button type="submit" disabled={loading}>
+            <button type="submit" disabled={loading || loadingPeople}>
               {loading ? 'Adding...' : 'Add Relationship'}
             </button>
         </div>

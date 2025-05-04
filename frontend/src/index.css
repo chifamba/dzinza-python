@@ -37,95 +37,97 @@
     --color-relationship-sibling: #2a9d8f; /* Green */
     --box-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
     --box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
-  
+
     font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
     line-height: 1.6; /* Slightly increased line height */
     font-weight: 400;
-  
+
     color-scheme: light dark;
     color: var(--color-text);
     background-color: var(--color-background);
-  
+
     font-synthesis: none;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-  }
-  
-  /* Dark Theme Styles */
-  @media (prefers-color-scheme: dark) {
+}
+
+/* Dark Theme Styles */
+@media (prefers-color-scheme: dark) {
     :root {
-      --color-background: #1a1a1a; /* Darker background */
-      --color-text: rgba(255, 255, 255, 0.87);
-      --color-border: #3a3a3a;
-      --color-primary: #3b82f6;
-      --color-primary-hover: #2563eb;
-      --color-secondary: #9ca3af;
-      --color-secondary-hover: #6b7280;
-      --color-link: #60a5fa;
-      --color-link-hover: #93c5fd;
-      --color-input-bg: #2a2a2a;
-      --color-input-border: #4a4a4a;
-      --color-input-text: rgba(255, 255, 255, 0.87);
-      --color-button-bg: var(--color-primary);
-      --color-button-text: #ffffff;
-      --color-button-hover-bg: var(--color-primary-hover);
-      --color-success-bg: #0f5132;
-      --color-success-border: #1c7430;
-      --color-success-text: #d1e7dd;
-      --color-error-bg: #842029;
-      --color-error-border: #a33a41;
-      --color-error-text: #f8d7da;
-      --color-card-bg: #242424;
-      --color-card-border: var(--color-border);
-      --color-reactflow-bg: #1e1e1e;
-      --color-reactflow-node-bg: #2d2d2d;
-      --color-reactflow-node-border: #555;
-      --color-reactflow-minimap-mask: rgba(60, 60, 60, 0.6);
-      --color-nav-bg: #242424;
-      --color-nav-border: var(--color-border);
-      --color-relationship-spouse: #f48c06; /* Orange */
-      --color-relationship-parentchild: #023e8a; /* Darker Blue */
-      --color-relationship-sibling: #007200; /* Darker Green */
+        --color-background: #1a1a1a; /* Darker background */
+        --color-text: rgba(255, 255, 255, 0.87);
+        --color-border: #3a3a3a;
+        --color-primary: #3b82f6;
+        --color-primary-hover: #2563eb;
+        --color-secondary: #9ca3af;
+        --color-secondary-hover: #6b7280;
+        --color-link: #60a5fa;
+        --color-link-hover: #93c5fd;
+        --color-input-bg: #2a2a2a;
+        --color-input-border: #4a4a4a;
+        --color-input-text: rgba(255, 255, 255, 0.87);
+        --color-button-bg: var(--color-primary);
+        --color-button-text: #ffffff;
+        --color-button-hover-bg: var(--color-primary-hover);
+        --color-success-bg: #0f5132;
+        --color-success-border: #1c7430;
+        --color-success-text: #d1e7dd;
+        --color-error-bg: #842029;
+        --color-error-border: #a33a41;
+        --color-error-text: #f8d7da;
+        --color-card-bg: #242424;
+        --color-card-border: var(--color-border);
+        --color-reactflow-bg: #1e1e1e;
+        --color-reactflow-node-bg: #2d2d2d;
+        --color-reactflow-node-border: #555;
+        --color-reactflow-minimap-mask: rgba(60, 60, 60, 0.6);
+        --color-nav-bg: #242424;
+        --color-nav-border: var(--color-border);
+        --color-relationship-spouse: #f48c06; /* Orange */
+        --color-relationship-parentchild: #023e8a; /* Darker Blue */
+        --color-relationship-sibling: #007200; /* Darker Green */
     }
-  }
-  
-  /* Basic Reset and Global Styles */
-  *, *::before, *::after {
+}
+
+/* Basic Reset and Global Styles */
+*, *::before, *::after {
     box-sizing: border-box; /* Better box model */
-  }
-  
-  body {
+}
+
+body {
     margin: 0;
     font-family: var(--font-family, Inter, sans-serif); /* Use variable */
     background-color: var(--color-background);
     color: var(--color-text);
     min-height: 100vh;
-  }
-  
-  #root {
-    /* Remove max-width and padding from root */
-    /* Let App.jsx handle main content constraints */
+    display: flex; /* Ensure body takes full height */
+    flex-direction: column;
+}
+
+#root {
     width: 100%;
     min-height: 100vh;
     display: flex; /* Use flex for layout */
     flex-direction: column; /* Stack children vertically */
-  }
-  
-  /* Basic Link Styling */
-  a {
+}
+
+/* Basic Link Styling */
+a {
     font-weight: 500;
     color: var(--color-link);
     text-decoration: none; /* Remove underline by default */
     transition: color 0.2s ease-in-out;
-  }
-  a:hover {
+}
+a:hover {
     color: var(--color-link-hover);
     text-decoration: underline;
-  }
-  
-  /* Basic Button Styling */
-  button {
+}
+
+/* Basic Button Styling */
+button, .button { /* Apply button styles to link elements with class="button" */
+    display: inline-block; /* Ensure links behave like buttons */
+    text-align: center;
     border-radius: 6px; /* Slightly less round */
     border: 1px solid transparent;
     padding: 0.6em 1.2em;
@@ -133,368 +135,462 @@
     font-weight: 500;
     font-family: inherit;
     background-color: var(--color-button-bg);
-    color: var(--color-button-text);
+    color: var(--color-button-text) !important; /* Ensure text color overrides link color */
     cursor: pointer;
     transition: background-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
     box-shadow: var(--box-shadow-sm);
-  }
-  button:hover {
+    text-decoration: none !important; /* Remove underline from links styled as buttons */
+    line-height: 1.4; /* Adjust line height for better vertical alignment */
+}
+button:hover, .button:hover {
     background-color: var(--color-button-hover-bg);
     box-shadow: var(--box-shadow);
-  }
-  button:focus,
-  button:focus-visible {
+    text-decoration: none !important;
+}
+button:focus, .button:focus,
+button:focus-visible, .button:focus-visible {
     outline: 2px solid var(--color-primary); /* Thinner outline */
     outline-offset: 2px;
-  }
-  button:disabled {
-      background-color: var(--color-secondary);
-      color: rgba(255, 255, 255, 0.7);
-      cursor: not-allowed;
-      opacity: 0.7;
-      box-shadow: none;
-  }
-  
-  /* Secondary Button Style */
-  .secondary-button {
-      background-color: var(--color-secondary);
-  }
-  .secondary-button:hover {
-      background-color: var(--color-secondary-hover);
-  }
-  
-  
-  /* Basic Input/Select/Textarea Styling */
-  input[type="text"],
-  input[type="password"],
-  input[type="email"],
-  input[type="date"],
-  select,
-  textarea {
-      display: block; /* Ensure they take full width of parent */
-      width: 100%;
-      padding: 0.6em 1em;
-      margin-bottom: 0.5em;
-      border: 1px solid var(--color-input-border);
-      border-radius: 4px;
-      background-color: var(--color-input-bg);
-      color: var(--color-input-text);
-      box-sizing: border-box;
-      font-family: inherit;
-      font-size: 1em;
-      transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
-  }
-  input:focus, select:focus, textarea:focus {
-      outline: none;
-      border-color: var(--color-primary);
-      box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25); /* Focus ring */
-  }
-  
-  textarea {
-      min-height: 80px;
-      resize: vertical;
-  }
-  label {
-      display: block;
-      margin-bottom: 0.4em; /* Slightly more space */
-      font-weight: 500; /* Slightly less bold */
-      font-size: 0.95em;
-  }
-  
-  /* Form Container Styling */
-  .form-container {
-      /* Keep max-width for readability on wide screens */
-      max-width: 600px;
-      /* Center the form container itself */
-      margin: 40px auto;
-      padding: 25px 30px; /* More padding */
-      border: 1px solid var(--color-border);
-      border-radius: 8px;
-      background-color: var(--color-card-bg);
+}
+button:disabled, .button:disabled {
+    background-color: var(--color-secondary);
+    color: rgba(255, 255, 255, 0.7) !important;
+    cursor: not-allowed;
+    opacity: 0.7;
+    box-shadow: none;
+}
+
+/* Secondary Button Style */
+.secondary-button {
+    background-color: var(--color-secondary);
+}
+.secondary-button:hover {
+    background-color: var(--color-secondary-hover);
+}
+
+
+/* Basic Input/Select/Textarea Styling */
+input[type="text"],
+input[type="password"],
+input[type="email"],
+input[type="date"],
+input[type="number"], /* Added number type */
+select,
+textarea {
+    display: block; /* Ensure they take full width of parent */
+    width: 100%;
+    padding: 0.6em 1em;
+    margin-bottom: 0.5em;
+    border: 1px solid var(--color-input-border);
+    border-radius: 4px;
+    background-color: var(--color-input-bg);
+    color: var(--color-input-text);
+    box-sizing: border-box;
+    font-family: inherit;
+    font-size: 1em;
+    transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+input:focus, select:focus, textarea:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25); /* Focus ring */
+}
+
+textarea {
+    min-height: 80px;
+    resize: vertical;
+}
+label {
+    display: block;
+    margin-bottom: 0.4em; /* Slightly more space */
+    font-weight: 500; /* Slightly less bold */
+    font-size: 0.95em;
+}
+
+/* Form Container Styling */
+.form-container {
+    width: 100%; /* Take full width on small screens */
+    max-width: 600px; /* Limit width on larger screens */
+    margin: 20px auto; /* Center and add vertical margin */
+    padding: 20px; /* Adjust padding */
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background-color: var(--color-card-bg);
+    box-shadow: var(--box-shadow);
+}
+.form-container h1,
+.form-container h2 {
+    text-align: center;
+    margin-top: 0;
+    margin-bottom: 1.5rem;
+    color: var(--color-text);
+    font-weight: 600;
+}
+.form-group {
+    margin-bottom: 1rem; /* Consistent spacing */
+}
+
+/* Message Styling */
+.message {
+    margin-bottom: 1rem;
+    padding: 0.8em 1em;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    text-align: center;
+    font-size: 0.95em;
+}
+.success-message {
+    color: var(--color-success-text);
+    background-color: var(--color-success-bg);
+    border-color: var(--color-success-border);
+}
+.error-message {
+    color: var(--color-error-text);
+    background-color: var(--color-error-bg);
+    border-color: var(--color-error-border);
+}
+.field-error {
+    color: var(--color-error-text);
+    font-size: 0.9em;
+    margin-top: 0.3em;
+}
+
+/* Basic Table Styling */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 1em;
+    margin-bottom: 1em;
+    background-color: var(--color-card-bg);
+    box-shadow: var(--box-shadow-sm);
+    border-radius: 6px;
+    overflow: hidden; /* Needed for border-radius */
+}
+th, td {
+    border: 1px solid var(--color-border);
+    padding: 0.7em 1em; /* More padding */
+    text-align: left;
+    vertical-align: middle;
+    /* Responsive text size */
+    font-size: 0.9rem;
+}
+th {
+    background-color: var(--color-background); /* Use main bg for header */
+    font-weight: 600;
+    color: var(--color-text);
+    border-bottom-width: 2px;
+}
+td select {
+    margin-bottom: 0; /* Remove margin inside table cell */
+    padding: 0.4em 0.6em; /* Smaller padding for selects in tables */
+    font-size: 0.9em;
+}
+td button {
+    padding: 0.3em 0.8em; /* Smaller padding for buttons in tables */
+    font-size: 0.9em;
+    margin-right: 5px; /* Add space between buttons if needed */
+}
+
+/* Basic Card Styling */
+.card {
+    border: 1px solid var(--color-border);
+    padding: 15px; /* Default padding */
+    border-radius: 8px; /* Consistent rounding */
+    margin-bottom: 1rem; /* Space below cards */
+    background-color: var(--color-card-bg);
+    box-shadow: var(--box-shadow-sm);
+}
+
+/* Main Content Area Styling */
+.main-content-area {
+    flex-grow: 1; /* Allow content to take remaining vertical space */
+    padding: 15px; /* Default padding */
+    width: 100%;
+    max-width: 1400px; /* Optional: Max width for very wide screens */
+    margin: 0 auto; /* Center content area */
+    box-sizing: border-box;
+}
+
+/* Navigation Styling */
+.app-nav {
+    background-color: var(--color-nav-bg);
+    padding: 10px 15px; /* Adjust padding */
+    border-bottom: 1px solid var(--color-nav-border);
+    box-shadow: var(--box-shadow-sm);
+}
+.app-nav ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap; /* Allow nav items to wrap */
+    gap: 10px 15px; /* Row and column gap */
+    align-items: center;
+}
+.app-nav li {
+    /* Styles for list items if needed */
+}
+.nav-user-info {
+    margin-left: auto; /* Pushes user info/logout to the right */
+    display: flex;
+    align-items: center;
+    gap: 10px; /* Space between welcome text and button */
+    flex-shrink: 0; /* Prevent shrinking */
+}
+.nav-user-info span {
+     color: var(--color-text);
+     font-size: 0.9em;
+     white-space: nowrap; /* Prevent wrapping */
+}
+.nav-user-info button {
+    padding: 0.4em 0.8em; /* Smaller padding for logout button */
+    font-size: 0.9em;
+    background-color: var(--color-secondary);
+    white-space: nowrap; /* Prevent wrapping */
+}
+.nav-user-info button:hover {
+    background-color: var(--color-secondary-hover);
+}
+
+/* Dashboard specific layout */
+.dashboard-layout {
+    display: flex;
+    flex-direction: column; /* Stack controls, viz, details vertically by default */
+    /* Removed fixed height, let content determine height */
+    gap: 15px;
+}
+.dashboard-controls {
+    flex-shrink: 0; /* Prevent controls from shrinking */
+    display: flex;
+    flex-wrap: wrap; /* Allow controls to wrap */
+    gap: 10px;
+    align-items: center; /* Vertically align items */
+}
+.dashboard-controls .form-group {
+    margin-bottom: 0; /* Remove bottom margin for inline controls */
+    flex-grow: 1; /* Allow select to grow */
+    max-width: 300px; /* Limit width */
+}
+.dashboard-controls label {
+     margin-right: 5px; /* Space between label and input/select */
+     margin-bottom: 0; /* Remove bottom margin */
+}
+.dashboard-controls input[type="text"],
+.dashboard-controls select {
+    margin-bottom: 0; /* Remove bottom margin */
+    display: inline-block; /* Allow inline display */
+    width: auto; /* Auto width based on content */
+    min-width: 150px; /* Minimum width */
+}
+.dashboard-controls button,
+.dashboard-controls .button {
+    flex-shrink: 0; /* Prevent buttons from shrinking */
+}
+
+.dashboard-viz-container {
+    flex-grow: 1; /* Allow visualization to take available space */
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background-color: var(--color-reactflow-bg);
+    position: relative; /* Needed for React Flow controls */
+    box-shadow: var(--box-shadow-sm);
+    min-height: 400px; /* Ensure min height for visualization */
+    /* Ensure ReactFlow itself fits */
+    overflow: hidden;
+}
+.dashboard-details-sidebar {
+    flex-shrink: 0; /* Prevent sidebar from shrinking initially */
+    width: 100%; /* Full width by default */
+    overflow-y: auto; /* Allow scrolling if content overflows */
+    /* Card styling applied via className="card" */
+    max-height: 40vh; /* Limit height on small screens */
+}
+
+/* Admin Page Table Container */
+.admin-table-container {
+    overflow-x: auto; /* Allow horizontal scrolling on small screens */
+    width: 100%;
+}
+.admin-table-container table {
+    min-width: 600px; /* Ensure table has minimum width */
+}
+
+/* Person Node Styling (ensure class names match PersonNode.jsx) */
+.person-node-container {
+    padding: 8px 12px; /* Adjust padding */
+    border: 1px solid var(--color-reactflow-node-border);
+    border-radius: 6px;
+    background: var(--color-reactflow-node-bg);
+    color: var(--color-text);
+    text-align: center;
+    min-width: 150px; /* Adjust min width */
+    box-shadow: var(--box-shadow-sm);
+    cursor: grab; /* Indicate draggable */
+    transition: box-shadow 0.2s ease-in-out;
+    font-size: 0.9rem; /* Adjust base font size */
+}
+.person-node-container:hover {
       box-shadow: var(--box-shadow);
-  }
-  .form-container h1,
-  .form-container h2 {
-      text-align: center;
-      margin-top: 0;
-      margin-bottom: 1.5rem;
-      color: var(--color-text);
-      font-weight: 600;
-  }
-  .form-group {
-      margin-bottom: 1.2rem; /* More space between groups */
-  }
-  
-  /* Message Styling */
-  .message {
-      margin-bottom: 1rem;
-      padding: 0.8em 1em;
-      border: 1px solid transparent;
-      border-radius: 4px;
-      text-align: center;
-      font-size: 0.95em;
-  }
-  .success-message {
-      color: var(--color-success-text);
-      background-color: var(--color-success-bg);
-      border-color: var(--color-success-border);
-  }
-  .error-message {
-      color: var(--color-error-text);
-      background-color: var(--color-error-bg);
-      border-color: var(--color-error-border);
-  }
-  .field-error {
-      color: var(--color-error-text);
-      font-size: 0.9em;
-      margin-top: 0.3em;
-  }
-  
-  /* Basic Table Styling */
-  table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 1em;
-      margin-bottom: 1em;
-      background-color: var(--color-card-bg);
-      box-shadow: var(--box-shadow-sm);
-      border-radius: 6px;
-      overflow: hidden; /* Needed for border-radius */
-  }
-  th, td {
-      border: 1px solid var(--color-border);
-      padding: 0.7em 1em; /* More padding */
-      text-align: left;
-      vertical-align: middle;
-  }
-  th {
-      background-color: var(--color-background); /* Use main bg for header */
-      font-weight: 600;
-      color: var(--color-text);
-      border-bottom-width: 2px;
-  }
-  /* Remove striping for cleaner look, or adjust dark mode */
-  /* tr:nth-child(even) { background-color: rgba(0, 0, 0, 0.02); } */
-  /* @media (prefers-color-scheme: dark) { tr:nth-child(even) { background-color: rgba(255, 255, 255, 0.03); } } */
-  td select {
-      margin-bottom: 0; /* Remove margin inside table cell */
-      padding: 0.4em 0.6em; /* Smaller padding for selects in tables */
-  }
-  td button {
-      padding: 0.3em 0.8em; /* Smaller padding for buttons in tables */
-      font-size: 0.9em;
-  }
-  
-  
-  /* Basic Card Styling */
-  .card {
-      border: 1px solid var(--color-border);
-      padding: 20px; /* More padding */
-      border-radius: 8px; /* Consistent rounding */
-      margin-bottom: 1rem; /* Space below cards */
-      background-color: var(--color-card-bg);
-      box-shadow: var(--box-shadow-sm);
-  }
-  
-  /* Main Content Area Styling */
-  .main-content-area {
-      flex-grow: 1; /* Allow content to take remaining vertical space */
-      padding: 20px; /* Add padding around the main content */
-      width: 100%;
-      max-width: 1400px; /* Optional: Max width for very wide screens */
-      margin: 0 auto; /* Center content area */
-      box-sizing: border-box;
-  }
-  
-  /* Navigation Styling */
-  .app-nav {
-      background-color: var(--color-nav-bg);
-      padding: 10px 20px;
-      border-bottom: 1px solid var(--color-nav-border);
-      box-shadow: var(--box-shadow-sm);
-  }
-  .app-nav ul {
-      list-style: none;
-      padding: 0;
-      margin: 0;
-      display: flex;
-      gap: 20px; /* More space between nav items */
-      align-items: center;
-  }
-  .app-nav li {
-      /* Styles for list items if needed */
-  }
-  .nav-user-info {
-      margin-left: auto; /* Pushes user info/logout to the right */
-      display: flex;
-      align-items: center;
-      gap: 15px; /* Space between welcome text and button */
-  }
-  .nav-user-info span {
-       color: var(--color-text);
-       font-size: 0.95em;
-  }
-  .nav-user-info button {
-      padding: 0.4em 0.8em; /* Smaller padding for logout button */
-      font-size: 0.9em;
-      background-color: var(--color-secondary);
-  }
-  .nav-user-info button:hover {
-      background-color: var(--color-secondary-hover);
-  }
-  
-  /* Dashboard specific layout */
-  .dashboard-layout {
-      display: flex;
-      flex-direction: column; /* Stack controls above visualization by default */
-      height: calc(100vh - 150px); /* Adjust height based on nav/padding */
-      gap: 15px;
-  }
-  .dashboard-controls {
-      flex-shrink: 0; /* Prevent controls from shrinking */
-      display: flex;
-      flex-wrap: wrap; /* Allow controls to wrap on smaller screens */
-      gap: 10px;
-      align-items: center; /* Vertically align items */
-  }
-  
-  /* Adjust layout for larger screens */
-  @media (min-width: 768px) {
-      .dashboard-layout {
-          flex-direction: row; /* Arrange visualization and sidebar side-by-side */
-      }
-      .dashboard-controls {
-           /* Adjust layout for controls within the sidebar if moved */
-           /* Or keep them above the viz/sidebar container if preferred */
-           flex-direction: row; /* Keep row layout for controls */
-           justify-content: flex-start; /* Align to start */
-      }
-  }
-  
-  
-  .dashboard-main { /* This class is not used in the updated DashboardPage */
-      /* flex-grow: 1; */
-      /* display: flex; */
-      /* gap: 15px; */
-      /* min-height: 400px; */
-  }
-  .dashboard-viz-container {
-      flex-grow: 1;
-      border: 1px solid var(--color-border);
-      border-radius: 8px;
-      background-color: var(--color-reactflow-bg);
-      position: relative; /* Needed for React Flow controls */
-      box-shadow: var(--box-shadow-sm);
-      min-height: 400px; /* Ensure min height for visualization */
-  }
-  .dashboard-details-sidebar {
-      width: 320px; /* Fixed width for details on larger screens */
-      flex-shrink: 0;
-      overflow-y: auto; /* Allow scrolling if content overflows */
-      /* Card styling applied via className="card" */
-  }
-  
-  /* Adjust sidebar for smaller screens */
-  @media (max-width: 767px) {
-      .dashboard-layout {
-          flex-direction: column; /* Stack vertically */
-          height: auto; /* Auto height on small screens */
-      }
-      .dashboard-details-sidebar {
-          width: 100%; /* Full width on small screens */
-          order: -1; /* Place sidebar above visualization on small screens */
-      }
-  }
-  
-  
-  /* Admin Page Table Container */
-  .admin-table-container {
-      overflow-x: auto; /* Allow horizontal scrolling on small screens */
-  }
-  
-  /* Person Node Styling (ensure class names match PersonNode.jsx) */
-  .person-node-container {
-      padding: 10px 15px;
-      border: 1px solid var(--color-reactflow-node-border);
-      border-radius: 6px;
-      background: var(--color-reactflow-node-bg);
-      color: var(--color-text);
-      text-align: center;
-      min-width: 160px;
-      box-shadow: var(--box-shadow-sm);
-      cursor: grab; /* Indicate draggable */
-      transition: box-shadow 0.2s ease-in-out;
-  }
-  .person-node-container:hover {
-        box-shadow: var(--box-shadow);
-  }
-  .person-node-content {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-  }
-  .person-node-image {
-      width: 40px;
-      height: 40px;
-      border-radius: 50%;
-      margin-bottom: 5px;
-      border: 1px solid var(--color-border);
-      background-color: var(--color-secondary); /* Use secondary for placeholder bg */
-      object-fit: cover; /* Ensure image covers the area */
-  }
-  .person-node-name {
-      margin: 5px 0;
-      font-size: 0.95em;
-      font-weight: 600; /* Bold name */
-  }
-  .person-node-dates {
-      margin: 2px 0;
-      font-size: 0.8em;
-      color: var(--color-secondary);
-  }
-  .person-node-edit-button {
-      margin-top: 8px;
-      font-size: 0.8em;
-      padding: 3px 8px;
-      background-color: var(--color-secondary);
-      color: var(--color-button-text);
-      border: none;
-      border-radius: 3px;
-      cursor: pointer;
-      opacity: 0.8;
-      transition: opacity 0.2s ease-in-out, background-color 0.2s ease-in-out;
-  }
-  .person-node-edit-button:hover {
-      background-color: var(--color-secondary-hover);
-      opacity: 1;
-  }
-  /* React Flow Specific Overrides (Use with caution) */
-  .react-flow__handle {
-      background: var(--color-primary) !important;
-      width: 8px !important;
-      height: 8px !important;
-      border: 1px solid var(--color-background) !important;
-      box-shadow: var(--box-shadow-sm);
-  }
-  .react-flow__minimap {
-      background-color: var(--color-card-bg) !important;
-      border: 1px solid var(--color-border) !important;
-      border-radius: 4px;
-  }
-  .react-flow__controls {
-      box-shadow: var(--box-shadow-sm) !important;
-  }
-  .react-flow__controls button {
-      background-color: var(--color-card-bg) !important;
-      color: var(--color-text) !important;
-      border-bottom: 1px solid var(--color-border) !important;
-      box-shadow: none !important;
-  }
-  .react-flow__controls button:hover {
-       background-color: var(--color-background) !important;
-  }
-  .react-flow__background {
-      background-color: var(--color-reactflow-bg);
-  }
-  
-  
+}
+.person-node-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+.person-node-image {
+    width: 35px; /* Adjust size */
+    height: 35px;
+    border-radius: 50%;
+    margin-bottom: 4px;
+    border: 1px solid var(--color-border);
+    background-color: var(--color-secondary); /* Use secondary for placeholder bg */
+    object-fit: cover; /* Ensure image covers the area */
+}
+.person-node-name {
+    margin: 4px 0;
+    font-size: 0.9em; /* Relative to container */
+    font-weight: 600; /* Bold name */
+    line-height: 1.2;
+}
+.person-node-dates {
+    margin: 2px 0;
+    font-size: 0.75em; /* Relative to container */
+    color: var(--color-secondary);
+    line-height: 1.1;
+}
+.person-node-edit-button {
+    margin-top: 6px;
+    font-size: 0.75em; /* Relative to container */
+    padding: 2px 6px;
+    background-color: var(--color-secondary);
+    color: var(--color-button-text);
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    opacity: 0.8;
+    transition: opacity 0.2s ease-in-out, background-color 0.2s ease-in-out;
+}
+.person-node-edit-button:hover {
+    background-color: var(--color-secondary-hover);
+    opacity: 1;
+}
+
+/* React Flow Specific Overrides (Use with caution) */
+.react-flow__handle {
+    background: var(--color-primary) !important;
+    width: 8px !important;
+    height: 8px !important;
+    border: 1px solid var(--color-background) !important;
+    box-shadow: var(--box-shadow-sm);
+}
+.react-flow__minimap {
+    background-color: var(--color-card-bg) !important;
+    border: 1px solid var(--color-border) !important;
+    border-radius: 4px;
+}
+.react-flow__controls {
+    box-shadow: var(--box-shadow-sm) !important;
+}
+.react-flow__controls button {
+    background-color: var(--color-card-bg) !important;
+    color: var(--color-text) !important;
+    border-bottom: 1px solid var(--color-border) !important;
+    box-shadow: none !important;
+}
+.react-flow__controls button:hover {
+     background-color: var(--color-background) !important;
+}
+.react-flow__background {
+    background-color: var(--color-reactflow-bg);
+}
+
+/* --- Responsive Adjustments --- */
+
+/* Small devices (phones, less than 640px) */
+@media (max-width: 639px) {
+    .form-container {
+        padding: 15px;
+        margin: 15px auto;
+    }
+    .form-container h1 {
+        font-size: 1.5rem;
+    }
+    button, .button {
+        padding: 0.5em 1em;
+        font-size: 0.95em;
+    }
+    input, select, textarea {
+        font-size: 0.95em;
+    }
+    th, td {
+        padding: 0.5em 0.7em;
+        font-size: 0.85rem;
+    }
+    .main-content-area {
+        padding: 10px;
+    }
+    .app-nav ul {
+        gap: 8px 10px; /* Reduce gap */
+    }
+    .nav-user-info {
+        gap: 8px;
+        /* Allow user info to wrap below other items if needed */
+        margin-left: 0;
+        width: 100%;
+        justify-content: flex-end;
+        margin-top: 5px;
+    }
+    .dashboard-controls {
+        flex-direction: column; /* Stack controls vertically */
+        align-items: stretch; /* Stretch items */
+    }
+    .dashboard-controls .form-group,
+    .dashboard-controls input[type="text"],
+    .dashboard-controls select {
+        max-width: none; /* Remove max width */
+        width: 100%; /* Full width */
+    }
+    .dashboard-details-sidebar {
+        max-height: 50vh; /* Increase max height slightly */
+    }
+}
+
+/* Medium devices (tablets, 640px and up) */
+@media (min-width: 640px) {
+    .form-container {
+        padding: 25px 30px;
+    }
+    .card {
+        padding: 20px;
+    }
+    .main-content-area {
+        padding: 20px;
+    }
+    th, td {
+        font-size: 0.95rem;
+    }
+}
+
+/* Large devices (desktops, 1024px and up) */
+@media (min-width: 1024px) {
+    .dashboard-layout {
+        flex-direction: row; /* Side-by-side layout */
+        /* Adjust height calculation based on actual nav height */
+        height: calc(100vh - 70px); /* Example: Adjust if nav height changes */
+    }
+    .dashboard-viz-container {
+        min-height: 0; /* Remove min-height constraint */
+    }
+    .dashboard-details-sidebar {
+        width: 320px; /* Fixed width for sidebar */
+        max-height: none; /* Remove max-height */
+    }
+    .dashboard-controls {
+        /* Optional: Move controls inside sidebar or keep above */
+        flex-direction: row; /* Ensure controls are horizontal */
+        align-items: center;
+    }
+    .admin-table-container table {
+        min-width: 0; /* Remove min-width on larger screens */
+    }
+}

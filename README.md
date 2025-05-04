@@ -4,7 +4,7 @@ Dzinza Family Tree is a web application for building and managing family trees, 
 
 ## Features
 
-* **Backend:** Flask API for managing data (Python).
+* **Backend:** Flask application apis for managing data (Python).
 * **Frontend:** React single-page application (Vite) with interactive visualization using React Flow.
 * **User Management:**
     * User registration and login.

@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Corrected BASE_URL
-const BASE_URL = 'http://localhost:8090/api'; // Ensure this matches your backend port
+const BASE_URL = 'http://localhost:8090/api'; // Use localhost for local development
 
 const api = {
   login: async (username, password) => {

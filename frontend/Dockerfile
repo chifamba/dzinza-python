@@ -2,7 +2,7 @@
 
 # --- Build Stage ---
 # Use an official Node runtime as the build environment
-FROM node:18-alpine as build
+FROM node:23-alpine AS build
 
 # Set the working directory
 WORKDIR /app

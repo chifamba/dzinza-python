@@ -17,12 +17,13 @@ opentelemetry-instrumentation-flask>=0.53b1  # OpenTelemetry Flask instrumentati
 opentelemetry-instrumentation-sqlalchemy>=0.53b1  # OpenTelemetry SQLAlchemy instrumentation
 opentelemetry-instrumentation-requests>=0.53b1  # OpenTelemetry HTTP requests instrumentation
 opentelemetry-instrumentation-logging>=0.53b1  # OpenTelemetry logging instrumentation
-
+Flask-CORS>=5.0
+redis>=6.0  # Redis client for Python
 # Optional Dependencies
 Flask-Limiter  # Rate limiting
 Flask-WTF  # CSRF protection and form validation
 Flask-Talisman  # Security headers
-Flask-CORS  # Cross-Origin Resource Sharing
+
 
 # Development Dependencies
 pytest  # Testing framework

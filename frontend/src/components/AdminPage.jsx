@@ -6,6 +6,7 @@ function AdminPage() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [savingUserId, setSavingUserId] = useState(null); // Track which user is being saved/deleted
   const { user } = useAuth(); // Get current user info from context
 
   // Define valid roles for the dropdown (should match backend's UserRole enum)
@@ -28,7 +29,11 @@ function AdminPage() {
       try {
         const fetchedUsers = await api.getAllUsers();
         if (isMounted) {
-            setUsers(Array.isArray(fetchedUsers) ? fetchedUsers : []); // Ensure users is an array
+            // Ensure users is an array and sort alphabetically by username
+            const sortedUsers = Array.isArray(fetchedUsers)
+                ? fetchedUsers.sort((a, b) => a.username.localeCompare(b.username))
+                : [];
+            setUsers(sortedUsers);
         }
       } catch (err) {
         console.error("Error fetching users:", err.response || err);
@@ -54,6 +59,8 @@ function AdminPage() {
     }
 
     if (window.confirm(`Are you sure you want to delete user "${usernameToDelete}"? This action cannot be undone.`)) {
+      setSavingUserId(userIdToDelete); // Indicate saving/deleting state for this user
+      setError(null); // Clear previous errors specific to other operations
       try {
         await api.deleteUser(userIdToDelete);
         // Refresh user list after deletion
@@ -62,7 +69,10 @@ function AdminPage() {
       } catch (err) {
         console.error("Error deleting user:", err.response || err);
         const errorMsg = err.response?.data?.message || err.message || "Failed to delete user.";
+        // Display error specific to this operation
         setError(`Error deleting user "${usernameToDelete}": ${errorMsg}`);
+      } finally {
+          setSavingUserId(null); // Clear saving state
       }
     }
   };
@@ -72,7 +82,12 @@ function AdminPage() {
      // Prevent admin from changing their own role via UI
      if (user?.id === userIdToChange) { // Use user.id from context
          alert("Admins cannot change their own role through this interface.");
-         // Optionally revert the dropdown visually if needed
+         // Revert the dropdown visually by finding the original role
+         const originalRole = users.find(u => u.id === userIdToChange)?.role;
+         if (originalRole) {
+             const selectElement = document.getElementById(`role-select-${userIdToChange}`);
+             if (selectElement) selectElement.value = originalRole;
+         }
          return;
      }
 
@@ -83,6 +98,8 @@ function AdminPage() {
          return;
      }
 
+    setSavingUserId(userIdToChange); // Indicate saving state for this user
+    setError(null); // Clear previous errors
 
     try {
       // api.setUserRole expects userId and role
@@ -98,35 +115,46 @@ function AdminPage() {
       console.error("Error updating role:", err.response || err);
       const errorMsg = err.response?.data?.message || err.message || "Failed to update role.";
       setError(`Error updating role for user "${usernameToChange}": ${errorMsg}`);
-       // Optionally revert the dropdown visually on error
-       // You might need to store the original role temporarily or refetch users
+       // Revert the dropdown visually on error
+       const originalRole = users.find(u => u.id === userIdToChange)?.role;
+       if (originalRole) {
+            const selectElement = document.getElementById(`role-select-${userIdToChange}`);
+            if (selectElement) selectElement.value = originalRole;
+       }
+    } finally {
+        setSavingUserId(null); // Clear saving state
     }
   };
 
 
   // Render loading state
   if (loading) {
-    return <div className="main-content-area">Loading users...</div>;
+    return <div className="main-content-area card">Loading users...</div>;
   }
 
-  // Render error state
-  if (error) {
+  // Render general error state (e.g., access denied or initial fetch failed)
+  if (error && users.length === 0) {
     return <div className="main-content-area message error-message">Error: {error}</div>;
   }
 
   // Render Admin Page content
   return (
-    <div className="main-content-area"> {/* Use main-content-area padding */}
+    // Use main-content-area padding and card for container style
+    <div className="main-content-area card">
       <h1>Admin - User Management</h1>
-      {users.length === 0 ? (
+      {/* Display specific operation errors here */}
+      {error && <div className="message error-message" style={{ marginBottom: '1rem' }}>{error}</div>}
+
+      {users.length === 0 && !loading ? (
         <p>No users found.</p>
       ) : (
         <div className="admin-table-container"> {/* Added container for responsiveness */}
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}> {/* Removed border="1" */}
+            <table> {/* Use global table styles */}
               <thead>
                 <tr>
                   <th>User ID</th>
                   <th>Username</th>
+                  <th>Email</th>
                   <th>Role</th>
                   <th>Actions</th>
                 </tr>
@@ -134,14 +162,18 @@ function AdminPage() {
               <tbody>
                 {users.map((u) => (
                   <tr key={u.id}> {/* Use u.id */}
-                    <td>{u.id}</td> {/* Display u.id */}
-                    <td>{u.username}</td>
-                    <td>
+                    <td data-label="User ID">{u.id}</td> {/* Display u.id */}
+                    <td data-label="Username">{u.username}</td>
+                    <td data-label="Email">{u.email}</td>
+                    <td data-label="Role">
                       {/* Role changer dropdown */}
                       <select
+                        id={`role-select-${u.id}`} // Unique ID for each select
                         value={u.role}
                         onChange={(e) => handleRoleChange(u.id, u.username, e.target.value)} // Pass u.id
-                        disabled={user?.id === u.id || saving} // Disable changing own role or while saving
+                        // Disable changing own role or while saving this specific user
+                        disabled={user?.id === u.id || savingUserId === u.id}
+                        aria-label={`Change role for user ${u.username}`}
                       >
                         {validRoles.map(roleOption => (
                           <option key={roleOption} value={roleOption}>
@@ -150,15 +182,16 @@ function AdminPage() {
                         ))}
                       </select>
                     </td>
-                    <td>
-                      {/* Delete button - disable deleting self or while saving */}
+                    <td data-label="Actions">
+                      {/* Delete button - disable deleting self or while saving this specific user */}
                       <button
                         onClick={() => handleDeleteUser(u.id, u.username)} // Pass u.id
-                        disabled={user?.id === u.id || saving}
-                        style={{ color: (user?.id === u.id || saving) ? 'var(--color-secondary)' : 'var(--color-error-text)', cursor: (user?.id === u.id || saving) ? 'not-allowed' : 'pointer' }}
+                        disabled={user?.id === u.id || savingUserId === u.id}
+                        style={{ color: (user?.id === u.id) ? 'grey' : 'var(--color-error-text)', cursor: (user?.id === u.id) ? 'not-allowed' : 'pointer' }}
                         className="secondary-button" // Use secondary button style
+                        aria-label={`Delete user ${u.username}`}
                       >
-                        Delete
+                        {savingUserId === u.id ? '...' : 'Delete'}
                       </button>
                     </td>
                   </tr>

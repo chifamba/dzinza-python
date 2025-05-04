@@ -1,6 +1,19 @@
 # docker-compose.yml (in project root: dzinza-python/)
 
 services:
+  redis:
+    image: redis:latest
+    container_name: dzinza-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
   dbservice:
     image: postgres:15-alpine
     container_name: dzinza-db
@@ -30,7 +43,11 @@ services:
       - "8090:8090"
     depends_on:
       dbservice:
-        condition: service_healthy # Wait for the database to be healthy
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-f", "http://backend:8090/health"]
       interval: 30s
@@ -39,14 +56,42 @@ services:
       start_period: 10s
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@dbservice:5432/${POSTGRES_DB}
+      - INITIAL_ADMIN_PASSWORD=${INITIAL_ADMIN_PASSWORD}
+      - REDIS_URL=redis://redis:6379/0
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318  # Changed from localhost to service name
+    restart: unless-stopped
+
+  otel-collector:
+    image: otel/opentelemetry-collector:latest
+    container_name: dzinza-otel-collector
+    ports:
+      - "4317:4317"  # OTLP gRPC endpoint
+      - "4318:4318"  # OTLP HTTP endpoint
+      - "8889:8889"  # Prometheus metrics endpoint
+      - "13133:13133"  # Health check endpoint
+    volumes:
+      - ./otel-config.yaml:/etc/otel-collector-config.yaml
+    command: ["--config", "/etc/otel-collector-config.yaml"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://otel-collector:13133/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: dzinza-frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      backend:
+        condition: service_started
     restart: unless-stopped
 
 volumes:
   db_data:
     driver: local
-
-# Optional: Define named volumes if you prefer them over bind mounts
-# volumes:
-#   backend_data:
-#   backend_logs:
-
