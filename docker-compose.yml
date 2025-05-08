@@ -1,5 +1,10 @@
 # docker-compose.yml (in project root: dzinza-python/)
-
+x-default-logging: &logging
+  driver: "json-file"
+  options:
+    max-size: "5m"
+    max-file: "2"
+    tag: "{{.Name}}"
 services:
   redis:
     image: redis:latest
@@ -13,6 +18,7 @@ services:
       retries: 3
       start_period: 30s
     restart: unless-stopped
+    logging: *logging
 
   dbservice:
     image: postgres:15-alpine
@@ -33,6 +39,7 @@ services:
       retries: 3
       start_period: 30s
     restart: unless-stopped
+    logging: *logging
 
   backend:
     build:
@@ -46,8 +53,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      otel-collector:
-        condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-f", "http://backend:8090/health"]
       interval: 30s
@@ -60,26 +65,7 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318  # Changed from localhost to service name
     restart: unless-stopped
-
-  otel-collector:
-    image: otel/opentelemetry-collector:latest
-    container_name: dzinza-otel-collector
-    ports:
-      - "4317:4317"  # OTLP gRPC endpoint
-      - "4318:4318"  # OTLP HTTP endpoint
-      - "8889:8889"  # Prometheus metrics endpoint
-      - "13133:13133"  # Health check endpoint
-    volumes:
-      - ./otel-config.yaml:/etc/otel-collector-config.yaml
-    command: ["--config", "/etc/otel-collector-config.yaml"]
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://otel-collector:13133/healthz"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
-    restart: unless-stopped
-
+    logging: *logging
   frontend:
     build:
       context: ./frontend
@@ -91,6 +77,7 @@ services:
       backend:
         condition: service_started
     restart: unless-stopped
+    logging: *logging
 
 volumes:
   db_data:
