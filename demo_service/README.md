@@ -2,13 +2,16 @@
 
 ## Description
 
-The demo service provides a simplified, self-contained version of the main application's backend. It is designed for demonstration purposes, allowing users to quickly set up and explore core functionalities without requiring a full database or complex dependencies. It uses flat files for data storage.
+The demo service acts as a lightweight frontend that connects to the main application's backend. It is designed for demonstration purposes, allowing users to quickly set up and explore core functionalities by interacting with the full backend service. This ensures the demo stays in sync with the latest backend features and data model.
 
 ## Setup and Running
 
-To set up and run the demo service, follow these steps:
+To set up and run the demo service, you first need to have the main backend service running.
 
-1.  **Navigate to the `demo_service` directory:**
+1.  **Set up and run the main backend service:**
+    *   Follow the instructions in the main project's README to set up and run the backend service. Ensure it is accessible at a known URL (e.g., `http://localhost:8000`).
+
+2.  **Navigate to the `demo_service` directory:**
 ```
 bash
     cd demo_service
