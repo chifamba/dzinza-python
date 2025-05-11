@@ -1,151 +1,130 @@
-# TODO List
+# Family Tree Project - Organized Task List
 
-## Database
-- [x] Update `docker-compose.yml` to use a PostgreSQL database image.
-- [x] Configure `docker-compose.yml` to use a 10GB Persistent Volume Claim (PVC) for PostgreSQL data.
-- [x] Remove Alembic configurations.
-- [ ] Implement database replication to improve performance.
+## 1. Foundation & Infrastructure
 
-## Complex Operations
-- [ ] Partial tree loading.
-- [ ] Advanced search and filtering.
-- [ ] Define functions to get the relationships and attributes of a person.
-- [x] Tree Traversal:
-    -   [x] `get_ancestors(db: Session, person_id: int, depth: int)`: Get the ancestors of a person up to a certain depth.
-    -   [x] `get_descendants(db: Session, person_id: int, depth: int)`: Get the descendants of a person up to a certain depth.
-    -   [x] `get_extended_family(db: Session, person_id: int, depth: int)`: Get the extended family of a person up to a certain depth (siblings, cousins, etc).
-    -   [x] `get_related(db: Session, person_id: int, depth: int)`: Get the related people of a person up to a certain depth (in-laws, step-relations, etc).
-- [ ] Partial tree loading.
-- [ ] Advanced search and filtering.
-- [ ] Define functions to get the relationships and attributes of a person.
+### Database Setup
+- [ ] Create migration scripts using Alembic
+- [ ] Implement database indexing for frequently queried fields
+- [ ] Design and implement caching strategy for frequently accessed data
 
-## Enhanced Logging and Tracing
-- [ ] Implement enhanced logging throughout the application.
-- [ ] Enable tracing of application calls end-to-end using correlation IDs. 
-- [ ] Support OpenTelemetry type metrics for monitoring.
+### Core System Infrastructure
+- [x] Add validation logic for all models (enums, required fields)
+- [x] Add error handling for database constraints
+- [ ] Set up worker thread infrastructure for background tasks
+- [x] Implement logging framework for system events
 
-## Security
-- [ ] Implement JWT authentication.
-- [ ] Implement Two-factor authentication.
-- [ ] Implement Security audit logging.
+## 2. Authentication & User Management
 
-## Frontend
-- [ ] Redesign the dashboard:
-    -   [ ] Create personalized dashboard with recent activity feed. <!-- Partially done: basic structure in place, but not the dynamic parts -->
-    -   [ ] Implement quick access to favorites. <!-- Partially done: basic structure in place, but not the dynamic parts -->
-    -   [ ] Add research suggestions section. <!-- Partially done: basic structure in place, but not the dynamic parts -->
-    -   [ ] Create statistics overview for the tree. <!-- Partially done: basic structure in place, but not the dynamic parts -->
-    -   [ ] Create tree health overview (e.g., data completeness). <!-- Partially done: basic structure in place, but not the dynamic parts -->
-    -   [ ] Add the ability to search for people to create relationships with and create them if not found in search. <!-- Partially done: search bar in place, but not the dynamic parts -->
-    -   [ ] Ensure that people at the same level are horizontally at the same level i.e. a husband and wife at the same level, but above all their children whom are also at the same level. <!-- Partially done: structure in place, but not the dynamic parts -->
-- [ ] Implement Two-factor authentication.
-- [ ] Implement Security audit logging.
+### User Model Implementation
+- [x] Implement CRUD operations for User model
+- [x] Implement email verification logic
+- [x] Add API endpoints to manage user preferences
+- [x] Add functionality to deactivate users
+- [x] Implement profile image upload functionality
+- [x] Add user session management
 
-## Frontend
-- [ ] Redesign the dashboard:
-    -   [ ] Create personalized dashboard with recent activity feed. <!-- Partially done: basic structure in place, but not the dynamic parts -->
-    -   [ ] Implement quick access to favorites. <!-- Partially done: basic structure in place, but not the dynamic parts -->
-    -   [ ] Add research suggestions section. <!-- Partially done: basic structure in place, but not the dynamic parts -->
-    -   [ ] Create statistics overview for the tree. <!-- Partially done: basic structure in place, but not the dynamic parts -->
-    -   [ ] Create tree health overview (e.g., data completeness). <!-- Partially done: basic structure in place, but not the dynamic parts -->
-    -   [ ] Add the ability to search for people to create relationships with and create them if not found in search. <!-- Partially done: search bar in place, but not the dynamic parts -->
-    -   [ ] Ensure that people at the same level are horizontally at the same level i.e. a husband and wife at the same level, but above all their children whom are also at the same level. <!-- Partially done: structure in place, but not the dynamic parts -->
-- [ ] Implement tabbed interface for person details.
-- [ ] Add fields for military service.
-- [ ] Add fields for education history.
-- [ ] Add fields for occupation history.
-- [ ] Implement life event timeline tracking.
-- [ ] Build timeline visualization component.
-- [ ] Create media gallery with lightbox.
-- [ ] Implement relationship view from person perspective.
-- [ ] Create person merging capability for duplicate detection.
-- [ ] Add confidence levels for biographical data.
-- [ ] Create form validation library.
-- [ ] Implement stepped forms for complex data entry.
-- [ ] Add autosave functionality.
-- [ ] Create reusable form components.
-- [ ] Implement field-level validation and error handling.
-- [ ] Build form state persistence.
-- [ ] Implement advanced search form.
-- [ ] Create filter panels for tree view.
-- [ ] Add saved searches functionality.
-- [ ] Implement search suggestions and autocomplete.
-- [ ] Create relationships based on search results.
-- [ ] Families or people with the same surname born in the same areas, might be related, offer the option to create a relationship between them.
-- [ ] Optimize UI for mobile responsiveness.
-- [ ] Test UI on different mobile devices.
-- [ ] Optimize performance for mobile devices.
+## 3. Tree Management
 
-## Media management
-- [ ] Create S3-compatible storage architecture.
-- [ ] Build media upload functionality with drag-and-drop.
-- [ ] Create media processing pipeline (validation, virus scan, EXIF extraction).
-- [ ] Implement thumbnail generation for different resolutions.
-- [ ] Build media gallery with lightbox.
-- [ ] Create media organization tools.
-- [ ] Add face recognition suggestion interface.
-- [ ] Implement media tagging system.
-- [ ] Create default image for men, women, boys and girls.
+### Tree Core Functionality
+- [x] Implement CRUD operations for the `Tree` model
+- [x] Add functionality to manage tree privacy levels
+- [x] Design and implement tree structure data model
+- [ ] Implement advanced tree traversal algorithms
 
-## GEDCOM support
-- [ ] Add GEDCOM import capability.
-- [ ] Implement GEDCOM export functionality.
-- [ ] Create merge strategy for imported data.
-- [ ] Add validation for GEDCOM format compliance.
+### Tree Access & Collaboration
+- [x] Implement tree sharing using the `TreeAccess` model
+- [x] Implement functionality to manage access levels for users on specific trees
+- [x] Add support for collaborative editing of trees
+- [ ] Log changes to tree access in the `ActivityLog` model
 
-## Collaboration
-- [ ] Implement basic collaboration tools (e.g., shared view).
-- [ ] Add user role and permissions management.
-- [ ] Build collaboration history tracking.
-- [ ] Create collaboration notifications.
-- [ ] Research and implement advanced collaboration features (e.g., commenting, shared editing).
-- [ ] Implement user profile management.
-- [ ] Create user preferences for visualization.
-- [ ] Add favorite/recent people tracking.
-- [ ] Implement notification system for changes.
-- [ ] Create activity feed for tree changes.
-- [ ] Build user activity dashboard.
-- [ ] Add email notifications for important changes.
+## 4. Core Entity Models
 
-## Data Export and Backup
-- [ ] Create report builder interface.
-- [ ] Implement print layouts for trees.
-- [ ] Add PDF generation for family trees.
-- [ ] Build custom report generation.
-- [ ] Create sharing options for reports.
-- [ ] Implement data export in multiple formats.
+### Person Model
+- [x] Implement CRUD operations for Person model
+- [x] Add functionality to manage custom attributes for people
+- [x] Implement privacy level enforcement for people
+- [x] Add logic to determine and update the `is_living` field
+- [ ] Implement person merge functionality for duplicate management
 
-## API Enhancements and Integration
-- [ ] Implement proper API versioning (/api/v1/...).
-- [ ] Create OpenAPI/Swagger documentation.
-- [ ] Add rate limiting and throttling.
-- [ ] Implement proper error response structure.
-- [ ] Create webhooks for external system integration.
-- [ ] Add OAuth support for third-party authentication.
-- [ ] Implement public API for approved partners.
-- [ ] Create data sync capabilities.
+### Relationship Model
+- [x] Implement CRUD operations for Relationship model
+- [x] Add functionality to manage the `certainty_level` field for relationships
+- [x] Add functionality to manage custom attributes for relationships
+- [x] Implement validation to ensure valid relationship types and prevent circular relationships
+- [ ] Add relationship suggestion algorithm
 
-## Database
-- [x] Update app.py to connect to the database.
-- [x] Create the database models.
-- [x] Create the database schema programmatically in app.py.
-- [x] Create an initial job to populate the database with the base schema and initial structure. This should run once only.
-- [x] Add PostgreSQL as the database to the backend.
-- [x] Create User CRUD API endpoints.
-- [x] Create Person CRUD API endpoints.
-- [x] Create PersonAttribute CRUD API endpoints.
-- [x] Create Relationship CRUD API endpoints.
-- [x] Create RelationshipAttribute CRUD API endpoints.
-- [x] Create Media CRUD API endpoints.
-- [x] Create Event CRUD API endpoints.
-- [x] Create Source CRUD API endpoints.
-- [x] Create Citation CRUD API endpoints.
-## Testing and Reliability
-- [ ] Create a comprehensive test suite with high coverage.
-- [ ] Implement load testing scripts.
-- [ ] Add automated integration testing.
-- [ ] Create stress testing for large tree handling.
+### Event Model
+- [x] Implement CRUD operations for Event model
+- [x] Add functionality to handle events with date ranges
+- [x] Add functionality to manage custom attributes for events
+- [x] Implement privacy level enforcement for events
+- [ ] Add support for recurrent events
 
-- [ ] Create a GitHub Actions workflow for CI/CD.
-- [ ] Deploy the application to a scalable cloud hosting environment.
+## 5. Supporting Models
 
+### Media Management
+- [x] Implement functionality to upload and manage media files
+- [x] Add logic to extract metadata for uploaded media
+- [ ] Implement thumbnail generation for media files
+- [x] Enforce privacy levels for media files
+- [x] Add support for different media types (images, documents, audio, video)
+
+### Citation Model
+- [x] Implement CRUD operations for Citation model
+- [x] Add functionality to manage the `confidence_level` field for citations
+- [x] Add functionality to manage custom attributes for citations
+- [ ] Implement source validation functionality
+
+### Activity Tracking
+- [ ] Implement audit logging for all CRUD operations and significant actions
+- [ ] Add functionality to track changes to entities
+- [ ] Create user activity dashboard
+- [ ] Implement notification system for collaborative activities
+
+## 6. Advanced Features
+
+### Search & Discovery
+- [ ] Implement basic search functionality across all entities
+- [ ] Extend search to include custom attributes, privacy levels, and living status
+- [ ] Add support for fuzzy matching in search
+- [ ] Implement advanced filtering options
+
+### Data Import/Export
+- [ ] Implement GEDCOM import functionality
+- [ ] Implement GEDCOM export functionality
+- [ ] Add support for CSV import/export
+- [ ] Create backup and restore functionality
+
+## 7. Testing & Optimization
+
+### Testing
+- [ ] Write unit tests for all models
+- [ ] Write integration tests for all CRUD operations
+- [ ] Create end-to-end tests for critical user journeys
+- [ ] Implement automated test suite
+
+### Performance & Optimization
+- [ ] Perform load testing
+- [ ] Optimize database queries for performance
+- [x] Implement database query monitoring
+- [ ] Add performance benchmarking tools
+
+## 8. Final Steps
+
+### Documentation
+- [ ] Create API documentation
+- [ ] Write user guides
+- [ ] Document database schema
+- [ ] Create developer onboarding materials
+
+### Deployment
+- [ ] Configure deployment pipelines
+- [ ] Set up monitoring and alerting
+- [ ] Prepare rollback procedures
+- [ ] Create maintenance plan
+
+## 9. Code Review Additions
+- [ ] Implement to_dict method for Event, Media, Citation, and ActivityLog models
+- [ ] Add unit tests for new decorators: require_auth, require_admin, require_tree_access
+- [ ] Add audit logs to ActivityLog for all entity creation/update/delete
+- [ ] Implement email delivery logic for password reset (currently placeholder)

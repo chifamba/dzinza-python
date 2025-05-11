@@ -819,3 +819,8 @@ Viewport management system
 Worker thread implementation
 
 Final load testing
+
+-----
+Additional notes for the models
+- a full SQLAlchemy model codebase based on this final design? create all the models, do not leave samples, only full models are acceptable . be sure to check your work. Your final output must be a complete document
+- 

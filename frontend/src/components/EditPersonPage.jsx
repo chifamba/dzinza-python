@@ -1,8 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom'; // Added Link
 import api from '../api'; // Ensure this path is correct
+import { useAuth } from '../context/AuthContext'; // Import useAuth
 
 function EditPersonPage() {
+  const { activeTreeId } = useAuth(); // Get activeTreeId from context
+  const navigate = useNavigate(); // Hook for navigation
+  const { id } = useParams(); // Get person ID from URL parameter
+
   // State for person data, loading, success, and error messages
   const [person, setPerson] = useState({
     first_name: '',
@@ -12,8 +17,9 @@ function EditPersonPage() {
     death_date: '',
     place_of_birth: '',
     place_of_death: '',
-    gender: 'Male', // Default gender
-    notes: ''
+    gender: '', // Default to empty
+    notes: '',
+    custom_attributes: {} // Initialize custom attributes as an empty object
   });
   const [initialLoading, setInitialLoading] = useState(true); // For initial fetch
   const [saving, setSaving] = useState(false); // Separate state for saving operation
@@ -21,25 +27,30 @@ function EditPersonPage() {
   const [error, setError] = useState(null);
   const [validationErrors, setValidationErrors] = useState({}); // For field-specific errors
 
-  const navigate = useNavigate(); // Hook for navigation
-  const { id } = useParams(); // Get person ID from URL parameter
+   // Define valid genders (should match backend's Person.gender constraint)
+  const validGenders = ['Male', 'Female', 'Other', 'Unknown'];
 
-  // Fetch person data when the component mounts or ID changes
+
+  // Fetch person data when the component mounts or ID/activeTreeId changes
   useEffect(() => {
     let isMounted = true; // Flag to prevent state update on unmounted component
     const fetchPerson = async () => {
+      // Only fetch if activeTreeId is set and we have an ID
+      if (!id || !activeTreeId) {
+          if (isMounted) {
+              setError('No person ID or active tree provided.');
+              setInitialLoading(false);
+          }
+          return;
+      }
+
       setInitialLoading(true);
       setError(null);
       setSuccess(false);
       setValidationErrors({});
       try {
-        if (!id) {
-          if (isMounted) setError('No person ID provided in URL.');
-          if (isMounted) setInitialLoading(false);
-          return;
-        }
-        // Fetch person data from API
-        const data = await api.getPerson(id);
+        // Fetch person data from API, pass activeTreeId implicitly via session
+        const data = await api.getPerson(id, activeTreeId);
         if (isMounted) {
             // Format dates for input type="date" (YYYY-MM-DD) and handle nulls
             const formattedData = {
@@ -51,8 +62,9 @@ function EditPersonPage() {
               death_date: data.death_date ? data.death_date.split('T')[0] : '',
               place_of_birth: data.place_of_birth || '',
               place_of_death: data.place_of_death || '',
-              gender: data.gender || 'Male',
-              notes: data.notes || ''
+              gender: data.gender || '', // Set to empty string if null
+              notes: data.notes || '',
+              custom_attributes: data.custom_attributes || {} // Ensure it's an object
             };
             setPerson(formattedData);
         }
@@ -60,7 +72,7 @@ function EditPersonPage() {
         // Handle fetch errors
         const errorMsg = err.response?.data?.message || err.message || "Failed to fetch person details";
         if (isMounted) setError(errorMsg);
-        console.error('Error fetching person:', err);
+        console.error('Error fetching person:', err.response || err);
       } finally {
         if (isMounted) setInitialLoading(false); // Loading finished
       }
@@ -72,7 +84,7 @@ function EditPersonPage() {
     return () => {
         isMounted = false;
     };
-  }, [id]); // Re-run effect if the ID changes
+  }, [id, activeTreeId]); // Re-run effect if the ID or activeTreeId changes
 
   // Handle changes in form inputs
   const handleInputChange = (event) => {
@@ -84,9 +96,50 @@ function EditPersonPage() {
      }
   };
 
+   // Handle changes for custom attributes
+   const handleAttributeChange = (event) => {
+       const { name, value } = event.target;
+       setPerson(prevPerson => ({
+           ...prevPerson,
+           custom_attributes: {
+               ...prevPerson.custom_attributes,
+               [name]: value // Update specific attribute
+           }
+       }));
+   };
+
+   // Add a new custom attribute field
+   const addCustomAttribute = () => {
+       // Add a placeholder attribute, user will rename/fill
+       const newKey = `attribute_${Object.keys(person.custom_attributes).length + 1}`;
+       setPerson(prevPerson => ({
+           ...prevPerson,
+           custom_attributes: {
+               ...prevPerson.custom_attributes,
+               [newKey]: ''
+           }
+       }));
+   };
+
+   // Remove a custom attribute field
+   const removeCustomAttribute = (keyToRemove) => {
+       setPerson(prevPerson => {
+           const updatedAttributes = { ...prevPerson.custom_attributes };
+           delete updatedAttributes[keyToRemove];
+           return { ...prevPerson, custom_attributes: updatedAttributes };
+       });
+   };
+
+
   // Handle form submission
   const handleSubmit = async (event) => {
     event.preventDefault(); // Prevent default form submission
+
+     if (!activeTreeId) {
+        setError("No active family tree selected. Cannot save changes.");
+        return;
+    }
+
     setSaving(true); // Indicate saving state
     setError(null);
     setSuccess(false);
@@ -97,21 +150,22 @@ function EditPersonPage() {
       ...person,
       birth_date: person.birth_date || null,
       death_date: person.death_date || null,
+      custom_attributes: person.custom_attributes || {} // Ensure it's an object
     };
 
     try {
-      // Send updated data to the API
-      await api.updatePerson(id, dataToSend);
+      // Send updated data to the API, pass activeTreeId implicitly via session
+      await api.updatePerson(id, dataToSend, activeTreeId);
       setSuccess(true); // Show success message
       setError(null);
       // Optionally navigate back after a delay
       setTimeout(() => {
         setSuccess(false);
         // navigate('/dashboard'); // Example: navigate back to dashboard
-      }, 3000);
-    } catch (error) {
+      }, 2000); // Hide success message after 2 seconds
+    } catch (err) {
       // Handle submission errors
-      const errorData = error.response?.data;
+      const errorData = err.response?.data;
       let errorMsg = "Failed to update person details.";
 
       if (errorData) {
@@ -125,112 +179,147 @@ function EditPersonPage() {
            }
       } else {
            // Handle network or other errors
-           errorMsg = error.message || errorMsg;
+           errorMsg = err.message || errorMsg;
       }
 
       setError(errorMsg); // Set general error message
-      console.error('Error updating person:', error.response || error);
+      console.error('Error updating person:', err.response || err);
     } finally {
       setSaving(false); // Saving finished
     }
   };
 
-  // Style object for basic layout (consider using CSS classes)
-  const styles = {
-      container: { maxWidth: '600px', margin: '20px auto', padding: '20px', border: '1px solid #eee', borderRadius: '8px', boxShadow: '0 2px 5px rgba(0,0,0,0.05)' },
-      formGroup: { marginBottom: '15px' },
-      label: { display: 'block', marginBottom: '5px', fontWeight: 'bold' },
-      input: { width: '100%', padding: '10px', border: '1px solid #ccc', borderRadius: '4px', boxSizing: 'border-box' },
-      textarea: { width: '100%', padding: '10px', border: '1px solid #ccc', borderRadius: '4px', boxSizing: 'border-box', minHeight: '80px' },
-      select: { width: '100%', padding: '10px', border: '1px solid #ccc', borderRadius: '4px', boxSizing: 'border-box', backgroundColor: 'white' },
-      button: { padding: '10px 20px', border: 'none', borderRadius: '4px', backgroundColor: '#28a745', color: 'white', cursor: 'pointer', fontSize: '1em', marginRight: '10px' },
-      buttonDisabled: { backgroundColor: '#aaa', cursor: 'not-allowed' },
-      errorMessage: { color: 'red', marginBottom: '15px', padding: '10px', border: '1px solid red', borderRadius: '4px', backgroundColor: '#f8d7da' },
-      fieldError: { color: 'red', fontSize: '0.9em', marginTop: '3px' },
-      successMessage: { color: 'green', marginBottom: '15px', padding: '10px', border: '1px solid green', borderRadius: '4px', backgroundColor: '#d4edda' },
-      link: { color: '#007bff', textDecoration: 'none' },
-      actions: { marginTop: '20px' }
-  };
+  // Show a message if no active tree is selected
+  if (!activeTreeId && !initialLoading) { // Only show this after initial loading check
+      return (
+          <div className="form-container">
+              <h1>Edit Person</h1>
+              <div className="message error-message">
+                  No active family tree selected. Please select or create a tree on the <Link to="/dashboard">Dashboard</Link>.
+              </div>
+          </div>
+      );
+  }
 
 
   // Display loading indicator during initial fetch
   if (initialLoading) {
-    return <div style={styles.container}>Loading person details...</div>;
+    return <div className="form-container">Loading person details...</div>;
   }
 
-  // Display error if initial fetch failed significantly
+  // Display error if initial fetch failed significantly and no person data was loaded
   if (error && !person.first_name && !initialLoading) {
-       return <div style={{...styles.container, ...styles.errorMessage}}>Error loading details: {error}</div>;
+       return <div className="form-container message error-message">Error loading details: {error}</div>;
   }
 
   // Render the form
   return (
-    <div style={styles.container}>
+    <div className="form-container">
       <h1>Edit Person: {person.first_name} {person.last_name}</h1>
       {/* Display general error messages */}
-      {error && <div style={styles.errorMessage}>{error}</div>}
+      {error && <div className="message error-message">{error}</div>}
       {/* Display success message */}
-      {success && <div style={styles.successMessage}>Person updated successfully!</div>}
+      {success && <div className="message success-message">Person updated successfully!</div>}
 
       <form onSubmit={handleSubmit}>
         {/* Form fields for person details */}
-        <div style={styles.formGroup}>
-          <label htmlFor="first_name" style={styles.label}>First Name:</label>
-          <input type="text" id="first_name" name="first_name" style={styles.input} value={person.first_name} onChange={handleInputChange} required />
-           {validationErrors.first_name && <div style={styles.fieldError}>{validationErrors.first_name}</div>}
+        <div className="form-group">
+          <label htmlFor="first_name">First Name:</label>
+          {/* Input uses global styles */}
+          <input type="text" id="first_name" name="first_name" value={person.first_name} onChange={handleInputChange} required disabled={saving} />
+           {validationErrors.first_name && <div className="field-error">{validationErrors.first_name}</div>}
         </div>
-        <div style={styles.formGroup}>
-          <label htmlFor="last_name" style={styles.label}>Last Name:</label>
-          <input type="text" id="last_name" name="last_name" style={styles.input} value={person.last_name} onChange={handleInputChange} />
-           {validationErrors.last_name && <div style={styles.fieldError}>{validationErrors.last_name}</div>}
+        <div className="form-group">
+          <label htmlFor="last_name">Last Name:</label>
+          <input type="text" id="last_name" name="last_name" value={person.last_name} onChange={handleInputChange} disabled={saving} />
+           {validationErrors.last_name && <div className="field-error">{validationErrors.last_name}</div>}
         </div>
-         <div style={styles.formGroup}>
-          <label htmlFor="nickname" style={styles.label}>Nickname:</label>
-          <input type="text" id="nickname" name="nickname" style={styles.input} value={person.nickname} onChange={handleInputChange} />
+         <div className="form-group">
+          <label htmlFor="nickname">Nickname:</label>
+          <input type="text" id="nickname" name="nickname" value={person.nickname} onChange={handleInputChange} disabled={saving} />
         </div>
-        <div style={styles.formGroup}>
-          <label htmlFor="birth_date" style={styles.label}>Date of Birth:</label>
-          <input type="date" id="birth_date" name="birth_date" style={styles.input} value={person.birth_date} onChange={handleInputChange} />
-           {validationErrors.birth_date && <div style={styles.fieldError}>{validationErrors.birth_date}</div>}
+        <div className="form-group">
+          <label htmlFor="birth_date">Date of Birth:</label>
+          <input type="date" id="birth_date" name="birth_date" value={person.birth_date} onChange={handleInputChange} disabled={saving} />
+           {validationErrors.birth_date && <div className="field-error">{validationErrors.birth_date}</div>}
         </div>
-        <div style={styles.formGroup}>
-          <label htmlFor="place_of_birth" style={styles.label}>Place of Birth:</label>
-          <input type="text" id="place_of_birth" name="place_of_birth" style={styles.input} value={person.place_of_birth} onChange={handleInputChange} />
+        <div className="form-group">
+          <label htmlFor="place_of_birth">Place of Birth:</label>
+          <input type="text" id="place_of_birth" name="place_of_birth" value={person.place_of_birth} onChange={handleInputChange} disabled={saving} />
         </div>
-        <div style={styles.formGroup}>
-          <label htmlFor="death_date" style={styles.label}>Date of Death:</label>
-          <input type="date" id="death_date" name="death_date" style={styles.input} value={person.death_date} onChange={handleInputChange} />
-           {validationErrors.death_date && <div style={styles.fieldError}>{validationErrors.death_date}</div>}
-           {validationErrors.date_comparison && <div style={styles.fieldError}>{validationErrors.date_comparison}</div>}
+        <div className="form-group">
+          <label htmlFor="death_date">Date of Death:</label>
+          <input type="date" id="death_date" name="death_date" value={person.death_date} onChange={handleInputChange} disabled={saving} />
+           {validationErrors.death_date && <div className="field-error">{validationErrors.death_date}</div>}
+           {validationErrors.date_comparison && <div className="field-error">{validationErrors.date_comparison}</div>}
         </div>
-         <div style={styles.formGroup}>
-          <label htmlFor="place_of_death" style={styles.label}>Place of Death:</label>
-          <input type="text" id="place_of_death" name="place_of_death" style={styles.input} value={person.place_of_death} onChange={handleInputChange} />
+         <div className="form-group">
+          <label htmlFor="place_of_death">Place of Death:</label>
+          <input type="text" id="place_of_death" name="place_of_death" value={person.place_of_death} onChange={handleInputChange} disabled={saving} />
         </div>
-        <div style={styles.formGroup}>
-          <label htmlFor="gender" style={styles.label}>Gender:</label>
-          <select id="gender" name="gender" style={styles.select} value={person.gender} onChange={handleInputChange}>
-            <option value="Male">Male</option>
-            <option value="Female">Female</option>
-            <option value="Other">Other</option>
+        <div className="form-group">
+          <label htmlFor="gender">Gender:</label>
+          <select id="gender" name="gender" value={person.gender} onChange={handleInputChange} disabled={saving}>
+             <option value="">-- Select Gender --</option> {/* Added empty option */}
+            {validGenders.map(genderOption => (
+                <option key={genderOption} value={genderOption}>{genderOption}</option>
+            ))}
           </select>
-           {validationErrors.gender && <div style={styles.fieldError}>{validationErrors.gender}</div>}
+           {validationErrors.gender && <div className="field-error">{validationErrors.gender}</div>}
         </div>
-        <div style={styles.formGroup}>
-          <label htmlFor="notes" style={styles.label}>Notes:</label>
-          <textarea id="notes" name="notes" style={styles.textarea} value={person.notes} onChange={handleInputChange} rows="4" />
+        <div className="form-group">
+          <label htmlFor="notes">Notes:</label>
+          <textarea id="notes" name="notes" value={person.notes} onChange={handleInputChange} rows="4" disabled={saving} />
         </div>
 
+         {/* Custom Attributes Section - Similar to AddPersonPage */}
+        <div className="form-group">
+            <label>Custom Attributes:</label>
+            {Object.entries(person.custom_attributes).map(([key, value]) => (
+                <div key={key} style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '5px' }}>
+                    <input
+                        type="text"
+                        placeholder="Attribute Name"
+                        value={key}
+                        onChange={(e) => {
+                            const newAttributes = { ...person.custom_attributes };
+                            const oldValue = newAttributes[key];
+                            delete newAttributes[key];
+                            newAttributes[e.target.value] = oldValue;
+                            setPerson({ ...person, custom_attributes: newAttributes });
+                        }}
+                        disabled={saving}
+                        style={{ width: '150px' }} // Adjust width for key input
+                    />
+                     <input
+                        type="text"
+                        placeholder="Attribute Value"
+                        value={value}
+                        onChange={(e) => handleAttributeChange({ target: { name: key, value: e.target.value } })}
+                        disabled={saving}
+                        style={{ flexGrow: 1 }} // Allow value input to take remaining space
+                    />
+                    <button type="button" onClick={() => removeCustomAttribute(key)} disabled={saving} style={{ width: 'auto', padding: '5px 10px', backgroundColor: 'var(--color-error-text)' }}>
+                        Remove
+                    </button>
+                </div>
+            ))}
+            <button type="button" onClick={addCustomAttribute} disabled={saving} style={{ width: 'auto', marginTop: '10px', backgroundColor: 'var(--color-secondary)' }}>
+                Add Attribute
+            </button>
+             {validationErrors.custom_attributes && <div className="field-error">{validationErrors.custom_attributes}</div>}
+        </div>
+
+
         {/* Submit button with disabled state during saving */}
-        <div style={styles.actions}>
+        <div style={{ display: 'flex', gap: '10px', marginTop: '1.5rem', justifyContent: 'flex-end' }}> {/* Align buttons to the right */}
+             <Link to="/dashboard" className="button secondary-button">Cancel</Link> {/* Use secondary-button class */}
             <button
                 type="submit"
-                style={saving ? {...styles.button, ...styles.buttonDisabled} : styles.button}
                 disabled={saving}
             >
               {saving ? 'Saving...' : 'Save Changes'}
             </button>
-             <Link to="/dashboard" style={{...styles.link, marginLeft: '10px'}}>Cancel</Link>
         </div>
       </form>
     </div>

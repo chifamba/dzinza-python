@@ -2,7 +2,8 @@
 
 # Run script for the Dzinza Family Tree development environment using Docker Compose
 # Run this script from the project root directory (dzinza-python/).
-
+clear
+echo "========================================================"
 echo "Starting Dzinza Family Tree using Docker Compose..."
 
 # Check if .env file exists, warn if not (optional but good practice)

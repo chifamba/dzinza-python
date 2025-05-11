@@ -1,8 +1,37 @@
-API DocumentationThis document describes the API endpoints for the Dzinza Family Tree Application. All endpoints requiring authentication expect session cookies to be sent (withCredentials: true in frontend axios calls).Base URL: /api (relative to the backend server address, e.g., http://localhost:8090/api)Authentication/login (POST)Description: Authenticates a user via username and password. Sets session cookies on success.Authentication: None required.Request Body:{
+# API Documentation
+
+This document describes the API endpoints for the Dzinza Family Tree Application.  
+All endpoints requiring authentication expect session cookies to be sent (`withCredentials: true` in frontend Axios calls).  
+
+**Base URL**: `/api` (relative to the backend server address, e.g., `http://localhost:8090/api`)
+
+---
+
+## Authentication
+
+### **Login** (`POST /login`)
+**Description**: Authenticates a user via username and password. Sets session cookies on success.  
+**Authentication**: None required.  
+
+#### **Request Body**:
+```json
+{
     "username": "your_username",
     "password": "your_password"
 }
-Response Codes:200 OK: Login successful.400 Bad Request: Missing username or password, or invalid JSON.401 Unauthorized: Invalid username or password.500 Internal Server Error: An unexpected error occurred during login.503 Service Unavailable: Authentication service not initialized.Response Body (Success - 200 OK):{
+```
+
+#### **Response Codes**:
+- **200 OK**: Login successful.
+- **400 Bad Request**: Missing username or password, or invalid JSON.
+- **401 Unauthorized**: Invalid username or password.
+- **500 Internal Server Error**: An unexpected error occurred during login.
+- **503 Service Unavailable**: Authentication service not initialized.
+
+#### **Response Body**:
+- **Success - 200 OK**:
+```json
+{
     "message": "Login successful!",
     "user": {
         "id": "user_uuid",
@@ -10,15 +39,38 @@ Response Codes:200 OK: Login successful.400 Bad Request: Missing username or pas
         "role": "user_role" // e.g., "basic", "admin"
     }
 }
-Response Body (Error - 400/401):{
+```
+- **Error - 400/401**:
+```json
+{
     "error": "Bad Request/Unauthorized",
     "message": "Specific error message (e.g., Username and password are required / Invalid username or password.)"
 }
-/register (POST)Description: Registers a new user with a 'basic' role by default.Authentication: None required.Request Body:{
+```
+
+### **Register** (`POST /register`)
+**Description**: Registers a new user with a 'basic' role by default.  
+**Authentication**: None required.  
+
+#### **Request Body**:
+```json
+{
     "username": "new_username",
     "password": "new_password" // Min length/complexity might be enforced by backend logic (currently basic check)
 }
-Response Codes:201 Created: Registration successful.400 Bad Request: Missing username/password, empty values, or invalid JSON.409 Conflict: Username already exists.500 Internal Server Error: An unexpected error occurred during registration (e.g., hashing failed, save failed).503 Service Unavailable: Registration service not initialized.Response Body (Success - 201 Created):{
+```
+
+#### **Response Codes**:
+- **201 Created**: Registration successful.
+- **400 Bad Request**: Missing username/password, empty values, or invalid JSON.
+- **409 Conflict**: Username already exists.
+- **500 Internal Server Error**: An unexpected error occurred during registration (e.g., hashing failed, save failed).
+- **503 Service Unavailable**: Registration service not initialized.
+
+#### **Response Body**:
+- **Success - 201 Created**:
+```json
+{
     "message": "Registration successful!",
     "user": {
         "id": "new_user_uuid",
@@ -26,13 +78,47 @@ Response Codes:201 Created: Registration successful.400 Bad Request: Missing use
         "role": "basic"
     }
 }
-Response Body (Error - 409 Conflict):{
+```
+- **Error - 409 Conflict**:
+```json
+{
     "error": "Username 'new_username' is already taken."
 }
-/logout (POST)Description: Logs out the current user and clears the server-side session.Authentication: Required.Request Body: None (Empty object {} might be needed depending on frontend library).Response Codes:200 OK: Logout successful.401 Unauthorized: User not authenticated.500 Internal Server Error: An unexpected error occurred during logout.503 Service Unavailable: Core components not initialized.Response Body (Success - 200 OK):{
+```
+
+### **Logout** (`POST /logout`)
+**Description**: Logs out the current user and clears the server-side session.  
+**Authentication**: Required.  
+
+#### **Request Body**: None (Empty object `{}` might be needed depending on frontend library).
+
+#### **Response Codes**:
+- **200 OK**: Logout successful.
+- **401 Unauthorized**: User not authenticated.
+- **500 Internal Server Error**: An unexpected error occurred during logout.
+- **503 Service Unavailable**: Core components not initialized.
+
+#### **Response Body**:
+- **Success - 200 OK**:
+```json
+{
     "message": "Logout successful"
 }
-/session (GET)Description: Retrieves the current authentication status and user information if logged in.Authentication: Not required.Request Body: None.Response Codes:200 OK: Session status retrieved.Response Body (Authenticated):{
+```
+
+### **Session** (`GET /session`)
+**Description**: Retrieves the current authentication status and user information if logged in.  
+**Authentication**: Not required.  
+
+#### **Request Body**: None.
+
+#### **Response Codes**:
+- **200 OK**: Session status retrieved.
+
+#### **Response Body**:
+- **Authenticated**:
+```json
+{
     "isAuthenticated": true,
     "user": {
         "id": "user_uuid",
@@ -40,27 +126,96 @@ Response Body (Error - 409 Conflict):{
         "role": "user_role"
     }
 }
-Response Body (Not Authenticated):{
+```
+- **Not Authenticated**:
+```json
+{
     "isAuthenticated": false,
     "user": null
 }
-Password Reset/request-password-reset (POST)Description: Initiates the password reset process by sending an email with a reset link to the user's registered email address (which is assumed to be their username in this implementation).Authentication: None required.Request Body:{
+```
+
+### Password Reset
+
+#### **Request Password Reset** (`POST /request-password-reset`)
+**Description**: Initiates the password reset process by sending an email with a reset link to the user's registered email address (which is assumed to be their username in this implementation).  
+**Authentication**: None required.  
+
+#### **Request Body**:
+```json
+{
     "email": "user_email_or_username"
 }
-Response Codes:200 OK: Request processed (email sent if user exists, but response is generic to prevent enumeration).400 Bad Request: Missing or empty email field, or invalid JSON.500 Internal Server Error: Failed to generate token or send email.503 Service Unavailable: User manager or email service not available.Response Body (Success - 200 OK):{
+```
+
+#### **Response Codes**:
+- **200 OK**: Request processed (email sent if user exists, but response is generic to prevent enumeration).
+- **400 Bad Request**: Missing or empty email field, or invalid JSON.
+- **500 Internal Server Error**: Failed to generate token or send email.
+- **503 Service Unavailable**: User manager or email service not available.
+
+#### **Response Body**:
+- **Success - 200 OK**:
+```json
+{
     "message": "If an account exists for this email, a password reset link has been sent."
 }
-/reset-password/<token> (POST)Description: Resets the user's password using a valid, non-expired token received via email.Authentication: None required (token provides authorization).URL Parameters:token (string): The password reset token.Request Body:{
+```
+
+#### **Reset Password** (`POST /reset-password/<token>`)
+**Description**: Resets the user's password using a valid, non-expired token received via email.  
+**Authentication**: None required (token provides authorization).  
+
+#### **URL Parameters**:
+- **token** (string): The password reset token.
+
+#### **Request Body**:
+```json
+{
     "new_password": "new_secure_password" // Basic validation (min length 8) applied
 }
-Response Codes:200 OK: Password reset successful.400 Bad Request: Missing new password, invalid/expired token, or password validation failed (e.g., too short).500 Internal Server Error: Failed to hash password or save user data.503 Service Unavailable: User manager not available.Response Body (Success - 200 OK):{
+```
+
+#### **Response Codes**:
+- **200 OK**: Password reset successful.
+- **400 Bad Request**: Missing new password, invalid/expired token, or password validation failed (e.g., too short).
+- **500 Internal Server Error**: Failed to hash password or save user data.
+- **503 Service Unavailable**: User manager not available.
+
+#### **Response Body**:
+- **Success - 200 OK**:
+```json
+{
     "message": "Password reset successfully."
 }
-Response Body (Error - 400 Bad Request):{
+```
+- **Error - 400 Bad Request**:
+```json
+{
     "error": "Bad Request",
     "message": "Specific error message (e.g., Invalid or expired password reset token... / New password cannot be empty...)"
 }
-People/people (GET)Description: Retrieves all people in the family tree.Authentication: Required.Request Body: None.Response Codes:200 OK: People retrieved successfully.401 Unauthorized: User not authenticated.500 Internal Server Error: Failed to retrieve people data.503 Service Unavailable: Family tree service not available.Response Body (Success - 200 OK): An array of Person objects.[
+```
+
+---
+
+## People
+
+### **People** (`GET /people`)
+**Description**: Retrieves all people in the family tree.  
+**Authentication**: Required.  
+
+#### **Request Body**: None.
+
+#### **Response Codes**:
+- **200 OK**: People retrieved successfully.
+- **401 Unauthorized**: User not authenticated.
+- **500 Internal Server Error**: Failed to retrieve people data.
+- **503 Service Unavailable**: Family tree service not available.
+
+#### **Response Body**: An array of Person objects.
+```json
+[
     {
         "person_id": "uuid_string",
         "first_name": "John",
@@ -76,7 +231,33 @@ People/people (GET)Description: Retrieves all people in the family tree.Authenti
     },
     // ... more person objects
 ]
-/people/{person_id} (GET)Description: Retrieves a specific person by their ID.Authentication: Required.URL Parameters:person_id (string): The UUID of the person.Request Body: None.Response Codes:200 OK: Person retrieved successfully.401 Unauthorized: User not authenticated.404 Not Found: Person with the specified ID not found.500 Internal Server Error: Failed to retrieve person data.503 Service Unavailable: Family tree service not available.Response Body (Success - 200 OK): A single Person object (see format above)./people (POST)Description: Adds a new person to the family tree.Authentication: Required.Request Body: A Person object (without person_id). first_name is required.{
+```
+
+### **Person** (`GET /people/{person_id}`)
+**Description**: Retrieves a specific person by their ID.  
+**Authentication**: Required.  
+
+#### **URL Parameters**:
+- **person_id** (string): The UUID of the person.
+
+#### **Request Body**: None.
+
+#### **Response Codes**:
+- **200 OK**: Person retrieved successfully.
+- **401 Unauthorized**: User not authenticated.
+- **404 Not Found**: Person with the specified ID not found.
+- **500 Internal Server Error**: Failed to retrieve person data.
+- **503 Service Unavailable**: Family tree service not available.
+
+#### **Response Body**: A single Person object (see format above).
+
+### **Add Person** (`POST /people`)
+**Description**: Adds a new person to the family tree.  
+**Authentication**: Required.  
+
+#### **Request Body**: A Person object (without person_id). first_name is required.
+```json
+{
     "first_name": "New",
     "last_name": "Person", // Optional, defaults to ""
     "nickname": "NP",      // Optional
@@ -88,13 +269,82 @@ People/people (GET)Description: Retrieves all people in the family tree.Authenti
     "notes": "Some notes",      // Optional
     "attributes": {"custom_key": "value"} // Optional
 }
-Response Codes:201 Created: Person added successfully.400 Bad Request: Invalid input data (e.g., missing first_name, invalid date format, DOD before DOB, invalid gender). Response body contains validation details: {"error": "Validation failed", "details": {"field_name": "error message"}}.401 Unauthorized: User not authenticated.500 Internal Server Error: An unexpected error occurred while adding the person.503 Service Unavailable: Family tree service not available.Response Body (Success - 201 Created): The newly created Person object (including the generated person_id)./people/{person_id} (PUT)Description: Edits an existing person's details. Only include fields to be updated.Authentication: Required.URL Parameters:person_id (string): The UUID of the person to edit.Request Body: An object containing the fields to update.{
+```
+
+#### **Response Codes**:
+- **201 Created**: Person added successfully.
+- **400 Bad Request**: Invalid input data (e.g., missing first_name, invalid date format, DOD before DOB, invalid gender). Response body contains validation details: `{"error": "Validation failed", "details": {"field_name": "error message"}}`.
+- **401 Unauthorized**: User not authenticated.
+- **500 Internal Server Error**: An unexpected error occurred while adding the person.
+- **503 Service Unavailable**: Family tree service not available.
+
+#### **Response Body**:
+- **Success - 201 Created**: The newly created Person object (including the generated person_id).
+
+### **Edit Person** (`PUT /people/{person_id}`)
+**Description**: Edits an existing person's details. Only include fields to be updated.  
+**Authentication**: Required.  
+
+#### **URL Parameters**:
+- **person_id** (string): The UUID of the person to edit.
+
+#### **Request Body**: An object containing the fields to update.
+```json
+{
     "last_name": "UpdatedName",
     "notes": "Updated notes.",
     "death_date": "2024-01-01"
     // Include any fields from the Person object to update
 }
-Response Codes:200 OK: Person updated successfully (even if no effective changes were made).400 Bad Request: Invalid input data (e.g., invalid date format, DOD before DOB, invalid gender). Response body contains validation details.401 Unauthorized: User not authenticated.404 Not Found: Person with the specified ID not found.500 Internal Server Error: An unexpected error occurred while editing the person.503 Service Unavailable: Family tree service not available.Response Body (Success - 200 OK): The updated Person object./people/{person_id} (DELETE)Description: Deletes a person and their associated relationships from the family tree.Authentication: Required.URL Parameters:person_id (string): The UUID of the person to delete.Request Body: None.Response Codes:204 No Content: Person deleted successfully.401 Unauthorized: User not authenticated.404 Not Found: Person with the specified ID not found.500 Internal Server Error: An unexpected error occurred while deleting the person.503 Service Unavailable: Family tree service not available.Response Body (Success - 204 No Content): Empty.Relationships/relationships (GET)Description: Retrieves all relationships in the family tree.Authentication: Required.Request Body: None.Response Codes:200 OK: Relationships retrieved successfully.401 Unauthorized: User not authenticated.500 Internal Server Error: Failed to retrieve relationships data.503 Service Unavailable: Family tree service not available.Response Body (Success - 200 OK): An array of Relationship objects.[
+```
+
+#### **Response Codes**:
+- **200 OK**: Person updated successfully (even if no effective changes were made).
+- **400 Bad Request**: Invalid input data (e.g., invalid date format, DOD before DOB, invalid gender). Response body contains validation details.
+- **401 Unauthorized**: User not authenticated.
+- **404 Not Found**: Person with the specified ID not found.
+- **500 Internal Server Error**: An unexpected error occurred while editing the person.
+- **503 Service Unavailable**: Family tree service not available.
+
+#### **Response Body**: The updated Person object.
+
+### **Delete Person** (`DELETE /people/{person_id}`)
+**Description**: Deletes a person and their associated relationships from the family tree.  
+**Authentication**: Required.  
+
+#### **URL Parameters**:
+- **person_id** (string): The UUID of the person to delete.
+
+#### **Request Body**: None.
+
+#### **Response Codes**:
+- **204 No Content**: Person deleted successfully.
+- **401 Unauthorized**: User not authenticated.
+- **404 Not Found**: Person with the specified ID not found.
+- **500 Internal Server Error**: An unexpected error occurred while deleting the person.
+- **503 Service Unavailable**: Family tree service not available.
+
+#### **Response Body**: Empty.
+
+---
+
+## Relationships
+
+### **Relationships** (`GET /relationships`)
+**Description**: Retrieves all relationships in the family tree.  
+**Authentication**: Required.  
+
+#### **Request Body**: None.
+
+#### **Response Codes**:
+- **200 OK**: Relationships retrieved successfully.
+- **401 Unauthorized**: User not authenticated.
+- **500 Internal Server Error**: Failed to retrieve relationships data.
+- **503 Service Unavailable**: Family tree service not available.
+
+#### **Response Body**: An array of Relationship objects.
+```json
+[
     {
         "rel_id": "uuid_string", // ID of the relationship itself
         "person1_id": "person_uuid_1",
@@ -104,19 +354,102 @@ Response Codes:200 OK: Person updated successfully (even if no effective changes
     },
     // ... more relationship objects
 ]
-/relationships (POST)Description: Adds a new relationship between two people.Authentication: Required.Request Body:{
+```
+
+### **Add Relationship** (`POST /relationships`)
+**Description**: Adds a new relationship between two people.  
+**Authentication**: Required.  
+
+#### **Request Body**:
+```json
+{
     "person1": "person_uuid_1", // ID of the first person
     "person2": "person_uuid_2", // ID of the second person
     "relationshipType": "parent", // Type of relationship (from person1 to person2)
     "attributes": {"custom": "data"} // Optional attributes dictionary
 }
-Response Codes:201 Created: Relationship added successfully.400 Bad Request: Invalid input data (e.g., missing IDs, invalid type, persons not found, self-relationship). Response body contains validation details.401 Unauthorized: User not authenticated.409 Conflict: Relationship might already exist (depends on backend logic).500 Internal Server Error: An unexpected error occurred while adding the relationship.503 Service Unavailable: Family tree service not available.Response Body (Success - 201 Created): The newly created Relationship object (including the generated rel_id)./relationships/{relationship_id} (PUT)Description: Edits an existing relationship's type or attributes. Can also change the persons involved.Authentication: Required.URL Parameters:relationship_id (string): The UUID of the relationship to edit.Request Body: An object containing the fields to update.{
+```
+
+#### **Response Codes**:
+- **201 Created**: Relationship added successfully.
+- **400 Bad Request**: Invalid input data (e.g., missing IDs, invalid type, persons not found, self-relationship). Response body contains validation details.
+- **401 Unauthorized**: User not authenticated.
+- **409 Conflict**: Relationship might already exist (depends on backend logic).
+- **500 Internal Server Error**: An unexpected error occurred while adding the relationship.
+- **503 Service Unavailable**: Family tree service not available.
+
+#### **Response Body**:
+- **Success - 201 Created**: The newly created Relationship object (including the generated rel_id).
+
+### **Edit Relationship** (`PUT /relationships/{relationship_id}`)
+**Description**: Edits an existing relationship's type or attributes. Can also change the persons involved.  
+**Authentication**: Required.  
+
+#### **URL Parameters**:
+- **relationship_id** (string): The UUID of the relationship to edit.
+
+#### **Request Body**: An object containing the fields to update.
+```json
+{
     "relationshipType": "sibling", // Optional: Change the type
     "attributes": {"new_attr": "value"}, // Optional: Update/add attributes
     "person1": "new_person_uuid_1", // Optional: Change person 1
     "person2": "new_person_uuid_2"  // Optional: Change person 2
 }
-Response Codes:200 OK: Relationship updated successfully (even if no effective changes were made).400 Bad Request: Invalid input data (e.g., invalid type, invalid attributes format, persons not found if changed, self-relationship). Response body contains validation details.401 Unauthorized: User not authenticated.404 Not Found: Relationship with the specified ID not found.500 Internal Server Error: An unexpected error occurred while editing the relationship.503 Service Unavailable: Family tree service not available.Response Body (Success - 200 OK): The updated Relationship object./relationships/{relationship_id} (DELETE)Description: Deletes a relationship from the family tree.Authentication: Required.URL Parameters:relationship_id (string): The UUID of the relationship to delete.Request Body: None.Response Codes:204 No Content: Relationship deleted successfully.401 Unauthorized: User not authenticated.404 Not Found: Relationship with the specified ID not found.500 Internal Server Error: An unexpected error occurred while deleting the relationship.503 Service Unavailable: Family tree service not available.Response Body (Success - 204 No Content): Empty.Tree Data/tree_data (GET)Description: Retrieves node and link data formatted for use with visualization libraries like React Flow. Supports optional lazy loading via query parameters (currently returns full tree).Authentication: Required.Query Parameters (Optional):start_node (string): The person_id to start the tree traversal from. If omitted, the full tree is returned. (Note: Backend currently returns full tree regardless)depth (integer): The maximum depth to traverse from the start_node (0 = start node only). Ignored if start_node is omitted. (Note: Backend currently returns full tree regardless)Request Body: None.Response Codes:200 OK: Tree data retrieved successfully.400 Bad Request: Invalid depth parameter (e.g., not an integer, negative).401 Unauthorized: User not authenticated.500 Internal Server Error: Failed to generate tree data.503 Service Unavailable: Family tree service not available.Response Body (Success - 200 OK):{
+```
+
+#### **Response Codes**:
+- **200 OK**: Relationship updated successfully (even if no effective changes were made).
+- **400 Bad Request**: Invalid input data (e.g., invalid type, invalid attributes format, persons not found if changed, self-relationship). Response body contains validation details.
+- **401 Unauthorized**: User not authenticated.
+- **404 Not Found**: Relationship with the specified ID not found.
+- **500 Internal Server Error**: An unexpected error occurred while editing the relationship.
+- **503 Service Unavailable**: Family tree service not available.
+
+#### **Response Body**: The updated Relationship object.
+
+### **Delete Relationship** (`DELETE /relationships/{relationship_id}`)
+**Description**: Deletes a relationship from the family tree.  
+**Authentication**: Required.  
+
+#### **URL Parameters**:
+- **relationship_id** (string): The UUID of the relationship to delete.
+
+#### **Request Body**: None.
+
+#### **Response Codes**:
+- **204 No Content**: Relationship deleted successfully.
+- **401 Unauthorized**: User not authenticated.
+- **404 Not Found**: Relationship with the specified ID not found.
+- **500 Internal Server Error**: An unexpected error occurred while deleting the relationship.
+- **503 Service Unavailable**: Family tree service not available.
+
+#### **Response Body**: Empty.
+
+---
+
+## Tree Data
+
+### **Tree Data** (`GET /tree_data`)
+**Description**: Retrieves node and link data formatted for use with visualization libraries like React Flow. Supports optional lazy loading via query parameters (currently returns full tree).  
+**Authentication**: Required.  
+
+#### **Query Parameters** (Optional):
+- **start_node** (string): The person_id to start the tree traversal from. If omitted, the full tree is returned. (Note: Backend currently returns full tree regardless)
+- **depth** (integer): The maximum depth to traverse from the start_node (0 = start node only). Ignored if start_node is omitted. (Note: Backend currently returns full tree regardless)
+
+#### **Request Body**: None.
+
+#### **Response Codes**:
+- **200 OK**: Tree data retrieved successfully.
+- **400 Bad Request**: Invalid depth parameter (e.g., not an integer, negative).
+- **401 Unauthorized**: User not authenticated.
+- **500 Internal Server Error**: Failed to generate tree data.
+- **503 Service Unavailable**: Family tree service not available.
+
+#### **Response Body**:
+```json
+{
     "nodes": [
         {
             "id": "person_uuid_1",
@@ -149,7 +482,28 @@ Response Codes:200 OK: Relationship updated successfully (even if no effective c
         // ... more link/edge objects
     ]
 }
-Admin User Management/users (GET)Description: Retrieves a list of all registered users. (Admin only)Authentication: Required (Admin role).Request Body: None.Response Codes:200 OK: User list retrieved successfully.401 Unauthorized: User not authenticated.403 Forbidden: User is not an admin.500 Internal Server Error: Failed to retrieve user list.503 Service Unavailable: User manager not available.Response Body (Success - 200 OK): An array of User summary objects (excluding sensitive info like password hash, tokens).[
+```
+
+---
+
+## Admin User Management
+
+### **Users** (`GET /users`)
+**Description**: Retrieves a list of all registered users. (Admin only)  
+**Authentication**: Required (Admin role).  
+
+#### **Request Body**: None.
+
+#### **Response Codes**:
+- **200 OK**: User list retrieved successfully.
+- **401 Unauthorized**: User not authenticated.
+- **403 Forbidden**: User is not an admin.
+- **500 Internal Server Error**: Failed to retrieve user list.
+- **503 Service Unavailable**: User manager not available.
+
+#### **Response Body**: An array of User summary objects (excluding sensitive info like password hash, tokens).
+```json
+[
     {
         "user_id": "user_uuid_1",
         "username": "testuser",
@@ -163,11 +517,78 @@ Admin User Management/users (GET)Description: Retrieves a list of all registered
     }
     // ... more user objects
 ]
-/users/{user_id} (DELETE)Description: Deletes a specified user. (Admin only)Authentication: Required (Admin role).URL Parameters:user_id (string): The UUID of the user to delete.Request Body: None.Response Codes:204 No Content: User deleted successfully.401 Unauthorized: User not authenticated.403 Forbidden: User is not an admin or attempting self-deletion.404 Not Found: User with the specified ID not found.500 Internal Server Error: An unexpected error occurred while deleting the user.503 Service Unavailable: User manager not available.Response Body (Success - 204 No Content): Empty./users/{user_id}/role (PUT)Description: Changes the role of a specified user. (Admin only)Authentication: Required (Admin role).URL Parameters:user_id (string): The UUID of the user whose role is to be changed.Request Body:{
+```
+
+### **Delete User** (`DELETE /users/{user_id}`)
+**Description**: Deletes a specified user. (Admin only)  
+**Authentication**: Required (Admin role).  
+
+#### **URL Parameters**:
+- **user_id** (string): The UUID of the user to delete.
+
+#### **Request Body**: None.
+
+#### **Response Codes**:
+- **204 No Content**: User deleted successfully.
+- **401 Unauthorized**: User not authenticated.
+- **403 Forbidden**: User is not an admin or attempting self-deletion.
+- **404 Not Found**: User with the specified ID not found.
+- **500 Internal Server Error**: An unexpected error occurred while deleting the user.
+- **503 Service Unavailable**: User manager not available.
+
+#### **Response Body**: Empty.
+
+### **Change User Role** (`PUT /users/{user_id}/role`)
+**Description**: Changes the role of a specified user. (Admin only)  
+**Authentication**: Required (Admin role).  
+
+#### **URL Parameters**:
+- **user_id** (string): The UUID of the user whose role is to be changed.
+
+#### **Request Body**:
+```json
+{
     "role": "admin" // The new role ("basic" or "admin")
 }
-Response Codes:200 OK: Role updated successfully (or no change needed).400 Bad Request: Missing role field or invalid role value provided.401 Unauthorized: User not authenticated.403 Forbidden: User is not an admin.404 Not Found: User with the specified ID not found.500 Internal Server Error: An unexpected error occurred while setting the role.503 Service Unavailable: User manager not available.Response Body (Success - 200 OK):{
+```
+
+#### **Response Codes**:
+- **200 OK**: Role updated successfully (or no change needed).
+- **400 Bad Request**: Missing role field or invalid role value provided.
+- **401 Unauthorized**: User not authenticated.
+- **403 Forbidden**: User is not an admin.
+- **404 Not Found**: User with the specified ID not found.
+- **500 Internal Server Error**: An unexpected error occurred while setting the role.
+- **503 Service Unavailable**: User manager not available.
+
+#### **Response Body**:
+- **Success - 200 OK**:
+```json
+{
     "user_id": "user_uuid",
     "username": "target_username",
     "role": "new_role" // The updated role
 }
+```
+
+### **Health Check** (`GET /health`)
+**Description**: Checks the health of the application and its dependencies (e.g., database, external APIs).  
+**Authentication**: None required.  
+
+#### **Response Codes**:
+- **200 OK**: Service is healthy.
+- **503 Service Unavailable**: Service is unhealthy.
+
+#### **Response Body**:
+```json
+{
+    "status": "healthy",
+    "timestamp": "2025-04-28T12:00:00Z",
+    "dependencies": {
+        "database": {
+            "status": "healthy",
+            "latency_ms": 12.34
+        }
+    }
+}
+```

@@ -1,0 +1,32 @@
+receivers:
+  otlp:
+    protocols:
+      http:
+      grpc:  # Added gRPC protocol support
+
+exporters:
+  debug: {}
+  otlp:
+    endpoint: "otel-collector:4318"  # Changed from localhost to the service name
+    tls:
+      insecure: true
+  prometheus:
+    endpoint: "0.0.0.0:55678"
+
+processors:
+  batch:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 400
+    spike_limit_mib: 100
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch, memory_limiter]
+      exporters: [debug, otlp]
+    metrics:
+      receivers: [otlp]
+      processors: [batch, memory_limiter]
+      exporters: [debug, prometheus]

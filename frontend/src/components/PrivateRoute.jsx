@@ -11,7 +11,7 @@ const PrivateRoute = ({ children }) => {
   // Show loading indicator while authentication status is being checked
   if (loading) {
     // You can replace this with a more sophisticated loading spinner
-    return <div>Loading authentication...</div>;
+    return <div style={{textAlign: 'center', padding: '50px'}}>Loading authentication...</div>;
   }
 
   // If not loading and no user exists, redirect to login
@@ -20,6 +20,7 @@ const PrivateRoute = ({ children }) => {
     // trying to go to in the state property. This allows us to send them
     // along to that page after they login, which is a nicer user experience
     // than dropping them off on the home page.
+    console.log("PrivateRoute: No user found, redirecting to login.");
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
@@ -28,3 +29,4 @@ const PrivateRoute = ({ children }) => {
 };
 
 export default PrivateRoute;
+//     setCreatingTree(true);

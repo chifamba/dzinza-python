@@ -8,74 +8,11 @@ import { useNavigate } from 'react-router-dom';
 import defaultAvatar from '../assets/profiles/images/default_avatar.png'; // Adjust filename if needed
 
 // Define CSS classes for the node elements (using template literal for multiline)
-const nodeStyles = `
-  .person-node-container {
-    padding: 10px 15px;
-    border: 1px solid var(--color-reactflow-node-border); /* Use CSS var */
-    border-radius: 6px;
-    background: var(--color-reactflow-node-bg); /* Use CSS var */
-    color: var(--color-text); /* Use CSS var */
-    text-align: center;
-    min-width: 160px; /* Ensure minimum width */
-    box-shadow: var(--box-shadow-sm);
-    cursor: grab; /* Indicate draggable */
-    transition: box-shadow 0.2s ease-in-out;
-  }
-  .person-node-container:hover {
-      box-shadow: var(--box-shadow);
-  }
-  .person-node-content {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-  }
-  .person-node-image {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    margin-bottom: 5px;
-    border: 1px solid var(--color-border); /* Add subtle border */
-    background-color: var(--color-secondary); /* Use secondary for placeholder bg */
-    object-fit: cover; /* Ensure image covers the area */
-  }
-  .person-node-name {
-    margin: 5px 0;
-    font-size: 0.95em;
-    font-weight: 600; /* Bold name */
-  }
-  .person-node-dates {
-    margin: 2px 0;
-    font-size: 0.8em;
-    color: var(--color-secondary); /* Use secondary text color */
-  }
-  .person-node-edit-button {
-    margin-top: 8px;
-    font-size: 0.8em;
-    padding: 3px 8px;
-    background-color: var(--color-secondary); /* Use secondary button color */
-    color: var(--color-button-text);
-    border: none;
-    border-radius: 3px;
-    cursor: pointer;
-    opacity: 0.8;
-    transition: opacity 0.2s ease-in-out, background-color 0.2s ease-in-out;
-  }
-  .person-node-edit-button:hover {
-    background-color: var(--color-secondary-hover);
-    opacity: 1;
-  }
-`;
-
-// Inject styles into the head (simple approach)
-// Consider CSS Modules or styled-components for larger apps
-const styleSheetExists = document.getElementById('person-node-styles');
-if (!styleSheetExists) {
-    const styleSheet = document.createElement("style");
-    styleSheet.id = 'person-node-styles'; // Add ID to prevent duplicates
-    styleSheet.type = "text/css";
-    styleSheet.innerText = nodeStyles;
-    document.head.appendChild(styleSheet);
-}
+// Moved styles to index.css for better global management
+// const nodeStyles = ` ... `;
+// Inject styles into the head (simple approach) - Removed as styles are now in index.css
+// const styleSheetExists = document.getElementById('person-node-styles');
+// if (!styleSheetExists) { ... }
 
 
 const PersonNode = ({ data, isConnectable }) => {
@@ -94,13 +31,15 @@ const PersonNode = ({ data, isConnectable }) => {
   const formatDate = (dateString) => {
      if (!dateString) return '?';
      try {
+          // Assuming dateString is in ISO format (e.g., "YYYY-MM-DDTHH:mm:ss.sssZ" or "YYYY-MM-DD")
           return dateString.split('T')[0];
      } catch {
-          return dateString;
+          return dateString; // Return original if parsing fails
      }
   };
 
   // Use the imported default image variable
+  // Assuming photoUrl is available in data if the backend supports it
   const imageUrl = data?.photoUrl || defaultAvatar;
 
   // Error handler for the image tag
@@ -117,9 +56,12 @@ const PersonNode = ({ data, isConnectable }) => {
   };
 
   return (
+    // Use the CSS class defined in index.css
     <div className="person-node-container">
+      {/* Handles for connecting edges */}
       <Handle type="target" position={Position.Top} id="top" isConnectable={isConnectable} />
       <div className="person-node-content">
+        {/* Person Image */}
         <img
              // Use the determined image URL
              src={imageUrl}
@@ -128,16 +70,20 @@ const PersonNode = ({ data, isConnectable }) => {
              // Use the error handler
              onError={handleImageError}
         />
+        {/* Person Name */}
         <h3 className="person-node-name">{data?.label || 'Unnamed'}</h3>
+        {/* Birth and Death Dates */}
         {(data?.dob || data?.dod) && (
             <p className="person-node-dates">
                 ({formatDate(data.dob)} - {formatDate(data.dod)})
             </p>
         )}
+        {/* Edit Button */}
         <button onClick={handleEditClick} className="person-node-edit-button">
              Edit
         </button>
       </div>
+      {/* Handles for connecting edges */}
       <Handle type="source" position={Position.Bottom} id="bottom" isConnectable={isConnectable} />
     </div>
   );

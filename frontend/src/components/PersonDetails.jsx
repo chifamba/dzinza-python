@@ -1,46 +1,62 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import api from '../api';
-// Removed inline style imports if using global CSS
+import { Link } from 'react-router-dom'; // Import Link for the edit button
 
-const PersonDetails = ({ selectedPerson, people }) => {
-  const [personDetails, setPersonDetails] = useState(null);
+// Receive selectedPerson (node data), allNodesData, and activeTreeId as props
+const PersonDetails = ({ selectedPerson, allNodesData, activeTreeId }) => {
+  // No need for separate personDetails state if selectedPerson has all info
+  // const [personDetails, setPersonDetails] = useState(null);
   const [relatedInfo, setRelatedInfo] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loadingRelationships, setLoadingRelationships] = useState(false);
   const [error, setError] = useState(null);
 
+  // Memoize the selected person's full details to avoid re-renders if the object reference changes but content is same
+  const personDetails = useMemo(() => selectedPerson, [selectedPerson]);
+
+  // Fetch relationships when selectedPerson or activeTreeId changes
   useEffect(() => {
     let isMounted = true;
-    const fetchPersonDetails = async () => {
-      if (!selectedPerson) {
+    const fetchRelationships = async () => {
+      // Ensure we have a selected person and an active tree
+      if (!personDetails || !personDetails.id || !activeTreeId) {
         if (isMounted) {
-            setPersonDetails(null);
-            setRelatedInfo([]);
+            setRelatedInfo([]); // Clear related info if no person selected
+            setError(null); // Clear errors
         }
         return;
       }
+
       if (isMounted) {
-          setLoading(true);
+          setLoadingRelationships(true);
           setError(null);
       }
+
       try {
-        const personData = await api.getPerson(selectedPerson.person_id || selectedPerson.id); // Use correct ID key
-        const allRelationshipsData = await api.getAllRelationships();
+        // Fetch all relationships for the active tree
+        // We need the full list to find relationships involving the selected person
+        const allRelationshipsData = await api.getAllRelationships(activeTreeId);
 
         if (isMounted) {
-            setPersonDetails(personData);
-
-            const currentPersonId = personData.person_id; // Use consistent ID
+            const currentPersonId = personDetails.id; // Use the ID from the selected person data
             const relevantRelationships = allRelationshipsData.filter(
+              // Filter relationships where the current person is either person1 or person2
               (rel) => rel.person1_id === currentPersonId || rel.person2_id === currentPersonId
             );
 
+            // Map relationships to include the name of the *other* person
             const relatedInfoWithNames = relevantRelationships.map(rel => {
+                // Determine the ID of the other person in the relationship
                 const otherPersonId = rel.person1_id === currentPersonId ? rel.person2_id : rel.person1_id;
-                const otherPerson = people?.find(p => p.person_id === otherPersonId);
-                const otherPersonName = otherPerson ? `${otherPerson.first_name} ${otherPerson.last_name}`.trim() : `ID: ${otherPersonId.substring(0, 8)}...`;
+
+                // Find the other person's details from the 'allNodesData' array passed as a prop
+                // allNodesData contains the 'data' part of each node fetched by FamilyTreeVisualization
+                const otherPersonNodeData = allNodesData?.find(p => p.id === otherPersonId);
+                // Use the label or construct name from node data
+                const otherPersonName = otherPersonNodeData?.label || `ID: ${otherPersonId?.substring(0, 8) || 'Unknown'}...`;
+
                 return {
-                     id: rel.rel_id,
-                     type: rel.rel_type,
+                     id: rel.id || `rel-${rel.person1_id}-${rel.person2_id}`, // Use relationship ID or generate one
+                     type: rel.relationship_type, // Use relationship_type from backend
                      otherPersonName: otherPersonName || 'Unknown', // Handle empty names
                      otherPersonId: otherPersonId
                 };
@@ -50,68 +66,106 @@ const PersonDetails = ({ selectedPerson, people }) => {
 
       } catch (err) {
           if(isMounted){
-            setError({ type: 'fetch', message: 'Failed to load person details or relationships.' });
+            const errorMsg = err.response?.data?.message || err.message || 'Failed to load relationships.';
+            setError(errorMsg); // Set error state
+            setRelatedInfo([]); // Clear related info on error
           }
-        console.error('Error fetching person details:', err);
+        console.error('Error fetching relationships for details:', err.response || err);
       } finally {
-        if (isMounted) setLoading(false);
+        if (isMounted) setLoadingRelationships(false);
       }
     };
 
-    fetchPersonDetails();
+    fetchRelationships();
+    // Dependencies: personDetails object (to trigger refetch when selection changes), activeTreeId
     return () => { isMounted = false; };
-  }, [selectedPerson, people]); // Dependencies
+  }, [personDetails, activeTreeId, allNodesData]); // Include allNodesData as dependency
 
   // Date formatting helper
   const formatDate = (dateString) => {
      if (!dateString) return 'N/A';
      try {
-         return dateString.split('T')[0];
+         // Assuming dateString is in ISO format (e.g., "YYYY-MM-DDTHH:mm:ss.sssZ" or "YYYY-MM-DD")
+         const datePart = dateString.split('T')[0];
+         // Optional: Validate YYYY-MM-DD format
+         if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
+             return datePart;
+         }
+         return dateString; // Return original if not YYYY-MM-DD
      } catch {
-         return dateString;
+         return dateString; // Return original if parsing fails
      }
   };
 
   // Use CSS classes defined in index.css or a dedicated CSS module
-  if (!selectedPerson) {
-    return <div className="card">Select a person to view details.</div>;
-  }
-
-  if (loading) {
-    return <div className="card">Loading...</div>;
-  }
-
-  if (error) {
-    return <div className="card message error-message">Error: {error.message}</div>;
-  }
-
   if (!personDetails) {
-    return <div className="card">Person details not found.</div>;
+    // Use card class for consistent styling
+    return <div className="card">Select a person in the tree to view details.</div>;
   }
 
+  // Display general error if one occurred during relationship fetch
+   if (error) {
+     return <div className="card message error-message">Error loading details: {error}</div>;
+   }
+
+  // Person details are available from the prop
   return (
     // Use card class for container styling
     <div className="card person-details-card"> {/* Add specific class if needed */}
-      <h2 style={{ marginTop: 0, marginBottom: '10px', borderBottom: '1px solid var(--color-border)', paddingBottom: '5px' }}>
-          {personDetails.first_name} {personDetails.last_name}
+      <h2 style={{ marginTop: 0, marginBottom: '10px', borderBottom: '1px solid var(--color-border)', paddingBottom: '5px', fontSize: '1.2rem' }}>
+          {/* Use full_name if available, otherwise construct from node data */}
+          {personDetails.full_name || `${personDetails.first_name || ''} ${personDetails.last_name || ''}`.trim() || personDetails.label || 'Unnamed'}
       </h2>
-      {personDetails.nickname && <p>Nickname: {personDetails.nickname}</p>}
-      <p>Born: {formatDate(personDetails.birth_date)} {personDetails.place_of_birth ? `in ${personDetails.place_of_birth}` : ''}</p>
-      {personDetails.death_date && <p>Died: {formatDate(personDetails.death_date)} {personDetails.place_of_death ? `in ${personDetails.place_of_death}` : ''}</p>}
-      <p>Gender: {personDetails.gender || 'N/A'}</p>
-       {personDetails.notes && <p>Notes: {personDetails.notes}</p>}
-      <h3 style={{ marginTop: '15px', marginBottom: '10px', borderBottom: '1px solid var(--color-border)', paddingBottom: '5px' }}>
+      {personDetails.nickname && <p><strong>Nickname:</strong> {personDetails.nickname}</p>}
+      {/* Use strong tags for labels for better readability */}
+      {/* Use dob/dod fields from node data */}
+      <p><strong>Born:</strong> {formatDate(personDetails.dob)} {personDetails.birth_place ? `in ${personDetails.birth_place}` : ''}</p>
+      {personDetails.dod && <p><strong>Died:</strong> {formatDate(personDetails.dod)} {personDetails.death_place ? `in ${personDetails.death_place}` : ''}</p>}
+      <p><strong>Gender:</strong> {personDetails.gender || 'N/A'}</p>
+      {/* Display is_living status from node data */}
+      {personDetails.is_living !== null && typeof personDetails.is_living !== 'undefined' && (
+          <p><strong>Living:</strong> {personDetails.is_living ? 'Yes' : 'No'}</p>
+      )}
+      {personDetails.notes && <p><strong>Notes:</strong> {personDetails.notes}</p>}
+
+      {/* Display custom attributes if they exist in the node data */}
+      {personDetails.custom_attributes && Object.keys(personDetails.custom_attributes).length > 0 && (
+          <>
+              <h3 style={{ marginTop: '15px', marginBottom: '10px', borderBottom: '1px solid var(--color-border)', paddingBottom: '5px', fontSize: '1.1rem' }}>Custom Attributes:</h3>
+              <ul style={{ paddingLeft: '20px', listStyle: 'disc', margin: 0 }}>
+                  {Object.entries(personDetails.custom_attributes).map(([key, value]) => (
+                      <li key={key} style={{ marginBottom: '3px' }}><strong>{key}:</strong> {String(value)}</li>
+                  ))}
+              </ul>
+          </>
+      )}
+
+      <h3 style={{ marginTop: '15px', marginBottom: '10px', borderBottom: '1px solid var(--color-border)', paddingBottom: '5px', fontSize: '1.1rem' }}>
           Relationships:
       </h3>
-      {relatedInfo.length === 0 ? (
+      {loadingRelationships ? (
+          <p>Loading relationships...</p>
+      ) : relatedInfo.length === 0 ? (
         <p>No relationships found.</p>
       ) : (
         <ul style={{ paddingLeft: '20px', listStyle: 'disc', margin: 0 }}>
           {relatedInfo.map((rel) => (
-            <li key={rel.id} style={{ marginBottom: '3px' }}>{rel.type} - {rel.otherPersonName}</li>
+            // Link to edit relationship page (requires implementing EditRelationshipPage)
+            <li key={rel.id} style={{ marginBottom: '3px' }}>
+                {/* Display formatted relationship type */}
+                {rel.type ? rel.type.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : 'Related'} - {rel.otherPersonName}
+                {/* Optional: Add edit button for relationship */}
+                {/* <Link to={`/edit-relationship/${rel.id}`} style={{ marginLeft: '10px', fontSize: '0.8em' }}>Edit</Link> */}
+            </li>
           ))}
         </ul>
       )}
+       {/* Link to edit person page */}
+       {personDetails.id && (
+           <div style={{ marginTop: '20px', textAlign: 'center' }}>
+               <Link to={`/edit-person/${personDetails.id}`} className="button">Edit Person</Link>
+           </div>
+       )}
     </div>
   );
 };
