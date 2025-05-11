@@ -1,18 +1,29 @@
 # Copyright The OpenTelemetry Authors
 # SPDX-License-Identifier: Apache-2.0
 
-# extra settings to be merged into OpenTelemetry Collector configuration
-# do not delete this file
+# Additional configuration for OpenTelemetry Collector
 
-## Example configuration for sending data to your own OTLP HTTP backend
-## Note: the spanmetrics exporter must be included in the exporters array
-## if overriding the traces pipeline.
-##
-#  exporters:
-#    otlphttp/example:
-#      endpoint: <your-endpoint-url>
-#
-#  service:
-#    pipelines:
-#      traces:
-#        exporters: [spanmetrics, otlphttp/example]
+processors:
+  attributes:
+    actions:
+      - key: environment
+        value: development
+        action: insert
+      - key: deployment.environment
+        value: development
+        action: insert
+
+exporters:
+  debug:
+    verbosity: detailed
+    sampling_initial: 5
+    sampling_thereafter: 200
+
+service:
+  pipelines:
+    traces:
+      processors: [attributes, batch, memory_limiter]
+    metrics:
+      processors: [attributes, batch, memory_limiter]
+    logs:
+      processors: [attributes, batch, memory_limiter]

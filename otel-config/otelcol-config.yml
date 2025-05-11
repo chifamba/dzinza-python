@@ -5,23 +5,18 @@ receivers:
   otlp:
     protocols:
       grpc:
-        endpoint: ${env:OTEL_COLLECTOR_HOST}:${env:OTEL_COLLECTOR_PORT_GRPC}
+        endpoint: 0.0.0.0:4317
       http:
-        endpoint: ${env:OTEL_COLLECTOR_HOST}:${env:OTEL_COLLECTOR_PORT_HTTP}
+        endpoint: 0.0.0.0:4318
         cors:
           allowed_origins:
             - "http://*"
             - "https://*"
-  httpcheck/frontend-proxy:
-    targets:
-      - endpoint: http://frontend-proxy:${env:ENVOY_PORT}
   docker_stats:
     endpoint: unix:///var/run/docker.sock
   redis:
-    endpoint: "valkey-cart:6379"
-    username: "valkey"
+    endpoint: "redis:6379"
     collection_interval: 10s
-  # Host metrics
   hostmetrics:
     root_path: /hostfs
     scrapers:
@@ -91,7 +86,7 @@ exporters:
     tls:
       insecure: true
   opensearch:
-    logs_index: otel
+    logs_index: otel-logs
     http:
       endpoint: "http://opensearch:9200"
       tls:
@@ -108,12 +103,17 @@ processors:
     trace_statements:
       - context: span
         statements:
-          # could be removed when https://github.com/vercel/next.js/pull/64852 is fixed upstream
           - replace_pattern(name, "\\?.*", "")
-          - replace_match(name, "GET /api/products/*", "GET /api/products/{productId}")
 
 connectors:
   spanmetrics:
+    namespace: spanmetrics
+    histogram:
+      explicit:
+        buckets: [100us, 1ms, 2ms, 6ms, 10ms, 100ms, 250ms]
+    dimensions:
+      - name: http.method
+      - name: http.status_code
 
 service:
   pipelines:
@@ -122,7 +122,7 @@ service:
       processors: [memory_limiter, transform, batch]
       exporters: [otlp, debug, spanmetrics]
     metrics:
-      receivers: [hostmetrics, docker_stats, httpcheck/frontend-proxy, otlp, redis, spanmetrics]
+      receivers: [hostmetrics, docker_stats, redis, otlp, spanmetrics]
       processors: [memory_limiter, batch]
       exporters: [otlphttp/prometheus, debug]
     logs:

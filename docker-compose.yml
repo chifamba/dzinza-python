@@ -25,11 +25,12 @@ services:
     container_name: dzinza-db
     ports:
       - "5432:5432"
+    command: ["postgres", "-c", "listen_addresses=*", "-c", "logging_collector=on", "-c", "log_statement=all"]
     environment:
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=${POSTGRES_DB}
-      - INITIAL_ADMIN_PASSWORD=${INITIAL_ADMIN_PASSWORD}
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=dzinza
+      - INITIAL_ADMIN_PASSWORD=01Admin_2025
     volumes:
       - db_data:/var/lib/postgresql/data
     healthcheck:
@@ -60,10 +61,16 @@ services:
       retries: 3
       start_period: 10s
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@dbservice:5432/${POSTGRES_DB}
-      - INITIAL_ADMIN_PASSWORD=${INITIAL_ADMIN_PASSWORD}
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=dzinza
+      - POSTGRES_HOST=dbservice
+      - DATABASE_URL=postgresql://postgres:postgres@dbservice:5432/dzinza
+      - INITIAL_ADMIN_PASSWORD=01Admin_2025
       - REDIS_URL=redis://redis:6379/0
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318  # Changed from localhost to service name
+      - REACT_APP_API_URL=http://backend:8090/api
+      - FRONTEND_APP_URL=http://frontend:5173
     restart: unless-stopped
     logging: *logging
   frontend:
@@ -76,8 +83,168 @@ services:
     depends_on:
       backend:
         condition: service_started
+    environment:
+      - REACT_APP_API_URL=http://backend:8090/api
+      - FRONTEND_APP_URL=http://frontend:5173
     restart: unless-stopped
     logging: *logging
+
+  demo_service:
+    build:
+      context: ./demo_service
+      dockerfile: Dockerfile
+    container_name: dzinza-demo-service
+    depends_on:
+      dbservice:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@dbservice:5432/dzinza
+      - ENABLE_DEMO_MODE=${ENABLE_DEMO_MODE:-true}
+    restart: unless-stopped
+    logging: *logging
+
+  # ********************
+  # Telemetry Components
+  # ********************
+  # Jaeger
+  jaeger:
+    image: jaegertracing/all-in-one:1.68.0
+    container_name: jaeger
+    command:
+      - "--memory.max-traces=25000"
+      - "--query.base-path=/jaeger/ui"
+      - "--prometheus.server-url=http://prometheus:9090"
+      - "--prometheus.query.normalize-calls=true"
+      - "--prometheus.query.normalize-duration=true"
+    deploy:
+      resources:
+        limits:
+          memory: 1200M
+    restart: unless-stopped
+    ports:
+      - "16686:16686"  # Jaeger UI
+      - "4317"         # OTLP gRPC receiver
+    environment:
+      - METRICS_STORAGE_TYPE=prometheus
+    logging: *logging
+
+  # Grafana
+  grafana:
+    image: grafana/grafana:11.5.2
+    container_name: grafana
+    deploy:
+      resources:
+        limits:
+          memory: 120M
+    restart: unless-stopped
+    environment:
+      - GF_INSTALL_PLUGINS=grafana-opensearch-datasource
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+    volumes:
+      - ./otel-config/grafana.ini:/etc/grafana/grafana.ini
+      - ./otel-config/graphana-provisioning/:/etc/grafana/provisioning/
+    ports:
+      - "3000:3000"
+    logging: *logging
+
+  # OpenTelemetry Collector
+  otel-collector:
+    image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.120.0
+    container_name: otel-collector
+    deploy:
+      resources:
+        limits:
+          memory: 200M
+    restart: unless-stopped
+    command: [ "--config=/etc/otelcol-config.yml", "--config=/etc/otelcol-config-extras.yml" ]
+    user: 0:0
+    volumes:
+      - ./:/hostfs:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./otel-config/otelcol-config.yml:/etc/otelcol-config.yml
+      - ./otel-config/otelcol-config-extras.yml:/etc/otelcol-config-extras.yml
+    ports:
+      - "4317:4317"  # OTLP gRPC
+      - "4318:4318"  # OTLP HTTP
+    depends_on:
+      jaeger:
+        condition: service_started
+      opensearch:
+        condition: service_healthy
+    logging: *logging
+    environment:
+      - HOST_FILESYSTEM
+      - OTEL_COLLECTOR_HOST=otel-collector
+      - OTEL_COLLECTOR_PORT_GRPC=4317
+      - OTEL_COLLECTOR_PORT_HTTP=4318
+      - GOMEMLIMIT=160MiB
+      - LOG_LEVEL=error
+
+  # Prometheus
+  prometheus:
+    image: quay.io/prometheus/prometheus:v3.2.0
+    container_name: prometheus
+    command:
+      - --web.console.templates=/etc/prometheus/consoles
+      - --web.console.libraries=/etc/prometheus/console_libraries
+      - --storage.tsdb.retention.time=1h
+      - --config.file=/etc/prometheus/prometheus-config.yaml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+      - --web.route-prefix=/
+      - --web.enable-otlp-receiver
+      - --enable-feature=exemplar-storage
+    volumes:
+      - ./otel-config/prometheus-config.yaml:/etc/prometheus/prometheus-config.yaml
+    deploy:
+      resources:
+        limits:
+          memory: 300M
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    logging: *logging
+    environment:
+      - PROMETHEUS_STORAGE_PATH=/prometheus
+
+  # OpenSearch
+  opensearch:
+    image: opensearchproject/opensearch:2.19.0
+    container_name: opensearch
+    deploy:
+      resources:
+        limits:
+          memory: 1.1G
+    restart: unless-stopped
+    environment:
+      - cluster.name=demo-cluster
+      - node.name=demo-node
+      - bootstrap.memory_lock=true
+      - discovery.type=single-node
+      - OPENSEARCH_JAVA_OPTS=-Xms300m -Xmx300m
+      - DISABLE_INSTALL_DEMO_CONFIG=true
+      - DISABLE_SECURITY_PLUGIN=true
+      - _JAVA_OPTIONS=-Xmx300m
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    ports:
+      - "9200:9200"
+    healthcheck:
+      test: curl -s http://localhost:9200/_cluster/health | grep -E '"status":"(green|yellow)"'
+      start_period: 10s
+      interval: 5s
+      timeout: 10s
+      retries: 10
+    logging: *logging
+
 
 volumes:
   db_data:
