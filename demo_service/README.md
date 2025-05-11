@@ -33,25 +33,9 @@ The demo service will be accessible at `http://localhost:8000`.
 
 ## Data Loading Plan and Roadmap
 
-The demo service uses flat files (`.tinydb` and `.json`) located in the `demo_service/backend/data` directory for data storage.
+The demo service connects to the main backend service and utilizes the data stored and managed by the backend. Data loading, population, and management are handled by the main backend's mechanisms (e.g., database migrations, initial data scripts).
 
 ### Current State
 
-*   Initial data is loaded from the included flat files upon service startup.
-*   Basic user and family tree data is available.
-
-### Roadmap
-
-*   **Phase 1: Basic Data Population (Completed)**
-    *   Implement loading of initial user data.
-    *   Implement loading of initial family tree data (persons and relationships).
-*   **Phase 2: Expanded Data Set (Planned)**
-    *   Create a more comprehensive sample data set covering various family structures and scenarios.
-    *   Include examples of different attributes and media.
-*   **Phase 3: Data Generation Script (Planned)**
-    *   Develop a script to programmatically generate larger and more diverse demo data sets.
-    *   Allow for customization of data generation parameters.
-*   **Phase 4: Optional Data Reset Endpoint (Future)**
-    *   Consider adding an API endpoint to reset the demo data back to its initial state without restarting the service.
-
-The flat file approach is suitable for the demo's simplicity. For persistent data or larger scale, the main application's database-backed backend should be used.
+*   The demo service displays the data currently available in the main backend.
+*   The state of the data depends entirely on the main backend's configuration and loaded data.
