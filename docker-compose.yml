@@ -52,14 +52,16 @@ services:
     depends_on:
       dbservice:
         condition: service_healthy
-      redis:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://backend:8090/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
+      # redis:
+      #   condition: service_healthy
+      # otel-collector:
+      #   condition: service_started
+    # healthcheck:
+    #   test: ["CMD", "curl", "-f", "http://backend:8090/metrics"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+    #   start_period: 10s
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
@@ -68,7 +70,9 @@ services:
       - DATABASE_URL=postgresql://postgres:postgres@dbservice:5432/dzinza
       - INITIAL_ADMIN_PASSWORD=01Admin_2025
       - REDIS_URL=redis://redis:6379/0
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318  # Changed from localhost to service name
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+        # Changed from localhost to service name
       - REACT_APP_API_URL=http://backend:8090/api
       - FRONTEND_APP_URL=http://frontend:5173
     restart: unless-stopped
@@ -80,30 +84,30 @@ services:
     container_name: dzinza-frontend
     ports:
       - "5173:80"
-    depends_on:
-      backend:
-        condition: service_started
+    #depends_on:
+      # backend:
+      #   condition: service_started
     environment:
       - REACT_APP_API_URL=http://backend:8090/api
       - FRONTEND_APP_URL=http://frontend:5173
     restart: unless-stopped
     logging: *logging
 
-  demo_service:
-    build:
-      context: ./demo_service
-      dockerfile: Dockerfile
-    container_name: dzinza-demo-service
-    depends_on:
-      dbservice:
-        condition: service_healthy
-      backend:
-        condition: service_healthy
-    environment:
-      - DATABASE_URL=postgresql://postgres:postgres@dbservice:5432/dzinza
-      - ENABLE_DEMO_MODE=${ENABLE_DEMO_MODE:-true}
-    restart: unless-stopped
-    logging: *logging
+  # demo_service:
+  #   build:
+  #     context: ./demo_service
+  #     dockerfile: Dockerfile
+  #   container_name: dzinza-demo-service
+  #   depends_on:
+  #     dbservice:
+  #       condition: service_healthy
+  #     # backend:
+  #     #   condition: service_healthy
+  #   environment:
+  #     - DATABASE_URL=postgresql://postgres:postgres@dbservice:5432/dzinza
+  #     - ENABLE_DEMO_MODE=${ENABLE_DEMO_MODE:-true}
+  #   restart: unless-stopped
+  #   logging: *logging
 
   # ********************
   # Telemetry Components
@@ -173,7 +177,7 @@ services:
       jaeger:
         condition: service_started
       opensearch:
-        condition: service_healthy
+        condition: service_started
     logging: *logging
     environment:
       - HOST_FILESYSTEM
@@ -182,6 +186,7 @@ services:
       - OTEL_COLLECTOR_PORT_HTTP=4318
       - GOMEMLIMIT=160MiB
       - LOG_LEVEL=error
+
 
   # Prometheus
   prometheus:
@@ -249,3 +254,4 @@ services:
 volumes:
   db_data:
     driver: local
+    name: "dzinza_db_data"

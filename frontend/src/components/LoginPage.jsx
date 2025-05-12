@@ -50,6 +50,7 @@ function LoginPage() {
             onChange={(e) => setUsername(e.target.value)}
             required
             disabled={isLoading}
+            autocomplete="username" // Added autocomplete attribute
           />
         </div>
         <div className="form-group">
@@ -62,6 +63,7 @@ function LoginPage() {
             onChange={(e) => setPassword(e.target.value)}
             required
             disabled={isLoading}
+            autocomplete="current-password" // Added autocomplete attribute
           />
         </div>
         <button

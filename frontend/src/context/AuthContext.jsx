@@ -48,7 +48,6 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (username, password) => {
     setLoading(true); // Indicate loading during login attempt
-    setError(null); // Clear previous errors
     try {
       const userData = await api.login(username, password);
       if (userData && userData.user) {

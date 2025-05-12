@@ -5,13 +5,9 @@ import os
 import json
 import uuid
 import time
-import re # Import regex for password validation
+import re  # Import regex for password validation
 import secrets # For generating secure tokens
 from flask import Flask, abort, request, g, session, jsonify, make_response # Import jsonify and make_response
-from sqlalchemy import create_engine
-from urllib.parse import urljoin
-from sqlalchemy.orm import Session, load_only, sessionmaker, joinedload, selectinload
-from sqlalchemy.exc import SQLAlchemyError, NoResultFound, IntegrityError
 from sqlalchemy import (
     or_, and_, desc, asc, Enum as SQLAlchemyEnum, TypeDecorator, String, Text, func, inspect, text,
     Column, Integer, Boolean, DateTime, Date, ForeignKey, JSON, LargeBinary, UniqueConstraint
@@ -20,30 +16,36 @@ from sqlalchemy.dialects.postgresql import UUID, JSONB # Ensure UUID and JSONB a
 from sqlalchemy.ext.declarative import declarative_base
 from cryptography.fernet import Fernet, InvalidToken, InvalidSignature
 from cryptography.exceptions import InvalidSignature
-from typing import Optional, List, Dict, Any, Set
 from datetime import date, datetime, timedelta, timezone
-from werkzeug.exceptions import HTTPException
-from collections import deque
-import enum
-from dotenv import load_dotenv
+from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from functools import wraps # Import wraps for decorators
-from flask_cors import CORS
-
-# --- Enhanced Logging & Tracing Imports ---
+from dotenv import load_dotenv
 import structlog
+from typing import Optional, List, Dict, Any, Set
+from sqlalchemy.exc import IntegrityError, NoResultFound, SQLAlchemyError
+from sqlalchemy.orm import Session, load_only, sessionmaker, joinedload, selectinload
+from sqlalchemy.types import TypeDecorator, String, Text
+import enum
+from werkzeug.exceptions import HTTPException
+from sqlalchemy import create_engine
+from urllib.parse import urljoin
+from collections import deque
+
+# OpenTelemetry and SQLAlchemy-related types
 from opentelemetry import trace, metrics
+from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
-from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader, ConsoleMetricExporter
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader, ConsoleMetricExporter
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 from opentelemetry.instrumentation.logging import LoggingInstrumentor
+
 
 # --- Load Environment Variables ---
 load_dotenv()
@@ -52,9 +54,9 @@ load_dotenv()
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv("FLASK_SECRET_KEY", "your_default_secret_key")
 app.config.update(
-    SESSION_COOKIE_SECURE=os.environ.get('FLASK_ENV') == 'development',
+    SESSION_COOKIE_SECURE=os.environ.get('FLASK_ENV') == 'development', # True in dev, False in prod (assuming 'development' string)
     SESSION_COOKIE_HTTPONLY=True,
-    SESSION_COOKIE_SAMESITE='None',
+    SESSION_COOKIE_SAMESITE='Lax', # Adjusted for local dev, consider 'Strict' or 'None' with Secure for prod
     PERMANENT_SESSION_LIFETIME=timedelta(days=7)
 )
 
@@ -62,6 +64,12 @@ app.config.update(
 CORS(app, resources={r"/api/*": {"origins": "http://localhost:5173"}}, supports_credentials=True)
 
 redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")  # Default to local Redis
+
+# Configure Flask-Session (Example: Filesystem-based, switch for production)
+# app.config['SESSION_TYPE'] = 'filesystem' # Consider Redis or other production-ready session stores
+# from flask_session import Session as ServerSession # Rename to avoid conflict with sqlalchemy.orm.Session
+# server_side_session = ServerSession()
+# server_side_session.init_app(app)
 
 
 # --- Rate Limiter Setup ---
@@ -102,34 +110,33 @@ formatter = structlog.stdlib.ProcessorFormatter(
 handler = logging.getLogger().handlers[0]; handler.setFormatter(formatter)
 logger = structlog.get_logger()
 
-# --- OpenTelemetry Setup (Conceptual) ---
+# --- OpenTelemetry Setup ---
 resource = Resource(attributes={ "service.name": os.getenv("OTEL_SERVICE_NAME", "family-tree-backend") })
 # Configure Tracer Provider
 trace.set_tracer_provider(TracerProvider(resource=resource))
 otlp_exporter_trace = OTLPSpanExporter() # Assuming default endpoint or configured via OTEL_EXPORTER_OTLP_ENDPOINT
-# span_processor = BatchSpanProcessor(otlp_exporter_trace)
 span_processor = BatchSpanProcessor(
     otlp_exporter_trace,
-    max_export_batch_size=64,
-    max_queue_size=128,
-    export_timeout_millis=300,
+    max_export_batch_size=64, # Default 512, adjust as needed
+    max_queue_size=128,      # Default 2048, adjust as needed
+    export_timeout_millis=300, # Default 30000 (30s), adjust as needed
 )
 trace.get_tracer_provider().add_span_processor(span_processor)
+tracer = trace.get_tracer(__name__) # Initialize tracer after provider is set
 
 # Configure Meter Provider
 otlp_exporter_metric = OTLPMetricExporter()  # Assuming default endpoint
 metric_reader = PeriodicExportingMetricReader(otlp_exporter_metric)
-
-metrics.set_meter_provider(MeterProvider(resource=resource, metric_readers=[metric_reader]))
+meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader]) # Corrected: use MeterProvider
+metrics.set_meter_provider(meter_provider) # Set the global meter provider
+meter = metrics.get_meter(__name__) # Initialize meter after provider is set
 
 # Instrument Flask and SQLAlchemy
 FlaskInstrumentor().instrument_app(app)
 # SQLAlchemyInstrumentor().instrument(engine=db.engine) # This needs to be called after engine is created
-
 LoggingInstrumentor().instrument(set_logging_format=True)
 
-tracer = trace.get_tracer(__name__)
-meter = metrics.get_meter(__name__)
+
 user_registration_counter = meter.create_counter(
     name="app.user.registration",
     description="Counts user registration attempts and successes",
@@ -397,9 +404,6 @@ class Person(Base):
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
-    # slug = Column(String(255), GENERATED ALWAYS AS (...), STORED) # Add slug if needed
-    # CONSTRAINT valid_gender CHECK (gender IN ('male', 'female', 'other', 'unknown')), # Add check constraints
-    # CONSTRAINT valid_privacy_level CHECK (privacy_level IN (...)) # Add check constraints
 
     def to_dict(self):
         return {
@@ -443,8 +447,6 @@ class Relationship(Base):
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
-    # CONSTRAINT different_people CHECK (person1_id != person2_id) # Add check constraints
-    # Add unique constraint on (tree_id, LEAST(person1_id, person2_id), GREATEST(person1_id, person2_id), relationship_type) if needed
 
     def to_dict(self):
         return {
@@ -475,15 +477,12 @@ class Event(Base):
     date_range_start = Column(Date)
     date_range_end = Column(Date)
     place = Column(String(255))
-    # place_coordinates = Column(POINT) # Add if PostGIS is used
     description = Column(Text)
     custom_attributes = Column(JSONB, default=dict)
     privacy_level = Column(SQLAlchemyEnum(PrivacyLevelEnum), default=PrivacyLevelEnum.inherit)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
-
-    # def to_dict(self): ... # Add to_dict method
 
 
 class Media(Base):
@@ -500,14 +499,12 @@ class Media(Base):
     description = Column(Text)
     date_taken = Column(Date)
     location = Column(String(255))
-    # location_coordinates = Column(POINT) # Add if PostGIS is used
     media_metadata = Column(JSONB, default=dict)
     privacy_level = Column(SQLAlchemyEnum(PrivacyLevelEnum), default=PrivacyLevelEnum.inherit)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     uploaded_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
 
-    # def to_dict(self): ... # Add to_dict method
 
 class Citation(Base):
     __tablename__ = "citations"
@@ -523,8 +520,6 @@ class Citation(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
 
-    # def to_dict(self): ... # Add to_dict method
-
 
 class ActivityLog(Base):
     __tablename__ = "activity_log"
@@ -539,9 +534,21 @@ class ActivityLog(Base):
     ip_address = Column(String(50)) # Consider using INET type if PostGIS is available
     user_agent = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
-
-    # def to_dict(self): ... # Add to_dict method
-
+    
+    def to_dict(self): # Added missing to_dict method for ActivityLog
+        return {
+            "id": str(self.id),
+            "tree_id": str(self.tree_id) if self.tree_id else None,
+            "user_id": str(self.user_id) if self.user_id else None,
+            "entity_type": self.entity_type,
+            "entity_id": str(self.entity_id),
+            "action_type": self.action_type,
+            "previous_state": self.previous_state,
+            "new_state": self.new_state,
+            "ip_address": self.ip_address,
+            "user_agent": self.user_agent,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
 
 # --- Utility Functions ---
 def _handle_sqlalchemy_error(e: SQLAlchemyError, context: str, db: Session):
@@ -604,14 +611,18 @@ def _get_or_404(db: Session, model: Any, model_id: uuid.UUID, tree_id: Optional[
             span.set_attribute("db.found", True)
             return obj
         except SQLAlchemyError as e:
-            duration = (time.monotonic() - start_time) * 1000
+            duration = (time.monotonic() - start_time) * 1000 # Recalculate duration before logging error
             db_operation_duration_histogram.record(duration, {"db.operation": f"get.{model.__name__}", "db.status": "error"})
             span.record_exception(e)
             span.set_status(trace.Status(trace.StatusCode.ERROR, f"DB Error: {e}"))
             _handle_sqlalchemy_error(e, f"fetching {model.__name__} ID {model_id}", db)
-        except Exception as e:
+        except Exception as e: # Catch any other unexpected errors
+            # Log duration if start_time was set
+            if 'start_time' in locals():
+                duration = (time.monotonic() - start_time) * 1000
+                db_operation_duration_histogram.record(duration, {"db.operation": f"get.{model.__name__}", "db.status": "error"})
             span.record_exception(e)
-            span.set_status(trace.Status(trace.StatusCode.ERROR, "Non-DB Error"))
+            span.set_status(trace.Status(trace.StatusCode.ERROR, "Non-DB Error")) # Indicate non-DB error
             logger.error(f"Unexpected error fetching {model.__name__} ID {model_id}", exc_info=True)
             abort(500, "An unexpected error occurred.")
 
@@ -652,21 +663,17 @@ def require_auth(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user_id' not in session:
-            logger.warning("Authentication required, session not found.")
+            logger.warning("Authentication required, session not found.", session_contents=session) # Log session contents for debugging
             abort(401, description="Authentication required.")
-        # Optional: Load user object into g context here if needed frequently
-        # g.user = g.db.query(User).filter(User.id == uuid.UUID(session['user_id'])).one_or_none()
-        # if g.user is None:
-        #     session.clear() # Clear invalid session
-        #     abort(401, description="Invalid session.")
         return f(*args, **kwargs)
     return decorated_function
 
 def require_admin(f):
     """Decorator to protect endpoints requiring admin role."""
     @wraps(f)
+    @require_auth # Admins must also be authenticated
     def decorated_function(*args, **kwargs):
-        if 'user_id' not in session or session.get('role') != UserRole.ADMIN.value:
+        if session.get('role') != UserRole.ADMIN.value: # Use .value for enum comparison
             logger.warning("Admin access required, but user is not admin.", user_id=session.get('user_id'), role=session.get('role'))
             abort(403, description="Admin access required.")
         return f(*args, **kwargs)
@@ -676,12 +683,9 @@ def require_tree_access(level: str = 'view'):
     """Decorator to protect endpoints requiring specific tree access level."""
     def decorator(f):
         @wraps(f)
+        @require_auth # Tree access implies user must be authenticated
         def decorated_function(*args, **kwargs):
-            if 'user_id' not in session:
-                logger.warning("Tree access required, but user not authenticated.")
-                abort(401, description="Authentication required.")
-
-            user_id = uuid.UUID(session['user_id'])
+            user_id = uuid.UUID(session['user_id']) # Assumes user_id in session is valid UUID string
             tree_id_str = session.get('active_tree_id')
 
             if not tree_id_str:
@@ -705,38 +709,38 @@ def require_tree_access(level: str = 'view'):
                 abort(404, description="Active tree not found.")
 
             has_access = False
-            access_level = None
+            current_access_level = None # Renamed from access_level to avoid conflict with outer scope 'level'
 
             if tree.created_by == user_id:
                  has_access = True
-                 access_level = 'admin' # Creator has full control
-            elif tree.is_public and level == 'view':
+                 current_access_level = 'admin' # Creator has full control
+            elif tree.is_public and level == 'view': # Only grant if 'view' is the required level for public trees
                  has_access = True
-                 access_level = 'view' # Public tree allows view access
+                 current_access_level = 'view' # Public tree allows view access
             else:
-                tree_access = db.query(TreeAccess).filter(
+                tree_access_obj = db.query(TreeAccess).filter( # Renamed from tree_access to avoid conflict
                     TreeAccess.tree_id == tree_id,
                     TreeAccess.user_id == user_id
                 ).one_or_none()
 
-                if tree_access:
-                    access_level = tree_access.access_level
+                if tree_access_obj:
+                    current_access_level = tree_access_obj.access_level
                     # Check if granted access level meets the required level
                     # Simple hierarchy: admin > edit > view
-                    if level == 'view' and access_level in ['view', 'edit', 'admin']:
+                    if level == 'view' and current_access_level in ['view', 'edit', 'admin']:
                         has_access = True
-                    elif level == 'edit' and access_level in ['edit', 'admin']:
+                    elif level == 'edit' and current_access_level in ['edit', 'admin']:
                         has_access = True
-                    elif level == 'admin' and access_level == 'admin':
+                    elif level == 'admin' and current_access_level == 'admin':
                         has_access = True
 
             if not has_access:
-                logger.warning("Tree access denied.", user_id=user_id, tree_id=tree_id, required_level=level, granted_level=access_level)
+                logger.warning("Tree access denied.", user_id=user_id, tree_id=tree_id, required_level=level, granted_level=current_access_level)
                 abort(403, description=f"Access denied to tree {tree_id}.")
 
             # Store tree and access level in g context for easy access in the route handler
             g.active_tree = tree
-            g.tree_access_level = access_level
+            g.tree_access_level = current_access_level # Store the user's actual access level
             g.active_tree_id = tree_id # Store UUID directly
 
             return f(*args, **kwargs)
@@ -745,10 +749,6 @@ def require_tree_access(level: str = 'view'):
 
 
 # --- User Services (Extended) ---
-
-# register_user_db, authenticate_user_db, update_user_role_db, delete_user_db remain the same
-
-
 
 def get_activity_log_db(db: Session, tree_id: Optional[uuid.UUID] = None, user_id: Optional[uuid.UUID] = None) -> List[Dict[str, Any]]:
     """Retrieves activity logs for a tree or user."""
@@ -763,11 +763,11 @@ def get_activity_log_db(db: Session, tree_id: Optional[uuid.UUID] = None, user_i
                 query = query.filter(ActivityLog.user_id == user_id)
 
             logs = query.order_by(ActivityLog.created_at.desc()).all()
-            return [log.to_dict() for log in logs]
+            return [log.to_dict() for log in logs] # Assuming ActivityLog has to_dict()
         except SQLAlchemyError as e:
             logger.error("Database error fetching activity logs.", exc_info=True)
             _handle_sqlalchemy_error(e, "fetching activity logs", db)
-        except Exception as e:
+        except Exception as e: # Catch any other unexpected errors
             logger.error("Unexpected error fetching activity logs.", exc_info=True)
             abort(500, description="An unexpected error occurred while fetching activity logs.")
 
@@ -783,11 +783,11 @@ def delete_tree_db(db: Session, tree_id: uuid.UUID) -> None:
             db.commit()
             logger.info("Tree deleted successfully", tree_id=tree_id)
         except SQLAlchemyError as e:
-            db.rollback()
+            db.rollback() # Ensure rollback on error
             logger.error("Database error during tree deletion.", tree_id=tree_id, exc_info=True)
             _handle_sqlalchemy_error(e, "deleting tree", db)
-        except Exception as e:
-            db.rollback()
+        except Exception as e: # Catch any other unexpected errors
+            db.rollback() # Ensure rollback on error
             logger.error("Unexpected error during tree deletion.", tree_id=tree_id, exc_info=True)
             abort(500, description="An unexpected error occurred while deleting the tree.")
 
@@ -800,12 +800,12 @@ def update_tree_db(db: Session, tree_id: uuid.UUID, tree_data: Dict[str, Any]) -
         tree = _get_or_404(db, Tree, tree_id)
         try:
             for key, value in tree_data.items():
-                if hasattr(tree, key):
+                if hasattr(tree, key): # Only update existing attributes
                     setattr(tree, key, value)
 
-            tree.updated_at = datetime.utcnow()
+            tree.updated_at = datetime.utcnow() # Explicitly set updated_at
             db.commit()
-            db.refresh(tree)
+            db.refresh(tree) # Refresh to get updated state, e.g., from DB defaults or triggers
 
             logger.info("Tree updated successfully", tree_id=tree.id)
             return tree.to_dict()
@@ -847,20 +847,25 @@ def update_user_role_db(db: Session, user_id: uuid.UUID, new_role: str) -> Dict[
 
         try:
             user = _get_or_404(db, User, user_id)
-            user.role = UserRole(new_role)
-            user.updated_at = datetime.utcnow()
+            user.role = UserRole(new_role) # This will raise ValueError if new_role is invalid
+            user.updated_at = datetime.utcnow() # Assuming User model has updated_at
             db.commit()
             db.refresh(user)
 
             logger.info("User role updated successfully", user_id=user.id, new_role=user.role.value)
             return user.to_dict()
-        except ValueError:
+        except ValueError: # Catch invalid role enum value
             logger.warning("Invalid role specified.", user_id=user_id, new_role=new_role)
             abort(400, description=f"Invalid role specified: {new_role}")
-        except Exception as e:
+        except SQLAlchemyError as e: # Catch DB errors
+            db.rollback()
+            logger.error("Database error during user role update.", user_id=user_id, exc_info=True)
+            _handle_sqlalchemy_error(e, "updating user role", db)
+        except Exception as e: # Catch other unexpected errors
             db.rollback()
             logger.error("Unexpected error during user role update.", user_id=user_id, exc_info=True)
             abort(500, description="An unexpected error occurred while updating the user role.")
+
 
 def register_user_db(db: Session, user_data: Dict[str, Any]) -> Dict[str, Any]:
     """Registers a new user."""
@@ -884,9 +889,9 @@ def register_user_db(db: Session, user_data: Dict[str, Any]) -> Dict[str, Any]:
                 email=user_data['email'],
                 password_hash=hashed_password,
                 full_name=user_data.get('full_name'),
-                role=UserRole(user_data.get('role', UserRole.USER.value)),
-                is_active=True,
-                email_verified=False,
+                role=UserRole(user_data.get('role', UserRole.USER.value)), # Ensure role is valid UserRole enum
+                is_active=True, # Default to active
+                email_verified=False, # Default to not verified
                 created_at=datetime.utcnow()
             )
             db.add(new_user)
@@ -894,17 +899,20 @@ def register_user_db(db: Session, user_data: Dict[str, Any]) -> Dict[str, Any]:
             db.refresh(new_user)
 
             logger.info("User registered successfully", user_id=new_user.id, username=new_user.username)
-            return new_user.to_dict()
+            return new_user.to_dict() # Return non-sensitive user data
         except IntegrityError as e:
             db.rollback()
             logger.warning("User registration failed: Integrity error.", username=user_data['username'], exc_info=True)
-            _handle_sqlalchemy_error(e, "registering user", db)
+            _handle_sqlalchemy_error(e, "registering user", db) # Let centralized handler manage response
+        except ValueError as e: # Catch invalid role enum if not caught by UserRole()
+            db.rollback()
+            logger.warning(f"User registration failed: Invalid role value '{user_data.get('role')}'.", username=user_data['username'], error=str(e))
+            abort(400, description=f"Invalid role specified: {user_data.get('role')}")
         except Exception as e:
             db.rollback()
             logger.error("Unexpected error during user registration.", username=user_data['username'], exc_info=True)
             abort(500, description="An unexpected error occurred during registration.")
             
-
 
 def authenticate_user_db(db: Session, username_or_email: str, password: str) -> Optional[Dict[str, Any]]:
     """Authenticates a user by username/email and password."""
@@ -948,12 +956,12 @@ def authenticate_user_db(db: Session, username_or_email: str, password: str) -> 
             logger.error("Database error during user authentication", identifier=username_or_email, exc_info=True)
             span.record_exception(e)
             span.set_status(trace.StatusCode.ERROR, "DB Error")
-            raise
-        except Exception as e:
+            raise # Re-raise to be handled by global error handler or calling function
+        except Exception as e: # Catch other unexpected errors
             logger.error("Unexpected error during user authentication", identifier=username_or_email, exc_info=True)
             span.record_exception(e)
             span.set_status(trace.StatusCode.ERROR, "Unknown Error")
-            raise
+            raise # Re-raise
 
 def get_all_users_db(db: Session) -> List[Dict[str, Any]]:
     """Retrieves all users (admin only)."""
@@ -966,7 +974,7 @@ def get_all_users_db(db: Session) -> List[Dict[str, Any]]:
         except SQLAlchemyError as e:
             logger.error("Database error fetching all users", exc_info=True)
             _handle_sqlalchemy_error(e, "fetching all users", db)
-        except Exception as e:
+        except Exception as e: # Catch other unexpected errors
             logger.error("Unexpected error fetching all users", exc_info=True)
             abort(500, "An unexpected error occurred while fetching users.")
 
@@ -1041,7 +1049,7 @@ def request_password_reset_db(db: Session, email_or_username: str) -> bool:
                      logger.info("Password reset email sent (simulated/placeholder).", user_id=user.id, email=user.email)
                      span.set_attribute("app.email.sent", True)
 
-                 except Exception as email_err:
+                 except Exception as email_err: # Catch specific email errors if possible
                      logger.error("Failed to send password reset email.", user_id=user.id, email=user.email, exc_info=True)
                      span.set_attribute("app.email.sent", False)
                      span.record_exception(email_err)
@@ -1062,11 +1070,11 @@ def request_password_reset_db(db: Session, email_or_username: str) -> bool:
             span.record_exception(e)
             span.set_status(trace.Status(trace.StatusCode.ERROR, "DB Error"))
             _handle_sqlalchemy_error(e, "requesting password reset", db)
-        except Exception as e:
-            db.rollback()
+        except Exception as e: # Catch other unexpected errors
+            db.rollback() # Ensure rollback
             logger.error("Unexpected error during password reset request.", user_id=user.id, exc_info=True)
             span.record_exception(e)
-            span.set_status(trace.Status(trace.StatusCode.ERROR, "Unknown Error"))
+            span.set_status(trace.Status(trace.StatusCode.ERROR, "Unknown Error")) # Indicate generic error
             abort(500, description="An unexpected error occurred during password reset.")
 
 
@@ -1117,13 +1125,13 @@ def reset_password_db(db: Session, token: str, new_password: str) -> bool:
             span.record_exception(e)
             span.set_status(trace.Status(trace.StatusCode.ERROR, "DB Error"))
             _handle_sqlalchemy_error(e, "resetting password", db)
-        except HTTPException as e:
-             raise e # Re-raise specific HTTP exceptions (e.g., from password validation)
-        except Exception as e:
-            db.rollback()
+        except HTTPException as e: # Re-raise specific HTTP exceptions (e.g., from password validation)
+             raise e
+        except Exception as e: # Catch other unexpected errors
+            db.rollback() # Ensure rollback
             logger.error("Unexpected error during password reset.", exc_info=True)
             span.record_exception(e)
-            span.set_status(trace.Status(trace.StatusCode.ERROR, "Unknown Error"))
+            span.set_status(trace.Status(trace.StatusCode.ERROR, "Unknown Error")) # Indicate generic error
             abort(500, description="An unexpected error occurred during password reset.")
 
 
@@ -1159,8 +1167,8 @@ def create_tree_db(db: Session, user_id: uuid.UUID, tree_data: Dict[str, Any]) -
             tree_access = TreeAccess(
                  tree_id=new_tree.id,
                  user_id=user_id,
-                 access_level='admin',
-                 granted_by=user_id,
+                 access_level='admin', # Explicitly grant admin
+                 granted_by=user_id, # Granted by self
                  granted_at=datetime.utcnow()
             )
             db.add(tree_access)
@@ -1176,15 +1184,15 @@ def create_tree_db(db: Session, user_id: uuid.UUID, tree_data: Dict[str, Any]) -
             span.record_exception(e)
             span.set_status(trace.Status(trace.StatusCode.ERROR, "DB Error"))
             _handle_sqlalchemy_error(e, "creating tree", db)
-        except ValueError as e: # Handle invalid enum values
+        except ValueError as e: # Handle invalid enum values for privacy level
              db.rollback()
              logger.warning("Invalid privacy level during tree creation.", user_id=user_id, tree_name=tree_name, error=str(e))
              abort(400, description=f"Invalid privacy level: {e}")
-        except Exception as e:
+        except Exception as e: # Catch other unexpected errors
             db.rollback()
             logger.error("Unexpected error during tree creation.", user_id=user_id, tree_name=tree_name, exc_info=True)
             span.record_exception(e)
-            span.set_status(trace.Status(trace.StatusCode.ERROR, "Unknown Error"))
+            span.set_status(trace.Status(trace.StatusCode.ERROR, "Unknown Error")) # Indicate generic error
             abort(500, description="An unexpected error occurred during tree creation.")
 
 
@@ -1206,10 +1214,10 @@ def get_user_trees_db(db: Session, user_id: uuid.UUID) -> List[Dict[str, Any]]:
             span.record_exception(e)
             span.set_status(trace.Status(trace.StatusCode.ERROR, "DB Error"))
             _handle_sqlalchemy_error(e, "fetching user trees", db)
-        except Exception as e:
+        except Exception as e: # Catch other unexpected errors
             logger.error("Unexpected error fetching user trees.", user_id=user_id, exc_info=True)
             span.record_exception(e)
-            span.set_status(trace.Status(trace.StatusCode.ERROR, "Unknown Error"))
+            span.set_status(trace.Status(trace.StatusCode.ERROR, "Unknown Error")) # Indicate generic error
             abort(500, description="An unexpected error occurred while fetching trees.")
 
 
@@ -1224,9 +1232,9 @@ def get_all_people_db(db: Session, tree_id: uuid.UUID) -> List[Dict[str, Any]]:
             people = db.query(Person).filter(Person.tree_id == tree_id).all()
             return [p.to_dict() for p in people]
         except SQLAlchemyError as e:
-            logger.error("Database error fetching all people for tree.", tree_id=tree_id, exc_info=True)
+            logger.error("Database error fetching all people for tree.", tree_id=tree_id, exc_info=True) # Corrected: was Unexpected error
             _handle_sqlalchemy_error(e, f"fetching all people for tree {tree_id}", db)
-        except Exception as e:
+        except Exception as e: # Catch other unexpected errors
             logger.error("Unexpected error fetching all people for tree.", tree_id=tree_id, exc_info=True)
             abort(500, "An unexpected error occurred while fetching people.")
 
@@ -1237,7 +1245,7 @@ def get_person_db(db: Session, person_id: uuid.UUID, tree_id: uuid.UUID) -> Dict
         span.set_attribute("person.id", str(person_id))
         span.set_attribute("tree.id", str(tree_id))
         logger.info("Fetching person details", person_id=person_id, tree_id=tree_id)
-        person = _get_or_404(db, Person, person_id, tree_id)
+        person = _get_or_404(db, Person, person_id, tree_id) # This handles 404 and DB errors
         return person.to_dict()
 
 
@@ -1263,14 +1271,14 @@ def create_person_db(db: Session, user_id: uuid.UUID, tree_id: uuid.UUID, person
 
         if birth_date_str:
             try:
-                birth_date = date.fromisoformat(birth_date_str)
+                birth_date = date.fromisoformat(birth_date_str) if birth_date_str else None # Allow empty string for clearing date
             except ValueError:
                 logger.warning("Person creation failed: Invalid birth date format.", birth_date=birth_date_str)
                 abort(400, description={"details": {"birth_date": "Invalid date format (YYYY-MM-DD)."}})
 
         if death_date_str:
             try:
-                death_date = date.fromisoformat(death_date_str)
+                death_date = date.fromisoformat(death_date_str) if death_date_str else None # Allow empty string
             except ValueError:
                 logger.warning("Person creation failed: Invalid death date format.", death_date=death_date_str)
                 abort(400, description={"details": {"death_date": "Invalid date format (YYYY-MM-DD)."}})
@@ -1334,11 +1342,11 @@ def create_person_db(db: Session, user_id: uuid.UUID, tree_id: uuid.UUID, person
              db.rollback()
              logger.warning("Invalid privacy level during person creation.", user_id=user_id, tree_id=tree_id, person_name=person_name, error=str(e))
              abort(400, description=f"Invalid privacy level: {e}")
-        except Exception as e:
+        except Exception as e: # Catch other unexpected errors
             db.rollback()
             logger.error("Unexpected error during person creation.", user_id=user_id, tree_id=tree_id, person_name=person_name, exc_info=True)
             span.record_exception(e)
-            span.set_status(trace.Status(trace.StatusCode.ERROR, "Unknown Error"))
+            span.set_status(trace.Status(trace.StatusCode.ERROR, "Unknown Error")) # Indicate generic error
             abort(500, description="An unexpected error occurred during person creation.")
 
 
@@ -1349,9 +1357,8 @@ def update_person_db(db: Session, person_id: uuid.UUID, tree_id: uuid.UUID, pers
         span.set_attribute("tree.id", str(tree_id))
         logger.info("Attempting to update person", person_id=person_id, tree_id=tree_id)
 
-        person = _get_or_404(db, Person, person_id, tree_id)
+        person = _get_or_404(db, Person, person_id, tree_id) # Handles 404 and DB errors
 
-        # Validate and update fields from person_data
         update_fields = {}
         validation_errors = {}
 
@@ -1364,22 +1371,22 @@ def update_person_db(db: Session, person_id: uuid.UUID, tree_id: uuid.UUID, pers
         ]
 
         for field in allowed_fields:
-            if field in person_data:
+            if field in person_data: # Only process fields present in the request
                 value = person_data[field]
                 try:
                     if field in ['birth_date', 'death_date']:
-                        # Convert date strings to date objects, allow None/empty string
+                        # Convert date strings to date objects, allow None/empty string to clear date
                         update_fields[field] = date.fromisoformat(value) if value else None
                     elif field == 'gender':
                          # Validate gender value
                          if value and value.lower() not in ['male', 'female', 'other', 'unknown']:
                               validation_errors[field] = "Invalid gender value."
                          else:
-                              update_fields[field] = value
+                              update_fields[field] = value if value else None # Allow clearing gender
                     elif field == 'privacy_level':
                          # Validate privacy level enum
                          try:
-                              update_fields[field] = PrivacyLevelEnum(value)
+                              update_fields[field] = PrivacyLevelEnum(value) if value else None # Allow clearing
                          except ValueError:
                               validation_errors[field] = "Invalid privacy level value."
                     elif field == 'custom_attributes':
@@ -1389,11 +1396,11 @@ def update_person_db(db: Session, person_id: uuid.UUID, tree_id: uuid.UUID, pers
                          else:
                              update_fields[field] = value
                     else:
-                        # For other fields, just assign the value
+                        # For other fields, just assign the value (includes booleans like is_living, birth_date_approx)
                         update_fields[field] = value
-                except ValueError as e:
+                except ValueError as e: # Catch date parsing errors
                     validation_errors[field] = f"Invalid value: {e}"
-                except Exception as e:
+                except Exception as e: # Catch other unexpected errors during validation
                      logger.error(f"Unexpected error validating field {field} during person update.", exc_info=True)
                      validation_errors[field] = "An unexpected error occurred validating this field."
 
@@ -1408,12 +1415,13 @@ def update_person_db(db: Session, person_id: uuid.UUID, tree_id: uuid.UUID, pers
 
         # Re-validate death date vs birth date after updates
         if person.birth_date and person.death_date and person.death_date < person.birth_date:
+            # Add to validation_errors and abort *before* commit
             validation_errors['date_comparison'] = "Death date cannot be before birth date."
             logger.warning("Person update failed: Death date before birth date after updates.", person_id=person_id, errors=validation_errors)
             abort(400, description={"error": "Validation failed", "details": validation_errors})
 
-        # Update is_living if not explicitly provided in update_fields
-        if 'is_living' not in update_fields:
+        # Update is_living if not explicitly provided in update_fields and death_date might have changed
+        if 'is_living' not in update_fields and ('death_date' in update_fields or 'birth_date' in update_fields): # More precise condition
              person.is_living = person.death_date is None
 
 
@@ -1431,11 +1439,11 @@ def update_person_db(db: Session, person_id: uuid.UUID, tree_id: uuid.UUID, pers
             span.record_exception(e)
             span.set_status(trace.Status(trace.StatusCode.ERROR, "DB Error"))
             _handle_sqlalchemy_error(e, f"updating person ID {person_id}", db)
-        except Exception as e:
+        except Exception as e: # Catch other unexpected errors
             db.rollback()
             logger.error("Unexpected error during person update.", person_id=person_id, tree_id=tree_id, exc_info=True)
             span.record_exception(e)
-            span.set_status(trace.Status(trace.StatusCode.ERROR, "Unknown Error"))
+            span.set_status(trace.Status(trace.StatusCode.ERROR, "Unknown Error")) # Indicate generic error
             abort(500, description="An unexpected error occurred during person update.")
 
 
@@ -1452,6 +1460,7 @@ def delete_person_db(db: Session, person_id: uuid.UUID, tree_id: uuid.UUID) -> b
 
         try:
             # SQLAlchemy's CASCADE should handle related relationships, events, etc.
+            # if correctly configured on the models.
             db.delete(person)
             db.commit()
             logger.info("Person deleted successfully", person_id=person_id, person_name=person_name_for_log, tree_id=tree_id, event_type="PERSON_DELETED")
@@ -1462,11 +1471,11 @@ def delete_person_db(db: Session, person_id: uuid.UUID, tree_id: uuid.UUID) -> b
             span.record_exception(e)
             span.set_status(trace.Status(trace.StatusCode.ERROR, "DB Error"))
             _handle_sqlalchemy_error(e, f"deleting person ID {person_id}", db)
-        except Exception as e:
+        except Exception as e: # Catch other unexpected errors
             db.rollback()
             logger.error("Unexpected error during person deletion.", person_id=person_id, tree_id=tree_id, exc_info=True)
             span.record_exception(e)
-            span.set_status(trace.Status(trace.StatusCode.ERROR, "Unknown Error"))
+            span.set_status(trace.Status(trace.StatusCode.ERROR, "Unknown Error")) # Indicate generic error
             abort(500, description="An unexpected error occurred during person deletion.")
 
 
@@ -1483,7 +1492,7 @@ def get_all_relationships_db(db: Session, tree_id: uuid.UUID) -> List[Dict[str, 
         except SQLAlchemyError as e:
             logger.error("Database error fetching all relationships for tree.", tree_id=tree_id, exc_info=True)
             _handle_sqlalchemy_error(e, f"fetching all relationships for tree {tree_id}", db)
-        except Exception as e:
+        except Exception as e: # Catch other unexpected errors
             logger.error("Unexpected error fetching all relationships for tree.", tree_id=tree_id, exc_info=True)
             abort(500, "An unexpected error occurred while fetching relationships.")
 
@@ -1493,9 +1502,9 @@ def create_relationship_db(db: Session, user_id: uuid.UUID, tree_id: uuid.UUID, 
     with tracer.start_as_current_span("service.create_relationship") as span:
         span.set_attribute("app.user.id", str(user_id))
         span.set_attribute("tree.id", str(tree_id))
-        p1_id_str = relationship_data.get('person1')
+        p1_id_str = relationship_data.get('person1') # Use consistent naming from frontend if possible
         p2_id_str = relationship_data.get('person2')
-        rel_type_str = relationship_data.get('relationshipType')
+        rel_type_str = relationship_data.get('relationshipType') # Frontend sends relationshipType
         span.set_attribute("relationship.type", rel_type_str)
         span.set_attribute("relationship.person1_id", p1_id_str)
         span.set_attribute("relationship.person2_id", p2_id_str)
@@ -1525,28 +1534,8 @@ def create_relationship_db(db: Session, user_id: uuid.UUID, tree_id: uuid.UUID, 
             abort(400, description=f"Invalid relationship type: {rel_type_str}")
 
         # Check if persons exist and belong to the same tree
-        person1 = db.query(Person).filter(Person.id == person1_id, Person.tree_id == tree_id).one_or_none()
-        person2 = db.query(Person).filter(Person.id == person2_id, Person.tree_id == tree_id).one_or_none()
-
-        if not person1:
-            logger.warning("Relationship creation failed: Person 1 not found in tree.", person_id=person1_id, tree_id=tree_id)
-            abort(404, description=f"Person 1 with ID {person1_id} not found in the active tree.")
-        if not person2:
-            logger.warning("Relationship creation failed: Person 2 not found in tree.", person_id=person2_id, tree_id=tree_id)
-            abort(404, description=f"Person 2 with ID {person2_id} not found in the active tree.")
-
-        # Check for duplicate relationships (optional, depends on desired behavior)
-        # Example: prevent multiple 'spouse_current' relationships between the same pair
-        # existing_rel = db.query(Relationship).filter(
-        #     Relationship.tree_id == tree_id,
-        #     or_(
-        #         and_(Relationship.person1_id == person1_id, Relationship.person2_id == person2_id),
-        #         and_(Relationship.person1_id == person2_id, Relationship.person2_id == person1_id)
-        #     ),
-        #     Relationship.relationship_type == relationship_type # Or check for specific types like spouse
-        # ).one_or_none()
-        # if existing_rel:
-        #      abort(409, description=f"A {relationship_type.value} relationship already exists between these people.")
+        person1 = _get_or_404(db, Person, person1_id, tree_id) # _get_or_404 will abort if not found
+        person2 = _get_or_404(db, Person, person2_id, tree_id)
 
 
         try:
@@ -1567,10 +1556,10 @@ def create_relationship_db(db: Session, user_id: uuid.UUID, tree_id: uuid.UUID, 
 
             # Basic date validation for start/end dates
             if new_relationship.start_date and not isinstance(new_relationship.start_date, date):
-                 try: new_relationship.start_date = date.fromisoformat(new_relationship.start_date) if new_relationship.start_date else None
+                 try: new_relationship.start_date = date.fromisoformat(str(new_relationship.start_date)) if new_relationship.start_date else None # Ensure it's a string for fromisoformat
                  except ValueError: abort(400, description={"details": {"start_date": "Invalid date format (YYYY-MM-DD)."}})
             if new_relationship.end_date and not isinstance(new_relationship.end_date, date):
-                 try: new_relationship.end_date = date.fromisoformat(new_relationship.end_date) if new_relationship.end_date else None
+                 try: new_relationship.end_date = date.fromisoformat(str(new_relationship.end_date)) if new_relationship.end_date else None
                  except ValueError: abort(400, description={"details": {"end_date": "Invalid date format (YYYY-MM-DD)."}})
 
             # Validate end date is not before start date
@@ -1592,11 +1581,13 @@ def create_relationship_db(db: Session, user_id: uuid.UUID, tree_id: uuid.UUID, 
             span.record_exception(e)
             span.set_status(trace.Status(trace.StatusCode.ERROR, "DB Error"))
             _handle_sqlalchemy_error(e, "creating relationship", db)
-        except Exception as e:
+        except HTTPException as e: # Re-raise HTTP exceptions from date validation
+            raise e
+        except Exception as e: # Catch other unexpected errors
             db.rollback()
             logger.error("Unexpected error during relationship creation.", user_id=user_id, tree_id=tree_id, exc_info=True)
             span.record_exception(e)
-            span.set_status(trace.Status(trace.StatusCode.ERROR, "Unknown Error"))
+            span.set_status(trace.Status(trace.StatusCode.ERROR, "Unknown Error")) # Indicate generic error
             abort(500, description="An unexpected error occurred during relationship creation.")
 
 
@@ -1607,83 +1598,88 @@ def update_relationship_db(db: Session, relationship_id: uuid.UUID, tree_id: uui
         span.set_attribute("tree.id", str(tree_id))
         logger.info("Attempting to update relationship", rel_id=relationship_id, tree_id=tree_id)
 
-        relationship = _get_or_404(db, Relationship, relationship_id, tree_id)
+        relationship = _get_or_404(db, Relationship, relationship_id, tree_id) # Handles 404 and DB errors
 
         update_fields = {}
         validation_errors = {}
 
-        allowed_fields = [
+        # Use frontend field names for consistency if they differ from model field names
+        field_map = {
+            'person1': 'person1_id',
+            'person2': 'person2_id',
+            'relationshipType': 'relationship_type'
+        }
+
+        allowed_fields = [ # Fields that can be updated
             'person1', 'person2', 'relationshipType', 'start_date',
             'end_date', 'certainty_level', 'custom_attributes', 'notes'
         ]
 
-        for field in allowed_fields:
-            if field in relationship_data:
-                value = relationship_data[field]
+        for key_from_data in allowed_fields:
+            if key_from_data in relationship_data:
+                value = relationship_data[key_from_data]
+                model_field_name = field_map.get(key_from_data, key_from_data) # Get actual model field name
+
                 try:
-                    if field in ['person1', 'person2']:
+                    if model_field_name in ['person1_id', 'person2_id']:
                         # Validate and convert person IDs
                         try:
-                            update_fields[f'{field}_id'] = uuid.UUID(value) if value else None
+                            update_fields[model_field_name] = uuid.UUID(value) if value else None
                         except ValueError:
-                            validation_errors[field] = "Invalid UUID format."
-                    elif field == 'relationshipType':
+                            validation_errors[key_from_data] = "Invalid UUID format."
+                    elif model_field_name == 'relationship_type':
                          # Validate relationship type enum
                          try:
-                              update_fields['relationship_type'] = RelationshipTypeEnum(value)
+                              update_fields[model_field_name] = RelationshipTypeEnum(value) if value else None
                          except ValueError:
-                              validation_errors[field] = "Invalid relationship type value."
-                    elif field in ['start_date', 'end_date']:
+                              validation_errors[key_from_data] = "Invalid relationship type value."
+                    elif model_field_name in ['start_date', 'end_date']:
                         # Convert date strings to date objects, allow None/empty string
-                        update_fields[field] = date.fromisoformat(value) if value else None
-                    elif field == 'certainty_level':
+                        update_fields[model_field_name] = date.fromisoformat(str(value)) if value else None # Ensure string for fromisoformat
+                    elif model_field_name == 'certainty_level':
                          # Validate certainty level
-                         if value is not None and (not isinstance(value, int) or not (1 <= value <= 5)):
-                             validation_errors[field] = "Certainty level must be an integer between 1 and 5."
+                         if value is not None and (not isinstance(value, int) or not (1 <= value <= 5)): # Assuming 1-5 range
+                             validation_errors[key_from_data] = "Certainty level must be an integer between 1 and 5."
                          else:
-                             update_fields[field] = value
-                    elif field == 'custom_attributes':
+                             update_fields[model_field_name] = value
+                    elif model_field_name == 'custom_attributes':
                          # Ensure it's a dictionary
                          if not isinstance(value, dict):
-                             validation_errors[field] = "Custom attributes must be a dictionary."
+                             validation_errors[key_from_data] = "Custom attributes must be a dictionary."
                          else:
-                             update_fields[field] = value
-                    else:
-                        update_fields[field] = value
-                except Exception as e:
-                     logger.error(f"Unexpected error validating field {field} during relationship update.", exc_info=True)
-                     validation_errors[field] = "An unexpected error occurred validating this field."
+                             update_fields[model_field_name] = value
+                    else: # For 'notes'
+                        update_fields[model_field_name] = value
+                except ValueError as e: # Catch date parsing errors
+                    validation_errors[key_from_data] = f"Invalid value: {e}"
+                except Exception as e: # Catch other unexpected errors during validation
+                     logger.error(f"Unexpected error validating field {key_from_data} for model field {model_field_name} during relationship update.", exc_info=True)
+                     validation_errors[key_from_data] = "An unexpected error occurred validating this field."
 
         if validation_errors:
              logger.warning("Relationship update failed: Validation errors.", rel_id=relationship_id, errors=validation_errors)
              abort(400, description={"error": "Validation failed", "details": validation_errors})
 
-        # Apply updates
+        # Apply updates to the relationship object
         for field, value in update_fields.items():
             setattr(relationship, field, value)
 
         # Re-validate person IDs are different if they were changed
-        if 'person1_id' in update_fields or 'person2_id' in update_fields:
-             if relationship.person1_id == relationship.person2_id:
-                  validation_errors['person_ids'] = "Cannot create a relationship between the same person."
-                  logger.warning("Relationship update failed: Persons are the same after update.", rel_id=relationship_id, errors=validation_errors)
-                  abort(400, description={"error": "Validation failed", "details": validation_errors})
+        if relationship.person1_id == relationship.person2_id:
+              validation_errors['person_ids'] = "Cannot create a relationship between the same person."
+              # No need to log again, just abort
+              abort(400, description={"error": "Validation failed", "details": validation_errors})
 
-             # Check if new person IDs exist and are in the same tree
-             if 'person1_id' in update_fields:
-                 person1 = db.query(Person).filter(Person.id == relationship.person1_id, Person.tree_id == tree_id).one_or_none()
-                 if not person1:
-                      abort(404, description=f"New Person 1 with ID {relationship.person1_id} not found in the active tree.")
-             if 'person2_id' in update_fields:
-                 person2 = db.query(Person).filter(Person.id == relationship.person2_id, Person.tree_id == tree_id).one_or_none()
-                 if not person2:
-                      abort(404, description=f"New Person 2 with ID {relationship.person2_id} not found in the active tree.")
+        # Check if new person IDs exist and are in the same tree (if changed)
+        if 'person1_id' in update_fields and update_fields['person1_id']:
+             _get_or_404(db, Person, update_fields['person1_id'], tree_id) # Will abort if not found
+        if 'person2_id' in update_fields and update_fields['person2_id']:
+             _get_or_404(db, Person, update_fields['person2_id'], tree_id)
 
 
         # Re-validate end date vs start date after updates
         if relationship.start_date and relationship.end_date and relationship.end_date < relationship.start_date:
             validation_errors['date_comparison'] = "End date cannot be before start date."
-            logger.warning("Relationship update failed: End date before start date after updates.", rel_id=relationship_id, errors=validation_errors)
             abort(400, description={"error": "Validation failed", "details": validation_errors})
 
 
@@ -1701,13 +1697,13 @@ def update_relationship_db(db: Session, relationship_id: uuid.UUID, tree_id: uui
             span.record_exception(e)
             span.set_status(trace.Status(trace.StatusCode.ERROR, "DB Error"))
             _handle_sqlalchemy_error(e, f"updating relationship ID {relationship_id}", db)
-        except HTTPException as e:
-             raise e # Re-raise specific HTTP exceptions (e.g., from validation)
-        except Exception as e:
+        except HTTPException as e: # Re-raise specific HTTP exceptions (e.g., from validation)
+             raise e
+        except Exception as e: # Catch other unexpected errors
             db.rollback()
             logger.error("Unexpected error during relationship update.", rel_id=relationship_id, tree_id=tree_id, exc_info=True)
             span.record_exception(e)
-            span.set_status(trace.Status(trace.StatusCode.ERROR, "Unknown Error"))
+            span.set_status(trace.Status(trace.StatusCode.ERROR, "Unknown Error")) # Indicate generic error
             abort(500, description="An unexpected error occurred during relationship update.")
 
 
@@ -1732,11 +1728,11 @@ def delete_relationship_db(db: Session, relationship_id: uuid.UUID, tree_id: uui
             span.record_exception(e)
             span.set_status(trace.Status(trace.StatusCode.ERROR, "DB Error"))
             _handle_sqlalchemy_error(e, f"deleting relationship ID {relationship_id}", db)
-        except Exception as e:
+        except Exception as e: # Catch other unexpected errors
             db.rollback()
             logger.error("Unexpected error during relationship deletion.", rel_id=relationship_id, tree_id=tree_id, exc_info=True)
             span.record_exception(e)
-            span.set_status(trace.Status(trace.StatusCode.ERROR, "Unknown Error"))
+            span.set_status(trace.Status(trace.StatusCode.ERROR, "Unknown Error")) # Indicate generic error
             abort(500, description="An unexpected error occurred during relationship deletion.")
 
 
@@ -1750,6 +1746,7 @@ def get_tree_data_db(db: Session, tree_id: uuid.UUID) -> Dict[str, Any]:
 
         try:
             # Fetch all people and relationships for the tree
+            # Eager load related data if necessary for performance, though to_dict() handles it now
             people = db.query(Person).filter(Person.tree_id == tree_id).all()
             relationships = db.query(Relationship).filter(Relationship.tree_id == tree_id).all()
 
@@ -1759,15 +1756,15 @@ def get_tree_data_db(db: Session, tree_id: uuid.UUID) -> Dict[str, Any]:
                 label = f"{person.first_name or ''} {person.last_name or ''}".strip()
                 if person.nickname:
                     label += f" ({person.nickname})"
-                if not label:
-                    label = str(person.id)[:8]  # Fallback label
+                if not label: # Fallback if no name parts
+                    label = str(person.id)[:8]  # Fallback label using part of UUID
 
                 nodes.append({
-                    "id": str(person.id),
-                    "type": "personNode",
-                    "position": {"x": 0, "y": 0},
+                    "id": str(person.id), # Ensure ID is string for frontend
+                    "type": "personNode", # Consistent type for React Flow
+                    "position": {"x": 0, "y": 0}, # Default position, layout handled by frontend
                     "data": {
-                        "id": str(person.id),
+                        "id": str(person.id), # Redundant but often useful for frontend
                         "label": label,
                         "full_name": f"{person.first_name or ''} {person.last_name or ''}".strip(),
                         "gender": person.gender,
@@ -1776,20 +1773,21 @@ def get_tree_data_db(db: Session, tree_id: uuid.UUID) -> Dict[str, Any]:
                         "birth_place": person.birth_place,
                         "death_place": person.death_place,
                         "is_living": person.is_living,
+                        # Add other relevant person details for the node here
                     },
-                    "person_id": str(person.id)
+                    "person_id": str(person.id) # Explicitly pass person_id if needed by frontend logic
                 })
 
             links = []
             for relationship in relationships:
                 links.append({
-                    "id": str(relationship.id),
-                    "source": str(relationship.person1_id),
+                    "id": str(relationship.id), # Ensure ID is string
+                    "source": str(relationship.person1_id), # Ensure source/target are strings
                     "target": str(relationship.person2_id),
-                    "type": "default",
-                    "animated": False,
-                    "label": relationship.relationship_type.value,
-                    "data": relationship.to_dict()
+                    "type": "default", # Or use a custom edge type
+                    "animated": False, # Or True based on relationship type/status
+                    "label": relationship.relationship_type.value, # Display relationship type
+                    "data": relationship.to_dict() # Include full relationship data if needed by frontend
                 })
 
             logger.info("Full tree data fetched and formatted successfully", tree_id=tree_id, num_nodes=len(nodes), num_links=len(links))
@@ -1798,28 +1796,28 @@ def get_tree_data_db(db: Session, tree_id: uuid.UUID) -> Dict[str, Any]:
         except SQLAlchemyError as e:
             logger.error("Database error fetching tree data for visualization.", exc_info=True, tree_id=tree_id)
             _handle_sqlalchemy_error(e, f"fetching tree data for tree {tree_id}", db)
-        except Exception as e:
+        except Exception as e: # Catch other unexpected errors
             logger.error("Unexpected error fetching tree data for visualization.", exc_info=True, tree_id=tree_id)
             abort(500, description="An unexpected error occurred while fetching tree data.")
 
 
 # --- Database Setup ---
 DATABASE_URL = os.environ.get('DATABASE_URL')
-logger.info(f"Database URL: {'<set>' if DATABASE_URL else '<not set>'}")
+logger.info(f"Database URL: {'<set>' if DATABASE_URL else '<not set>'}") # Log whether URL is set
 if not DATABASE_URL:
     logger.critical("DATABASE_URL environment variable is not set. Exiting.")
-    exit(1)
+    exit(1) # Exit if DB URL is crucial and not set
 
 # Create the SQLAlchemy engine and session factory
 try:
-    engine = create_engine(DATABASE_URL, pool_size=32, echo=False)
+    engine = create_engine(DATABASE_URL, pool_size=32, echo=False) # pool_size can be configured via env var
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     # Instrument SQLAlchemy after engine is created
     SQLAlchemyInstrumentor().instrument(engine=engine)
     logger.info("SQLAlchemy engine and session factory created.")
 except Exception as e:
     logger.critical(f"Failed to create SQLAlchemy engine or session factory: {e}", exc_info=True)
-    exit(1)
+    exit(1) # Exit if engine creation fails
 
 
 # --- Database Initialization Functions ---
@@ -1830,10 +1828,10 @@ def create_tables(engine_to_use):
         # Check if tables exist before attempting creation
         inspector = inspect(engine_to_use)
         existing_tables = inspector.get_table_names()
-        if not existing_tables:
-             logger.info("No tables found. Creating all tables...")
+        if not existing_tables: # Or check for specific essential tables
+             logger.info("No tables found (or essential tables missing). Creating all tables...")
              Base.metadata.create_all(bind=engine_to_use)
-             logger.info("Database tables creation complete.")
+             logger.info("Database tables creation attempt complete.") # Changed from "complete" to "attempt complete"
         else:
              logger.info(f"Found {len(existing_tables)} existing tables. Skipping creation.")
 
@@ -1844,10 +1842,10 @@ def create_tables(engine_to_use):
 def populate_initial_data(session_factory):
     """Populates the database with initial data if necessary."""
     logger.info("Checking if initial data population is needed...")
-    session = session_factory()
+    db_session = session_factory() # Use a more descriptive variable name
     try:
         # Check if any user exists
-        user_count = session.query(func.count(User.id)).scalar()
+        user_count = db_session.query(func.count(User.id)).scalar()
         if user_count == 0:
             logger.info("No users found. Populating initial admin data...")
             admin_username = os.getenv("INITIAL_ADMIN_USERNAME", "admin")
@@ -1874,21 +1872,21 @@ def populate_initial_data(session_factory):
                 password_hash=hashed_password,
                 role=UserRole.ADMIN,
                 is_active=True,
-                email_verified=True
+                email_verified=True # Assume initial admin is verified
             )
-            session.add(admin_user)
-            session.commit()
+            db_session.add(admin_user)
+            db_session.commit()
             logger.info(f"Initial admin user '{admin_user.username}' created successfully.")
         else:
             logger.info(f"Database already contains {user_count} users. Skipping initial data population.")
     except SQLAlchemyError as e:
         logger.error(f"Database error during initial data population: {e}", exc_info=True)
-        session.rollback()
-    except Exception as e:
+        db_session.rollback()
+    except Exception as e: # Catch other unexpected errors
         logger.error(f"Unexpected error during initial data population: {e}", exc_info=True)
-        session.rollback()
+        db_session.rollback() # Rollback on any error
     finally:
-        session.close()
+        db_session.close()
 
 def initialize_database(engine_to_use, session_factory):
     """Checks table existence and initializes DB if needed."""
@@ -1912,11 +1910,14 @@ def handle_global_exception(e):
     """Handles uncaught exceptions globally."""
     if isinstance(e, HTTPException):
         # Log HTTP exceptions with their status code
-        logger.warning("HTTP exception occurred", status_code=e.code, description=e.description)
-        return jsonify({"error": e.description}), e.code
+        logger.warning("HTTP exception occurred", status_code=e.code, description=e.description, path=request.path, method=request.method)
+        # Ensure the response is JSON
+        response = jsonify({"error": e.description, "details": getattr(e, "details", None)})
+        response.status_code = e.code
+        return response
 
     # Log unexpected exceptions
-    logger.error("Unexpected exception occurred", exc_info=True)
+    logger.error("Unexpected exception occurred", exc_info=True, path=request.path, method=request.method)
     return jsonify({"error": "An unexpected error occurred. Please try again later."}), 500
 
 # --- Flask Request Lifecycle Hooks ---
@@ -1924,7 +1925,7 @@ def handle_global_exception(e):
 def before_request_hook():
     """Initialize the database session and attach it to Flask's `g` object."""
     g.db = SessionLocal()
-    # logger.debug("Database session opened for request.") # Enable for detailed request logging
+    # logger.debug("Database session opened for request.", path=request.path, method=request.method) # Enable for detailed request logging
 
 @app.teardown_appcontext
 def teardown_db_hook(exception=None):
@@ -1932,14 +1933,12 @@ def teardown_db_hook(exception=None):
     db = g.pop('db', None)
     if db is not None:
         try:
-            # In web applications, it's common to let the request handling
-            # commit successful transactions or rely on the ORM's default behavior.
-            # Explicit commit/rollback here can be tricky with error handling.
-            # A common pattern is to commit after successful operations in service functions
-            # and rely on the rollback in _handle_sqlalchemy_error for errors.
+            # If there was an exception during the request, the session might be in a bad state.
+            # _handle_sqlalchemy_error should have rolled back.
+            # Otherwise, assume commit was handled by service layers or SQLAlchemy's default.
             db.close()
-            # logger.debug("Database session closed for request.") # Enable for detailed request logging
-        except Exception as e:
+            # logger.debug("Database session closed for request.", path=request.path, method=request.method, exception_occurred=bool(exception))
+        except Exception as e: # Catch errors during session close
              logger.error(f"Error closing database session: {e}", exc_info=True)
     # The exception parameter is the exception that occurred during request processing, if any.
     # It's already logged by Flask/Werkzeug and potentially by our span error handling.
@@ -1948,8 +1947,8 @@ def teardown_db_hook(exception=None):
 
 # --- API Endpoints ---
 
-# Authentication Endpoints (Existing)
-@limiter.limit("5 per minute")
+# Authentication Endpoints
+@limiter.limit("5 per minute") # Rate limit login attempts
 @app.route('/api/login', methods=['POST'])
 def login():
     """Authenticates a user and starts a session."""
@@ -1960,22 +1959,23 @@ def login():
     username_or_email = data['username']
     password = data['password']
 
-    db = g.db
-    user = authenticate_user_db(db, username_or_email, password)
+    db = g.db # Get DB session from g
+    user = authenticate_user_db(db, username_or_email, password) # authenticate_user_db should not abort on auth failure
     if not user:
+        auth_failure_counter.add(1, {"reason": "invalid_credentials", "identifier": username_or_email[:30]}) # Avoid logging full identifier
         # Use a generic message for security, even if user exists but password is wrong
         abort(401, description="Incorrect username or password.")
 
     # Set session cookies
     session['user_id'] = str(user['id']) # Store UUID as string in session
     session['username'] = user['username']
-    session['role'] = user['role']
+    session['role'] = user['role'] # Store role for quick access in decorators
 
     logger.info("User logged in successfully", user_id=user['id'], username=user['username'])
-    return {
+    return jsonify({ # Use jsonify for consistent JSON response
         "message": "Login successful!",
-        "user": user
-    }, 200
+        "user": user # Return non-sensitive user data
+    }), 200
 
 @limiter.limit("2 per minute") # Limit registration rate
 @app.route('/api/register', methods=['POST'])
@@ -1997,60 +1997,57 @@ def register():
         }
         # Ensure role is valid if provided, default to USER in service
         if 'role' in data:
-             try: UserRole(data['role'])
+             try: UserRole(data['role']) # Validate role enum
              except ValueError: abort(400, description=f"Invalid role specified: {data['role']}")
 
 
         user = register_user_db(db, user_data)
+        user_registration_counter.add(1, {"status": "success"})
         logger.info("User registered successfully", user_id=user['id'], username=user['username'])
-        return {
+        return jsonify({ # Use jsonify
             "message": "Registration successful!",
             "user": user # Return non-sensitive user data
-        }, 201
+        }), 201
     except HTTPException as e:
+        user_registration_counter.add(1, {"status": "failure", "reason": "http_exception"})
         raise e  # Re-raise known exceptions (like 400 from validation, 409 from integrity)
-    except Exception as e:
+    except Exception as e: # Catch other unexpected errors
+        user_registration_counter.add(1, {"status": "failure", "reason": "unknown_error"})
         logger.error("Unexpected error during registration", exc_info=True)
         abort(500, description="An unexpected error occurred during registration.")
 
 @app.route('/api/logout', methods=['POST'])
-@require_auth
+@require_auth # Ensure user is logged in to log out
 def logout():
     """Logs out the current user."""
-    user_id = session.get('user_id')
+    user_id = session.get('user_id') # Get user_id for logging before clearing
     username = session.get('username')
 
     session.clear() # Clear all session data
 
     logger.info("User logged out successfully", user_id=user_id, username=username)
-    return {
+    return jsonify({ # Use jsonify
         "message": "Logout successful"
-    }, 200
+    }), 200
 
 @app.route('/api/session', methods=['GET'])
 def session_status():
     """Retrieves the current session status."""
     if 'user_id' not in session:
-        return {
+        return jsonify({ # Use jsonify
             "isAuthenticated": False,
             "user": None,
             "active_tree_id": None # Indicate no active tree
-        }, 200
+        }), 200
 
     user_id = session['user_id']
     username = session['username']
     role = session['role']
     active_tree_id = session.get('active_tree_id') # Get active tree from session
 
-    # Optional: Verify user still exists in DB if session is old/stale
-    # user_obj = g.db.query(User).filter(User.id == uuid.UUID(user_id)).one_or_none()
-    # if not user_obj:
-    #      session.clear()
-    #      return {"isAuthenticated": False, "user": None, "active_tree_id": None}, 200
-
 
     logger.debug("Session status retrieved", user_id=user_id, username=username, active_tree_id=active_tree_id)
-    return {
+    return jsonify({ # Use jsonify
         "isAuthenticated": True,
         "user": {
             "id": user_id,
@@ -2058,18 +2055,18 @@ def session_status():
             "role": role
         },
         "active_tree_id": active_tree_id # Include active tree ID
-    }, 200
+    }), 200
 
-# Password Reset Endpoints (NEW)
+# Password Reset Endpoints
 @limiter.limit("3 per minute") # Limit password reset requests
 @app.route('/api/request-password-reset', methods=['POST'])
 def request_password_reset():
     """Initiates the password reset process."""
     data = request.get_json()
-    if not data or not data.get('email'):
-        abort(400, description="Email address is required.")
+    if not data or not data.get('email'): # Frontend sends 'email', can be username or email
+        abort(400, description="Email or username is required.")
 
-    email_or_username = data['email']
+    email_or_username = data['email'] # Use a more generic name
     db = g.db
 
     # The service function handles finding the user and sending the email (or logging failure)
@@ -2077,9 +2074,9 @@ def request_password_reset():
     request_password_reset_db(db, email_or_username)
 
     # Always return a generic success message for security
-    return {
-        "message": "If an account exists for this email, a password reset link has been sent."
-    }, 200
+    return jsonify({ # Use jsonify
+        "message": "If an account exists for this identifier, a password reset link has been sent."
+    }), 200
 
 @limiter.limit("3 per minute") # Limit password reset attempts with token
 @app.route('/api/reset-password/<token>', methods=['POST'])
@@ -2093,13 +2090,13 @@ def reset_password(token):
     db = g.db
 
     # The service function handles token validation, password complexity, and updating the password
-    reset_password_db(db, token, new_password)
+    reset_password_db(db, token, new_password) # This will abort on failure
 
-    return {
+    return jsonify({ # Use jsonify
         "message": "Password reset successfully."
-    }, 200
+    }), 200
 
-# Tree Management Endpoints (NEW)
+# Tree Management Endpoints
 @app.route('/api/trees', methods=['POST'])
 @require_auth
 def create_tree():
@@ -2108,17 +2105,17 @@ def create_tree():
     if not data or not data.get('name'):
         abort(400, description="Tree name is required.")
 
-    user_id = uuid.UUID(session['user_id'])
+    user_id = uuid.UUID(session['user_id']) # Convert session string to UUID
     db = g.db
 
     try:
         new_tree = create_tree_db(db, user_id, data)
         # Automatically set the newly created tree as the active tree
-        session['active_tree_id'] = new_tree['id']
-        return new_tree, 201
+        session['active_tree_id'] = new_tree['id'] # Store as string
+        return jsonify(new_tree), 201 # Use jsonify
     except HTTPException as e:
         raise e
-    except Exception as e:
+    except Exception as e: # Catch other unexpected errors
         logger.error("Unexpected error in create_tree endpoint.", exc_info=True)
         abort(500, description="An unexpected error occurred while creating the tree.")
 
@@ -2134,7 +2131,7 @@ def get_user_trees():
         return jsonify(trees), 200
     except HTTPException as e:
         raise e
-    except Exception as e:
+    except Exception as e: # Catch other unexpected errors
         logger.error("Unexpected error in get_user_trees endpoint.", exc_info=True)
         abort(500, description="An unexpected error occurred while fetching user trees.")
 
@@ -2151,69 +2148,62 @@ def set_active_tree():
     db = g.db
 
     try:
-        tree_id = uuid.UUID(tree_id_str)
+        tree_id_uuid = uuid.UUID(tree_id_str) # Validate UUID format
     except ValueError:
         abort(400, description="Invalid UUID format for tree_id.")
 
     # Verify user has access to this tree before setting it as active
-    tree = db.query(Tree).filter(Tree.id == tree_id).one_or_none()
+    tree = db.query(Tree).filter(Tree.id == tree_id_uuid).one_or_none()
     if not tree:
-         abort(404, description=f"Tree with ID {tree_id} not found.")
+         abort(404, description=f"Tree with ID {tree_id_str} not found.")
 
     # Check access level (even 'view' access is sufficient to set as active)
-    has_access = False
-    if tree.created_by == user_id:
-         has_access = True
-         access_level = 'admin' # Creator has full control
-    elif tree.is_public:
-         has_access = True
-         access_level = 'view' # Public tree allows view access
+    # Reusing logic similar to require_tree_access but simpler check
+    can_set_active = False
+    if tree.created_by == user_id or tree.is_public:
+         can_set_active = True
     else:
-        tree_access = db.query(TreeAccess).filter(
-            TreeAccess.tree_id == tree_id,
+        tree_access_obj = db.query(TreeAccess).filter(
+            TreeAccess.tree_id == tree_id_uuid,
             TreeAccess.user_id == user_id
         ).one_or_none()
-
-        if tree_access:
-            access_level = tree_access.access_level
-            # Check if granted access level meets the required level
-            # Simple hierarchy: admin > edit > view
-            if access_level in ['edit', 'admin']:
-                has_access = True
-
-    if not has_access:
-        abort(403, description=f"Access denied to tree {tree_id}.")
+        if tree_access_obj: # Any explicit access record means they can set it as active
+            can_set_active = True
 
 
-    session['active_tree_id'] = tree_id_str
-    logger.info("Active tree set in session.", user_id=user_id, tree_id=tree_id)
+    if not can_set_active:
+        abort(403, description=f"Access denied to tree {tree_id_str}.")
 
-    return {
+
+    session['active_tree_id'] = tree_id_str # Store string UUID in session
+    logger.info("Active tree set in session.", user_id=user_id, tree_id=tree_id_str)
+
+    return jsonify({ # Use jsonify
         "message": "Active tree set successfully.",
         "active_tree_id": tree_id_str
-    }, 200
+    }), 200
 
 
-# People Endpoints (NEW)
+# People Endpoints
 @app.route('/api/people', methods=['GET'])
 @require_tree_access('view') # Require view access to the active tree
 def get_all_people():
     """Retrieves all people in the active tree."""
     db = g.db
-    tree_id = g.active_tree_id # Get active tree ID from g context
+    tree_id = g.active_tree_id # Get active tree ID (UUID) from g context
 
     try:
         people = get_all_people_db(db, tree_id)
         return jsonify(people), 200
     except HTTPException as e:
         raise e
-    except Exception as e:
+    except Exception as e: # Catch other unexpected errors
         logger.error("Unexpected error in get_all_people endpoint.", exc_info=True)
         abort(500, description="An unexpected error occurred while fetching people.")
 
 @app.route('/api/people/<uuid:person_id>', methods=['GET'])
 @require_tree_access('view') # Require view access to the active tree
-def get_person(person_id):
+def get_person(person_id: uuid.UUID): # Type hint person_id
     """Retrieves a specific person by ID within the active tree."""
     db = g.db
     tree_id = g.active_tree_id
@@ -2223,7 +2213,7 @@ def get_person(person_id):
         return jsonify(person), 200
     except HTTPException as e:
         raise e
-    except Exception as e:
+    except Exception as e: # Catch other unexpected errors
         logger.error("Unexpected error in get_person endpoint.", exc_info=True)
         abort(500, description="An unexpected error occurred while fetching the person.")
 
@@ -2232,8 +2222,8 @@ def get_person(person_id):
 def create_person():
     """Adds a new person to the active tree."""
     data = request.get_json()
-    if not data:
-        abort(400, description="Request body is required.")
+    if not data: # Check if data is None or empty
+        abort(400, description="Request body is required and cannot be empty.")
 
     user_id = uuid.UUID(session['user_id'])
     tree_id = g.active_tree_id
@@ -2241,20 +2231,20 @@ def create_person():
 
     try:
         new_person = create_person_db(db, user_id, tree_id, data)
-        return new_person, 201
+        return jsonify(new_person), 201 # Use jsonify
     except HTTPException as e:
         raise e # Re-raise specific HTTP exceptions (e.g., 400, 404)
-    except Exception as e:
+    except Exception as e: # Catch other unexpected errors
         logger.error("Unexpected error in create_person endpoint.", exc_info=True)
         abort(500, description="An unexpected error occurred while creating the person.")
 
 @app.route('/api/people/<uuid:person_id>', methods=['PUT'])
 @require_tree_access('edit') # Require edit access to the active tree to update a person
-def update_person(person_id):
+def update_person(person_id: uuid.UUID): # Type hint
     """Updates an existing person's details within the active tree."""
     data = request.get_json()
     if not data:
-        abort(400, description="Request body is required.")
+        abort(400, description="Request body is required and cannot be empty.")
 
     tree_id = g.active_tree_id
     db = g.db
@@ -2264,13 +2254,13 @@ def update_person(person_id):
         return jsonify(updated_person), 200
     except HTTPException as e:
         raise e
-    except Exception as e:
+    except Exception as e: # Catch other unexpected errors
         logger.error("Unexpected error in update_person endpoint.", exc_info=True)
         abort(500, description="An unexpected error occurred while updating the person.")
 
 @app.route('/api/people/<uuid:person_id>', methods=['DELETE'])
 @require_tree_access('edit') # Require edit access to the active tree to delete a person
-def delete_person(person_id):
+def delete_person(person_id: uuid.UUID): # Type hint
     """Deletes a person and their associated data from the active tree."""
     tree_id = g.active_tree_id
     db = g.db
@@ -2280,11 +2270,11 @@ def delete_person(person_id):
         return '', 204 # No content response for successful deletion
     except HTTPException as e:
         raise e
-    except Exception as e:
+    except Exception as e: # Catch other unexpected errors
         logger.error("Unexpected error in delete_person endpoint.", exc_info=True)
         abort(500, description="An unexpected error occurred while deleting the person.")
 
-# Relationships Endpoints (NEW)
+# Relationships Endpoints
 @app.route('/api/relationships', methods=['GET'])
 @require_tree_access('view') # Require view access to the active tree
 def get_all_relationships():
@@ -2297,16 +2287,14 @@ def get_all_relationships():
         return jsonify(relationships), 200
     except HTTPException as e:
         raise e
-    except Exception as e:
+    except Exception as e: # Catch other unexpected errors
         logger.error("Unexpected error in get_all_relationships endpoint.", exc_info=True)
         abort(500, description="An unexpected error occurred while fetching relationships.")
 
 @app.route('/api/relationships/<uuid:relationship_id>', methods=['GET'])
 @require_tree_access('view') # Require view access to the active tree
-def get_relationship(relationship_id):
+def get_relationship(relationship_id: uuid.UUID): # Type hint
     """Retrieves a specific relationship by ID within the active tree."""
-    # Note: api_docs.md did not explicitly list GET /relationships/{id}, but it's a standard CRUD endpoint.
-    # Implementing based on common REST patterns.
     with tracer.start_as_current_span("endpoint.get_relationship") as span:
         span.set_attribute("relationship.id", str(relationship_id))
         db = g.db
@@ -2314,11 +2302,11 @@ def get_relationship(relationship_id):
         span.set_attribute("tree.id", str(tree_id))
 
         try:
-            relationship = _get_or_404(db, Relationship, relationship_id, tree_id)
+            relationship = _get_or_404(db, Relationship, relationship_id, tree_id) # _get_or_404 handles errors
             return jsonify(relationship.to_dict()), 200
         except HTTPException as e:
             raise e
-        except Exception as e:
+        except Exception as e: # Catch other unexpected errors
             logger.error("Unexpected error in get_relationship endpoint.", exc_info=True)
             abort(500, description="An unexpected error occurred while fetching the relationship.")
 
@@ -2329,7 +2317,7 @@ def create_relationship():
     """Adds a new relationship to the active tree."""
     data = request.get_json()
     if not data:
-        abort(400, description="Request body is required.")
+        abort(400, description="Request body is required and cannot be empty.")
 
     user_id = uuid.UUID(session['user_id'])
     tree_id = g.active_tree_id
@@ -2337,20 +2325,20 @@ def create_relationship():
 
     try:
         new_relationship = create_relationship_db(db, user_id, tree_id, data)
-        return new_relationship, 201
+        return jsonify(new_relationship), 201 # Use jsonify
     except HTTPException as e:
         raise e
-    except Exception as e:
+    except Exception as e: # Catch other unexpected errors
         logger.error("Unexpected error in create_relationship endpoint.", exc_info=True)
         abort(500, description="An unexpected error occurred while creating the relationship.")
 
 @app.route('/api/relationships/<uuid:relationship_id>', methods=['PUT'])
 @require_tree_access('edit') # Require edit access to the active tree to update a relationship
-def update_relationship(relationship_id):
+def update_relationship(relationship_id: uuid.UUID): # Type hint
     """Updates an existing relationship within the active tree."""
     data = request.get_json()
     if not data:
-        abort(400, description="Request body is required.")
+        abort(400, description="Request body is required and cannot be empty.")
 
     tree_id = g.active_tree_id
     db = g.db
@@ -2360,14 +2348,14 @@ def update_relationship(relationship_id):
         return jsonify(updated_relationship), 200
     except HTTPException as e:
         raise e
-    except Exception as e:
+    except Exception as e: # Catch other unexpected errors
         logger.error("Unexpected error in update_relationship endpoint.", exc_info=True)
         abort(500, description="An unexpected error occurred while updating the relationship.")
 
 
 @app.route('/api/relationships/<uuid:relationship_id>', methods=['DELETE'])
 @require_tree_access('edit') # Require edit access to the active tree to delete a relationship
-def delete_relationship(relationship_id):
+def delete_relationship(relationship_id: uuid.UUID): # Type hint
     """Deletes a relationship from the active tree."""
     tree_id = g.active_tree_id
     db = g.db
@@ -2377,35 +2365,30 @@ def delete_relationship(relationship_id):
         return '', 204 # No content response for successful deletion
     except HTTPException as e:
         raise e
-    except Exception as e:
+    except Exception as e: # Catch other unexpected errors
         logger.error("Unexpected error in delete_relationship endpoint.", exc_info=True)
         abort(500, description="An unexpected error occurred while deleting the relationship.")
 
 
-# --- Tree Data Endpoint (NEW)
+# --- Tree Data Endpoint ---
 @app.route('/api/tree_data', methods=['GET'])
 @require_tree_access('view') # Require view access to the active tree
 def get_tree_data():
     """Retrieves node and link data for the active tree, formatted for visualization."""
-    # Note: This currently returns the full tree. Query parameters for start_node/depth are not yet implemented.
     db = g.db
     tree_id = g.active_tree_id
 
-    # Ignore start_node and depth query parameters for now, as per current backend capability note in api_docs.md
-    # start_node_id = request.args.get('start_node')
-    # depth_str = request.args.get('depth')
-
     try:
-        tree_data = get_tree_data_db(db, tree_id)
-        return jsonify(tree_data), 200
+        tree_data_result = get_tree_data_db(db, tree_id) # Renamed to avoid conflict
+        return jsonify(tree_data_result), 200
     except HTTPException as e:
         raise e
-    except Exception as e:
+    except Exception as e: # Catch other unexpected errors
         logger.error("Unexpected error in get_tree_data endpoint.", exc_info=True)
         abort(500, description="An unexpected error occurred while fetching tree data.")
 
 
-# Admin User Management Endpoints (NEW)
+# Admin User Management Endpoints
 @app.route('/api/users', methods=['GET'])
 @require_admin # Require admin role
 def get_all_users():
@@ -2416,62 +2399,63 @@ def get_all_users():
         return jsonify(users), 200
     except HTTPException as e:
         raise e
-    except Exception as e:
+    except Exception as e: # Catch other unexpected errors
         logger.error("Unexpected error in get_all_users endpoint.", exc_info=True)
         abort(500, description="An unexpected error occurred while fetching users.")
 
 @app.route('/api/users/<uuid:user_id>', methods=['DELETE'])
 @require_admin # Require admin role
-def delete_user(user_id):
+def delete_user(user_id: uuid.UUID): # Type hint
     """Deletes a specified user (Admin only)."""
     # Prevent admin from deleting themselves
-    current_user_id = uuid.UUID(session['user_id'])
-    if user_id == current_user_id:
-        logger.warning("Admin attempted to delete their own account.", user_id=current_user_id)
+    current_user_id_str = session.get('user_id')
+    if current_user_id_str and uuid.UUID(current_user_id_str) == user_id:
+        logger.warning("Admin attempted to delete their own account.", user_id=current_user_id_str)
         abort(403, description="Admins cannot delete their own account via this endpoint.")
 
     db = g.db
     try:
-        delete_user_db(db, user_id)
+        delete_user_db(db, user_id) # This will abort on failure (e.g., user not found)
         return '', 204 # No content response for successful deletion
     except HTTPException as e:
         raise e # Re-raise 404 or 409 from service function
-    except Exception as e:
+    except Exception as e: # Catch other unexpected errors
         logger.error("Unexpected error in delete_user endpoint.", exc_info=True)
         abort(500, description="An unexpected error occurred while deleting the user.")
 
 
 @app.route('/api/users/<uuid:user_id>/role', methods=['PUT'])
 @require_admin # Require admin role
-def set_user_role(user_id):
+def set_user_role(user_id: uuid.UUID): # Type hint
     """Changes the role of a specified user (Admin only)."""
     data = request.get_json()
     if not data or not data.get('role'):
-        abort(400, description="role is required.")
+        abort(400, description="The 'role' field is required in the request body.")
 
-    new_role = data['role']
+    new_role_str = data['role'] # Renamed to avoid conflict
 
     # Prevent admin from changing their own role
-    current_user_id = uuid.UUID(session['user_id'])
-    if user_id == current_user_id:
-        logger.warning("Admin attempted to change their own role.", user_id=current_user_id)
+    current_user_id_str = session.get('user_id')
+    if current_user_id_str and uuid.UUID(current_user_id_str) == user_id:
+        logger.warning("Admin attempted to change their own role.", user_id=current_user_id_str)
         abort(403, description="Admins cannot change their own role via this endpoint.")
 
     db = g.db
     try:
         # The service function handles role validation
-        updated_user = update_user_role_db(db, user_id, new_role)
+        updated_user = update_user_role_db(db, user_id, new_role_str)
+        role_change_counter.add(1, {"admin_user_id": current_user_id_str, "target_user_id": str(user_id), "new_role": new_role_str})
         # Return non-sensitive updated user data
         return jsonify(updated_user), 200
     except HTTPException as e:
         raise e # Re-raise 400 or 404 from service function
-    except Exception as e:
+    except Exception as e: # Catch other unexpected errors
         logger.error("Unexpected error in set_user_role endpoint.", exc_info=True)
         abort(500, description="An unexpected error occurred while setting the user role.")
 
 
-# --- Health Check Endpoint (Existing) ---
-@limiter.limit("60 per minute")
+# --- Health Check Endpoint ---
+@limiter.limit("60 per minute") # Apply rate limiting
 @app.route('/health', methods=['GET'])
 def health_check():
     """Performs health checks on the application and its dependencies."""
@@ -2484,17 +2468,17 @@ def health_check():
     # Check Database Connection and Latency
     start_time = time.monotonic()
     try:
-        with engine.connect() as connection:
-            # Simple query to check connectivity and basic function
-            connection.execute(text("SELECT 1"))
+        # Use a session from SessionLocal for a more realistic check
+        with SessionLocal() as health_db: # Use a separate session for health check
+            health_db.execute(text("SELECT 1")) # Simple query
             db_status = "healthy"
     except SQLAlchemyError as e:
         db_status = "unhealthy"
         service_status = "unhealthy"  # If DB is critical, service is unhealthy
         logger.error(f"Database health check failed: {e}", exc_info=False)  # Don't need full trace usually
-    except Exception as e:
+    except Exception as e: # Catch other unexpected errors
         db_status = "error"
-        service_status = "unhealthy"
+        service_status = "unhealthy" # Or "degraded" depending on policy
         logger.error(f"Unexpected error during DB health check: {e}", exc_info=True)
     finally:
         end_time = time.monotonic()
@@ -2505,45 +2489,57 @@ def health_check():
         "latency_ms": round(db_latency_ms, 2) if db_latency_ms is not None else None
     }
 
-    # Add rate limit information
+    # Add rate limit information (optional, might be verbose)
     rate_limit_info = {}
-    try:
-        # Get rate limit information for the current endpoint
-        limit = limiter.current_limit
-        if limit:
-            rate_limit_info = {
-                "limit": str(limit.limit), # Convert to string for JSON
-                "remaining": limit.remaining,
-                "reset_time": limit.reset_at.isoformat() if limit.reset_at else None
-            }
-    except Exception as e:
-        logger.error(f"Failed to retrieve rate limit information: {e}", exc_info=True)
+    # try:
+    #     # Get rate limit information for the current endpoint (might not be straightforward with Flask-Limiter globally)
+    #     # This part might need adjustment based on how Flask-Limiter exposes this info easily
+    #     limit_obj = limiter.current_limit # Placeholder, actual access might differ
+    #     if limit_obj:
+    #         rate_limit_info = {
+    #             "limit": str(limit_obj.limit),
+    #             "remaining": limit_obj.remaining,
+    #             "reset_time": limit_obj.reset_at.isoformat() if limit_obj.reset_at else None
+    #         }
+    # except Exception as e:
+    #     logger.warning(f"Failed to retrieve rate limit information for health check: {e}", exc_info=False)
 
     response_data = {
         "status": service_status,
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.utcnow().isoformat() + "Z", # Standard ISO format with Z for UTC
         "dependencies": dependencies,
-        "rate_limit": rate_limit_info  # Include rate limit information
+        # "rate_limit": rate_limit_info # Include if implemented and desired
     }
 
     # Return 503 if unhealthy, 200 if healthy
     http_status = 200 if service_status == "healthy" else 503
-    logger.info(
-        "===> Health check. Status: %s, DB Status: %s, Latency: %.2f ms, Dependencies: %s, Rate Limit: %s",
-        service_status, db_status, db_latency_ms, dependencies, rate_limit_info
-    )
+    # Reduced log verbosity for health checks unless an issue
+    if service_status != "healthy":
+        logger.warning(
+            "Health check. Status: %s, DB Status: %s, Latency: %.2f ms, Dependencies: %s",
+            service_status, db_status, db_latency_ms or 0.0, dependencies
+        )
+    else:
+        logger.debug( # Log healthy checks at debug level
+            "Health check. Status: %s, DB Status: %s, Latency: %.2f ms",
+            service_status, db_status, db_latency_ms or 0.0
+        )
     return jsonify(response_data), http_status # Use jsonify for consistent response
 
 
-# --- Metrics Endpoint (NEW) ---
-@limiter.limit("60 per minute")
+# --- Metrics Endpoint ---
+@limiter.limit("60 per minute") # Apply rate limiting
 @app.route('/metrics', methods=['GET'])
-def metrics():
+def metrics_endpoint(): # Renamed to avoid conflict with 'metrics' from OpenTelemetry
     """Returns application metrics in Prometheus format."""
-    from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
-    response = make_response(generate_latest())
-    response.headers['Content-Type'] = CONTENT_TYPE_LATEST
-    return response
+    from prometheus_client import generate_latest, CONTENT_TYPE_LATEST # Local import
+    try:
+        response = make_response(generate_latest())
+        response.headers['Content-Type'] = CONTENT_TYPE_LATEST
+        return response
+    except Exception as e:
+        logger.error(f"Error generating metrics: {e}", exc_info=True)
+        abort(500, "Error generating metrics.")
 
 
 # --- Main Execution Guard ---
@@ -2557,4 +2553,3 @@ if __name__ == '__main__':
     # Use Flask's built-in server for development, Gunicorn/uWSGI for production
     # debug=True enables reloader and debugger, useful for development
     app.run(host=host, port=port, debug=debug_mode)
-

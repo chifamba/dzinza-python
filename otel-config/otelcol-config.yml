@@ -120,15 +120,15 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, transform, batch]
-      exporters: [otlp, debug, spanmetrics]
+      exporters: [otlp, spanmetrics]
     metrics:
-      receivers: [hostmetrics, docker_stats, redis, otlp, spanmetrics]
+      receivers: [redis, otlp, spanmetrics]
       processors: [memory_limiter, batch]
-      exporters: [otlphttp/prometheus, debug]
+      exporters: [otlphttp/prometheus]
     logs:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [opensearch, debug]
+      exporters: [opensearch]
   telemetry:
     metrics:
       level: detailed

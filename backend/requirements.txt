@@ -24,6 +24,8 @@ Flask-Limiter  # Rate limiting
 Flask-WTF  # CSRF protection and form validation
 Flask-Talisman  # Security headers
 prometheus_client>=0.21  # Prometheus metrics
+prometheus_client
+flask_session
 
 # Development Dependencies
 pytest  # Testing framework

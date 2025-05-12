@@ -33,6 +33,7 @@ RUN pip install --upgrade pip && \
 
 # Make port 8090 available to the world outside this container
 EXPOSE 8090
+ENV FLASK_APP=app.main
 
 # Define the command to run the application using Flask's built-in server (for development)
 # For production, consider using a production-ready WSGI server like Gunicorn or Waitress
