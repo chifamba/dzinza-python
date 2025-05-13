@@ -70,8 +70,8 @@ app.config['SESSION_REDIS'] = redis.from_url(redis_url)
 
 # Standard Flask app configurations (some might be defaults for Flask-Session or handled differently)
 app.config.update(
-    # SESSION_COOKIE_SECURE is important for production with HTTPS
-    SESSION_COOKIE_SECURE=os.environ.get('FLASK_ENV') != 'development', # True in prod if FLASK_ENV is not 'development'
+    SESSION_COOKIE_SECURE=False # is important for production with HTTPS
+    # SESSION_COOKIE_SECURE=os.environ.get('FLASK_ENV') != 'development', # True in prod if FLASK_ENV is not 'development'
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE='Lax', # Consider 'Strict' or 'None' (with Secure=True) for production needs
     PERMANENT_SESSION_LIFETIME=timedelta(days=7) # Used if SESSION_PERMANENT is True
