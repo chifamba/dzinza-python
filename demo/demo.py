@@ -122,25 +122,15 @@ def api_create_tree(session, tree_name):
     tree_url = f"{API_BASE_URL}/trees"
     tree_data = {
         "name": tree_name,
-        "description": (
-            f"Demo family tree generated on {datetime.now().isoformat()}"
-        ),
+        "description": f"Demo family tree generated on {datetime.now().isoformat()}",
         "is_public": True,
-        "default_privacy_level": "public",
+        "default_privacy_level": "public"
     }
-
-    # Debug: Log session headers and cookies
-    print("Session Headers:", session.headers)
-    print("Session Cookies:", session.cookies.get_dict())
-
     try:
         response = session.post(tree_url, json=tree_data)
         response.raise_for_status()
         created_tree = response.json()
-        print(
-            f"Tree '{created_tree['name']}' created successfully with ID: "
-            f"{created_tree['id']}"
-        )
+        print(f"Tree '{created_tree['name']}' created successfully with ID: {created_tree['id']}")
         return created_tree
     except requests.exceptions.RequestException as e:
         print(f"Failed to create tree: {e}")
@@ -171,10 +161,7 @@ def api_create_person(session, person_data):
         response = session.post(people_url, json=person_data)
         response.raise_for_status()
         created_person = response.json()
-        print(
-            f"Person '{created_person['first_name']} {created_person['last_name']}' "
-            f"created with ID: {created_person['id']}"
-        )
+        print(f"Person '{created_person['first_name']} {created_person['last_name']}' created with ID: {created_person['id']}")
         return created_person
     except requests.exceptions.RequestException as e:
         print(f"Failed to create person {person_data.get('first_name')}: {e}")
@@ -192,24 +179,21 @@ def api_create_relationship(session, person1_id, person2_id, relationship_type):
     relationship_data = {
         "person1": person1_id,
         "person2": person2_id,
-        "relationshipType": relationship_type,
+        "relationshipType": relationship_type
     }
     try:
         response = session.post(relationships_url, json=relationship_data)
         response.raise_for_status()
         created_relationship = response.json()
-        print(
-            f"Relationship '{relationship_type}' created between {person1_id} "
-            f"and {person2_id} (ID: {created_relationship['id']})"
-        )
+        print(f"Relationship '{relationship_type}' created between {person1_id} and {person2_id} (ID: {created_relationship['id']})")
         return created_relationship
     except requests.exceptions.RequestException as e:
-        print(
-            f"Failed to create relationship {relationship_type} between "
-            f"{person1_id} and {person2_id}: {e}"
-        )
+        print(f"Failed to create relationship {relationship_type} between {person1_id} and {person2_id}: {e}")
         if hasattr(e, 'response') and e.response is not None:
-            print(f"Response content: {e.response.json()}")
+            try:
+                print(f"Response content: {e.response.json()}")
+            except json.JSONDecodeError:
+                print(f"Response content: {e.response.text}")
         return None
 
 # --- Main Data Loading Logic ---
@@ -238,18 +222,13 @@ def load_demo_data():
     print(f"\n--- Populating Tree: {tree_name} ({tree_id}) ---")
 
     # 4. Generate and Load Family Data
+
+    # Generation 0: Founding Couple
     founder_birth_year = random.randint(1920, 1940)
     husband_ln = get_random_last_name()
 
-    g0_husband_data = generate_person_data(
-        "male", founder_birth_year, husband_ln, is_founder=True
-    )
-    g0_wife_data = generate_person_data(
-        "female",
-        founder_birth_year + random.randint(0, 5),
-        get_random_last_name(),
-        is_founder=True,
-    )
+    g0_husband_data = generate_person_data("male", founder_birth_year, husband_ln, is_founder=True)
+    g0_wife_data = generate_person_data("female", founder_birth_year + random.randint(0, 5), get_random_last_name(), is_founder=True)  # Wife might have different maiden name
 
     g0_husband = api_create_person(req_session, g0_husband_data)
     g0_wife = api_create_person(req_session, g0_wife_data)
@@ -258,14 +237,12 @@ def load_demo_data():
         print("Failed to create founding couple. Aborting.")
         return
 
-    api_create_relationship(
-        req_session, g0_husband['id'], g0_wife['id'], "spouse_current"
-    )
+    api_create_relationship(req_session, g0_husband['id'], g0_wife['id'], "spouse_current")
 
     current_generation_couples = [(g0_husband, g0_wife)]
     all_people_created = {g0_husband['id']: g0_husband, g0_wife['id']: g0_wife}
 
-    num_generations_to_create = random.randint(2, 3)
+    num_generations_to_create = random.randint(2, 3)  # Create 2 or 3 additional generations
 
     for gen_num in range(num_generations_to_create):
         print(f"\n--- Generating Generation {gen_num + 1} ---")
@@ -277,78 +254,49 @@ def load_demo_data():
         for father, mother in current_generation_couples:
             num_children = random.randint(1, 3)
 
+            # Ensure father's birth_date is available and in correct format
             try:
                 father_birth_year = int(father['birth_date'][:4])
             except (TypeError, ValueError, KeyError):
-                print(
-                    f"Warning: Could not parse father's birth year "
-                    f"({father.get('birth_date')}). "
-                    "Skipping children for this couple."
-                )
+                print(f"Warning: Could not parse father's birth year ({father.get('birth_date')}). Skipping children for this couple.")
                 continue
 
-            children_start_birth_year = father_birth_year + random.randint(
-                20, 30
-            )
+            children_start_birth_year = father_birth_year + random.randint(20, 30)
 
             for i in range(num_children):
                 child_gender = random.choice(["male", "female"])
-                child_last_name = father['last_name']
+                child_last_name = father['last_name']  # Children take father's last name (simplification)
 
-                child_birth_year = children_start_birth_year + random.randint(
-                    i * 2, i * 2 + 5
-                )
-                child_data = generate_person_data(
-                    child_gender, child_birth_year, child_last_name
-                )
+                child_birth_year = children_start_birth_year + random.randint(i * 2, i * 2 + 5)  # Stagger births
+                child_data = generate_person_data(child_gender, child_birth_year, child_last_name)
                 child = api_create_person(req_session, child_data)
 
                 if not child:
                     continue
 
                 all_people_created[child['id']] = child
-                api_create_relationship(
-                    req_session, father['id'], child['id'], "biological_parent"
-                )
-                api_create_relationship(
-                    req_session, mother['id'], child['id'], "biological_parent"
-                )
+                api_create_relationship(req_session, father['id'], child['id'], "biological_parent")
+                api_create_relationship(req_session, mother['id'], child['id'], "biological_parent")
 
-                if gen_num < num_generations_to_create - 1:
-                    if random.random() < 0.6:
+                # Chance for this child to form a new couple in the next generation
+                if gen_num < num_generations_to_create - 1:  # Only form couples if not the last generation of children
+                    if random.random() < 0.6:  # 60% chance to marry and have kids
                         try:
-                            child_actual_birth_year = int(
-                                child['birth_date'][:4]
-                            )
+                            child_actual_birth_year = int(child['birth_date'][:4])
                         except (TypeError, ValueError, KeyError):
-                            print(
-                                f"Warning: Could not parse child's birth year "
-                                f"({child.get('birth_date')}). "
-                                "Skipping spouse for this child."
-                            )
+                            print(f"Warning: Could not parse child's birth year ({child.get('birth_date')}). Skipping spouse for this child.")
                             continue
 
-                        spouse_birth_year = child_actual_birth_year + random.randint(
-                            -3, 3
-                        )
-                        spouse_gender = (
-                            "female" if child_gender == "male" else "male"
-                        )
-                        spouse_last_name = get_random_last_name()
+                        spouse_birth_year = child_actual_birth_year + random.randint(-3, 3)
+                        spouse_gender = "female" if child_gender == "male" else "male"
+                        spouse_last_name = get_random_last_name()  # Spouse from a different family
 
-                        spouse_data = generate_person_data(
-                            spouse_gender, spouse_birth_year, spouse_last_name
-                        )
+                        spouse_data = generate_person_data(spouse_gender, spouse_birth_year, spouse_last_name)
                         spouse = api_create_person(req_session, spouse_data)
 
                         if spouse:
                             all_people_created[spouse['id']] = spouse
-                            api_create_relationship(
-                                req_session,
-                                child['id'],
-                                spouse['id'],
-                                "spouse_current",
-                            )
+                            api_create_relationship(req_session, child['id'], spouse['id'], "spouse_current")
                             if child_gender == "male":
                                 next_generation_couples.append((child, spouse))
                             else:

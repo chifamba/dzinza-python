@@ -1,384 +1,242 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import dagre from 'dagre';
-import ReactFlow, {
-  Background,
-  Controls,
-  MiniMap,
-  useNodesState,
-  useEdgesState,
-  useReactFlow,
-  MarkerType // Import MarkerType for edge arrows if needed
-} from 'reactflow';
-import 'reactflow/dist/style.css'; // Ensure styles are imported
-import PersonDetails from './PersonDetails';
-import PersonNode from './PersonNode'; // Ensure PersonNode uses CSS vars/classes
-import api from '../api';
-import { useAuth } from '../context/AuthContext'; // Import useAuth
+// frontend/src/components/FamilyTreeVisualization.jsx
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { ResponsiveNeoGraph } from 'neovis.js-react'; // Ensure this is the correct library if you installed a wrapper
+import { getFamilyTree } from '../api'; // API function to fetch tree data from backend
 
-// Define node types used in the flow
-const nodeTypes = {
-  personNode: PersonNode,
-  // Add other custom node types if needed
-};
+// Neo4j Connection Details from environment variables
+const NEO4J_URI = import.meta.env.VITE_NEO4J_URI;
+const NEO4J_USER = import.meta.env.VITE_NEO4J_USER;
+const NEO4J_PASSWORD = import.meta.env.VITE_NEO4J_PASSWORD;
 
-// Layout constants
-const nodeWidth = 172;
-const nodeHeight = 80; // Adjust if PersonNode size changes
-const spouseDummyNodeHeight = 20; // Small height for invisible nodes
-const rankdir = 'TB'; // Top to Bottom ranking is standard for family trees
+const FamilyTreeVisualization = ({ familyTreeId, onNodeSelected }) => {
+  // State for graph data, loading status, and errors
+  const [rawData, setRawData] = useState(null); // To store data from getFamilyTree if needed elsewhere
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null); // setError is defined here
+  const [activeNodeDetails, setActiveNodeDetails] = useState(null); // Details of the clicked node
 
-// Function to calculate layout using Dagre with dummy nodes for spouses
-const getLayoutedElements = (nodes, edges, direction = 'TB') => {
-  // Input validation
-  if (!Array.isArray(nodes) || !Array.isArray(edges)) {
-      console.error("Invalid input to getLayoutedElements: nodes and edges must be arrays.");
-      return { nodes: [], edges: [] };
-  }
+  // Ref to track if the component is mounted
+  const isMounted = useRef(true);
 
-  const dagreGraph = new dagre.graphlib.Graph({ compound: true }); // Use compound graph for potential grouping
-  dagreGraph.setDefaultEdgeLabel(() => ({}));
-  dagreGraph.setGraph({
-      rankdir: direction,
-      ranksep: 60, // Increase separation between ranks (generations)
-      nodesep: 30, // Increase separation between nodes in the same rank
-      align: 'UL', // Align nodes to upper-left in their rank cell
-  });
+  // Style for the NeoGraph container
+  const containerStyle = {
+    width: '100%',
+    height: '100%',
+    border: '1px solid #ddd', // Theme-consistent border
+    borderRadius: '0.5rem', // Tailwind's rounded-lg equivalent
+    overflow: 'hidden',
+    backgroundColor: '#f9fafb', // A light background color
+  };
 
-  const spouseEdges = edges.filter(edge => edge.data?.rel_type?.toLowerCase() === 'spouse_current' || edge.data?.rel_type?.toLowerCase() === 'spouse_former' || edge.data?.rel_type?.toLowerCase() === 'partner');
-  // Correctly identify parent/child edges based on relationship_type enum
-  const parentChildEdges = edges.filter(edge => edge.data?.rel_type?.toLowerCase().includes('parent') || edge.data?.rel_type?.toLowerCase().includes('child'));
-  const otherEdges = edges.filter(edge => !spouseEdges.includes(edge) && !parentChildEdges.includes(edge));
-
-  const processedNodes = new Set(); // Keep track of nodes already added
-  const dummyNodes = new Map(); // Store dummy nodes: key = sorted spouse IDs string, value = dummy node ID
-
-  // 1. Add Person Nodes to Dagre Graph
-  nodes.forEach((node) => {
-    // Ensure node and node.id exist before setting
-    if (node && node.id) {
-        dagreGraph.setNode(node.id, { label: node.data?.label || node.id, width: nodeWidth, height: nodeHeight });
-        processedNodes.add(node.id);
-    } else {
-        console.warn("Skipping invalid node in layout:", node);
-    }
-  });
-
-  // 2. Process Spouse Relationships and Create Dummy Nodes
-  spouseEdges.forEach((edge) => {
-    // Ensure edge, source, and target exist
-    if (!edge || !edge.source || !edge.target) {
-        console.warn("Skipping invalid spouse edge in layout:", edge);
-        return;
-    }
-    const sourceId = edge.source;
-    const targetId = edge.target;
-    const sortedIds = [sourceId, targetId].sort().join('-'); // Unique key for the pair
-    let dummyNodeId;
-
-    if (!dummyNodes.has(sortedIds)) {
-        // Create a new dummy node for this spouse pair
-        dummyNodeId = `dummy-${sortedIds}`;
-        dummyNodes.set(sortedIds, dummyNodeId);
-        // Add the dummy node to the graph with minimal height
-        dagreGraph.setNode(dummyNodeId, { width: 1, height: spouseDummyNodeHeight }); // Invisible node
-        processedNodes.add(dummyNodeId);
-
-        // Connect spouses to the dummy node in Dagre (invisible edges)
-        dagreGraph.setEdge(sourceId, dummyNodeId, { weight: 5 }); // Higher weight to keep spouses close
-        dagreGraph.setEdge(targetId, dummyNodeId, { weight: 5 });
-    }
-  });
-
-  // 3. Process Parent/Child Relationships, connecting via Dummy Nodes if applicable
-  parentChildEdges.forEach((edge) => {
-    if (!edge || !edge.source || !edge.target || !edge.data?.rel_type) {
-        console.warn("Skipping invalid parent/child edge in layout:", edge);
-        return;
-    }
-      // Determine parent and child based on relationship type string
-      const isParentRel = edge.data.rel_type.toLowerCase().includes('parent');
-      const parentId = isParentRel ? edge.source : edge.target;
-      const childId = isParentRel ? edge.target : edge.source;
-
-      // Find if the parent is part of a spouse pair with a dummy node
-      let parentUnitNodeId = parentId; // Default to parent node itself
-      for (const [spousePairKey, dummyId] of dummyNodes.entries()) {
-          if (spousePairKey.includes(parentId)) {
-              parentUnitNodeId = dummyId; // Connect to/from the dummy node instead
-              break;
-          }
-      }
-
-      // Add edge to Dagre graph connecting child to the parent unit (parent node or dummy node)
-      // Ensure direction is correct (Parent -> Child in TB layout)
-      // Check if nodes exist in the graph before adding edge
-      if (dagreGraph.hasNode(parentUnitNodeId) && dagreGraph.hasNode(childId)) {
-           dagreGraph.setEdge(parentUnitNodeId, childId, { weight: 1 }); // Standard weight
-      } else {
-           console.warn(`Skipping edge in layout due to missing node: ${parentUnitNodeId} -> ${childId}`);
-      }
-  });
-
-  // 4. Add Other Relationship Types (e.g., siblings) directly between people
-  otherEdges.forEach((edge) => {
-      if (!edge || !edge.source || !edge.target || !edge.data?.rel_type) {
-          console.warn("Skipping invalid 'other' edge in layout:", edge);
-          return;
-      }
-      // Avoid adding edges already implicitly handled via dummy nodes if necessary
-      // For siblings, connect them directly
-      if (edge.data.rel_type.toLowerCase().includes('sibling')) {
-           // Check if nodes exist
-           if (dagreGraph.hasNode(edge.source) && dagreGraph.hasNode(edge.target)) {
-                dagreGraph.setEdge(edge.source, edge.target, { weight: 0.5 }); // Lower weight for siblings?
-           } else {
-                console.warn(`Skipping sibling edge in layout due to missing node: ${edge.source} -> ${edge.target}`);
-           }
-      }
-      // Handle other types as needed
-  });
-
-
-  // 5. Run Dagre Layout
-  dagre.layout(dagreGraph);
-
-  // 6. Apply Positions to Original Nodes (excluding dummy nodes)
-  const layoutedNodes = nodes.map((node) => {
-    if (!node || !node.id) return node; // Skip invalid nodes
-
-    const nodeWithPosition = dagreGraph.node(node.id);
-    if (nodeWithPosition) { // Check if node exists in graph
-        return {
-            ...node,
-            targetPosition: direction === 'LR' ? 'left' : 'top',
-            sourcePosition: direction === 'LR' ? 'right' : 'bottom',
-            // Center the node based on its dimensions
-            position: {
-                x: nodeWithPosition.x - nodeWidth / 2,
-                y: nodeWithPosition.y - nodeHeight / 2,
-            },
-        };
-    } else {
-        console.warn(`Node ${node.id} not found in Dagre graph after layout.`);
-        // Assign default position?
-        return {
-            ...node,
-            position: { x: Math.random() * 400, y: Math.random() * 400 },
-        };
-    }
-  });
-
-  // Return original nodes with updated positions and original edges
-  // React Flow doesn't need the dummy nodes or modified edges for rendering
-  return { nodes: layoutedNodes, edges };
-};
-
-
-const FamilyTreeVisualization = ({ activeTreeId }) => { // Receive activeTreeId as prop
-  const [selectedPersonData, setSelectedPersonData] = useState(null); // Store full data for details pane
-  const [allNodesData, setAllNodesData] = useState([]); // Store all node data for lookups
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const { fitView } = useReactFlow();
-  const [isDarkMode, setIsDarkMode] = useState(
-      window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
-  );
-  const isInitialMount = useRef(true); // Ref to track initial mount
-
-  // Listen for theme changes (optional)
+  // Effect to set isMounted ref on mount and unmount
   useEffect(() => {
-      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-      const handleChange = (e) => setIsDarkMode(e.matches);
-      mediaQuery.addEventListener('change', handleChange);
-      return () => mediaQuery.removeEventListener('change', handleChange);
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false; // Set to false when component unmounts
+    };
   }, []);
 
+  // Callback to fetch and process tree data for the visualization
+  // This function is called when familyTreeId changes.
+  // Note: ResponsiveNeoGraph connects directly to Neo4j.
+  // This function might be for fetching supplementary data or if an alternative visualization was planned.
+  // For now, it will manage loading/error states around the expectation of the graph rendering.
+  const loadTreeData = useCallback(async (treeId) => {
+    if (!isMounted.current) {
+      console.log("FamilyTreeVisualization.loadTreeData: component unmounted, aborting.");
+      return;
+    }
+    console.log(`FamilyTreeVisualization.loadTreeData: called with treeId: ${treeId}`);
+    setLoading(true);
+    setError(null); // Clear previous errors, this is the key call
 
-  // Fetch data using the single /tree_data endpoint
+    try {
+      // If you need to fetch data via backend API (e.g., for non-NeoGraph parts or pre-processing)
+      // const treeData = await getFamilyTree(treeId);
+      // if (!isMounted.current) return;
+      // if (treeData) {
+      //   setRawData(treeData);
+      // } else {
+      //   throw new Error('Fetched tree data is invalid or empty.');
+      // }
+      // For now, we assume ResponsiveNeoGraph handles its own data fetching via Cypher.
+      // So, this function primarily manages loading/error states for the visual component.
+      // If ResponsiveNeoGraph itself provides loading/error callbacks, those might be more direct.
+      // Simulating a brief load period if NeoGraph doesn't expose its own.
+      // In a real scenario, you'd tie this to NeoGraph's lifecycle if possible.
+      // If getFamilyTree was essential, ensure it's called and its data used.
+    } catch (err) {
+      console.error("Error in loadTreeData:", err);
+      if (isMounted.current) {
+        setError(err.message || 'Failed to prepare tree data.');
+        setRawData(null);
+      }
+    } finally {
+      if (isMounted.current) {
+        // setLoading(false); // Set to false after NeoGraph indicates it has rendered/failed
+        // For now, we'll set it false after a short delay, assuming NeoGraph will take over.
+        // This is a placeholder if NeoGraph doesn't have explicit loading state management accessible here.
+        setTimeout(() => {
+            if(isMounted.current) setLoading(false);
+        }, 500); // Small delay
+      }
+    }
+  }, [/* getFamilyTree if it were used and its reference could change */]); // Dependencies for useCallback
+
+  // Effect to load data when familyTreeId changes
   useEffect(() => {
-    let isMounted = true;
-    const fetchData = async () => {
-        // Only fetch if activeTreeId is provided
-        if (!activeTreeId) {
-            if (isMounted) {
-                setNodes([]);
-                setEdges([]);
-                setAllNodesData([]);
-                setSelectedPersonData(null);
-                setLoading(false);
-                setError(null); // Clear error when no tree is selected
-            }
-            return;
-        }
-
-        setLoading(true);
+    if (familyTreeId) {
+      console.log(`FamilyTreeVisualization: familyTreeId prop changed to: ${familyTreeId}. Calling loadTreeData.`);
+      setActiveNodeDetails(null); // Clear previously selected node
+      loadTreeData(familyTreeId);
+    } else {
+      console.log("FamilyTreeVisualization: familyTreeId is null or undefined. Clearing visualization.");
+      if (isMounted.current) {
+        setRawData(null);
+        setActiveNodeDetails(null);
+        setLoading(false);
         setError(null);
-        try {
-            // Use the getTreeData API call
-            const treeData = await api.getTreeData(activeTreeId);
+      }
+    }
+  }, [familyTreeId, loadTreeData]); // Added loadTreeData to dependencies
 
-            if (isMounted) {
-                // Validate response structure
-                if (!treeData || !Array.isArray(treeData.nodes) || !Array.isArray(treeData.links)) {
-                    throw new Error("Invalid data structure received from API.");
-                }
-
-                // Process nodes (already formatted by backend, just use them)
-                const initialNodes = treeData.nodes.map(node => ({
-                    ...node, // Use node structure from backend
-                    // Ensure position is initialized if backend doesn't provide it
-                    position: node.position || { x: 0, y: 0 },
-                }));
-
-                // Process edges (links from backend)
-                const initialEdges = treeData.links.map(link => ({
-                    ...link, // Use link structure from backend
-                    id: link.id || `e-${link.source}-${link.target}-${link.label || 'rel'}`, // Ensure unique ID
-                    type: link.type || 'default', // Default edge type
-                    style: getEdgeStyle(link.label || link.data?.rel_type), // Apply styles
-                    // Ensure data.rel_type exists for layout function
-                    data: {
-                        ...link.data,
-                        rel_type: link.label || link.data?.rel_type,
-                    }
-                }));
-
-                // Store all node data for PersonDetails lookup
-                setAllNodesData(initialNodes.map(n => n.data)); // Store the 'data' part
-
-                // Calculate layout if nodes exist
-                if (initialNodes.length > 0) {
-                    const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(
-                        initialNodes, initialEdges, rankdir
-                    );
-                    setNodes(layoutedNodes);
-                    setEdges(initialEdges); // Use original edges for rendering
-
-                    // Fit view only on initial load or when treeId changes significantly
-                    if (isInitialMount.current) {
-                         setTimeout(() => fitView({ padding: 0.2, duration: 800 }), 100);
-                         isInitialMount.current = false;
-                    }
-
-                } else {
-                    setNodes([]);
-                    setEdges([]);
-                    setAllNodesData([]);
-                }
-                setSelectedPersonData(null); // Clear selection when tree changes
-            }
-        } catch (err) {
-            console.error("Error fetching tree data:", err);
-            if (isMounted) {
-                setError(err.response?.data?.message || err.message || "Failed to load family tree data.");
-                setNodes([]);
-                setEdges([]);
-                setAllNodesData([]);
-                setSelectedPersonData(null);
-            }
-        } finally {
-            if (isMounted) setLoading(false);
-        }
-    };
-
-    fetchData();
-
-    // Reset initial mount flag when activeTreeId changes
-    const initialMountTimer = setTimeout(() => {
-        isInitialMount.current = true;
-    }, 0);
-
-
-    return () => {
-        isMounted = false;
-        clearTimeout(initialMountTimer);
-    };
-    // Dependency: Fetch data when activeTreeId changes
-  }, [activeTreeId, setNodes, setEdges, fitView]);
-
-  // Edge styling function
-  const getEdgeStyle = (relationshipType) => {
-    const typeLower = relationshipType?.toLowerCase();
-    switch (typeLower) {
-      // Use CSS variables for colors
-      case 'spouse_current': case 'spouse_former': case 'partner':
-        return { stroke: 'var(--color-relationship-spouse)', strokeWidth: 2 };
-      case 'biological_parent': case 'adoptive_parent': case 'step_parent': case 'foster_parent': case 'guardian':
-      case 'biological_child': case 'adoptive_child': case 'step_child': case 'foster_child':
-        return { stroke: 'var(--color-relationship-parentchild)', strokeWidth: 2 };
-      case 'sibling_full': case 'sibling_half': case 'sibling_step': case 'sibling_adoptive':
-        return { stroke: 'var(--color-relationship-sibling)', strokeWidth: 1.5, strokeDasharray: '5,5' };
-      default: return { stroke: 'var(--color-border)', strokeWidth: 1 }; // Default grey
+  // Handler for node clicks within the Neo4j graph visualization
+  const handleGraphNodeClick = (event) => {
+    const { node } = event; // Structure depends on neovis.js-react event format
+    if (node && node.properties) {
+      console.log('Node clicked in graph:', node);
+      const details = {
+        id: node.id, // Neo4j internal ID
+        name: node.properties.name || 'N/A',
+        birthDate: node.properties.birthDate || 'N/A',
+        deathDate: node.properties.deathDate || 'N/A',
+        // ... other properties from the node
+      };
+      setActiveNodeDetails(details);
+      if (onNodeSelected) {
+        onNodeSelected(details); // Pass to parent component
+      }
     }
   };
 
-  // Node click handler
-  const onNodeClick = useCallback((event, node) => {
-    // Find the full person data from the stored allNodesData array using the node id
-    // The node object passed here is the React Flow node, use its id
-    const personData = allNodesData.find(p => p.id === node.id);
-    setSelectedPersonData(personData || node.data); // Pass the full person data object
-    console.log("Selected Person Data:", personData || node.data);
-  }, [allNodesData]); // Dependency on allNodesData array
+  // Display loading message
+  if (loading) {
+    return <div className="flex justify-center items-center h-full"><p className="text-gray-600">Loading family tree visualization...</p></div>;
+  }
 
-  // Loading and error display
-  if (loading) return <div className="card" style={{ padding: '20px', textAlign: 'center' }}>Loading family tree...</div>;
-  // Show message if no tree is selected AFTER checking loading state
-  if (!activeTreeId && !loading) return <div className="card" style={{ padding: '20px', textAlign: 'center' }}>Please select or create a family tree.</div>;
-  if (error) return <div className="card message error-message" style={{ padding: '20px', textAlign: 'center' }}>Error: {error}</div>;
-  if (nodes.length === 0 && !loading && !error && activeTreeId) return <div className="card" style={{ padding: '20px', textAlign: 'center' }}>No people found in this family tree. Add someone to get started!</div>;
+  // Display error message
+  if (error) {
+    return <div className="flex flex-col justify-center items-center h-full text-red-600">
+        <p className="font-semibold">Error rendering family tree:</p>
+        <p>{error}</p>
+    </div>;
+  }
 
+  // If no familyTreeId is provided, prompt user to select one
+  if (!familyTreeId) {
+    return <div className="flex justify-center items-center h-full"><p className="text-gray-500">Please select a family tree to view.</p></div>;
+  }
 
-  // React Flow specific theme adjustments (optional, CSS variables might suffice)
-  const flowBgColor = isDarkMode ? 'var(--color-reactflow-bg)' : 'var(--color-reactflow-bg)';
-  const minimapMaskColor = isDarkMode ? 'var(--color-reactflow-minimap-mask)' : 'var(--color-reactflow-minimap-mask)';
+  // Check for Neo4j connection configuration
+  if (!NEO4J_URI || !NEO4J_USER) {
+    return (
+      <div className="flex flex-col justify-center items-center h-full text-red-700 p-4">
+        <h3 className="font-semibold text-lg mb-2">Neo4j Connection Error</h3>
+        <p>Neo4j URI or User is not configured.</p>
+        <p className="mt-1 text-sm text-gray-600">Please check your environment variables (VITE_NEO4J_URI, VITE_NEO4J_USER).</p>
+      </div>
+    );
+  }
+
+  // Cypher query to fetch data for the specific family tree
+  // Assumes Person nodes have a 'tree_id' property matching familyTreeId
+  const finalCypherQuery = `
+    MATCH (p:Person {tree_id: "${familyTreeId}"})
+    OPTIONAL MATCH (p)-[r]-(o:Person {tree_id: "${familyTreeId}"})
+    RETURN p, r, o
+  `;
+  // Note: The relationship part `(p)-[r]-(o)` might return relationships twice if undirected.
+  // A common pattern to avoid this is `WHERE id(p) < id(o)`.
+  // However, neovis.js might handle this. If you see duplicate edges, refine the query.
 
   return (
-    // Use dashboard-main class for flex layout defined in index.css
-    // This component itself doesn't need dashboard-main, it sits within dashboard-viz-container
-    <>
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          nodeTypes={nodeTypes} // Register custom node types
-          onNodeClick={onNodeClick}
-          fitView // Fit view on initial load (handled by effect now)
-          fitViewOptions={{ padding: 0.2 }} // Add padding around the graph
-          proOptions={{ hideAttribution: true }} // Hide React Flow attribution
-          minZoom={0.1} // Set min/max zoom levels
-          maxZoom={2}
-          style={{ background: flowBgColor }} // Apply background color via style prop
-        >
-          <MiniMap
-              // nodeColor handled by node style or CSS
-              // nodeStrokeColor handled by node style or CSS
-              maskColor={minimapMaskColor} // Use state or CSS var
-              pannable
-              zoomable
-          />
-          <Controls />
-          <Background
-              // Use CSS var for background pattern color
-              color={isDarkMode ? 'var(--color-border)' : '#ddd'}
-              gap={16}
-          />
-        </ReactFlow>
-
-        {/* Person Details Sidebar - Rendered by DashboardPage */}
-        {/* We manage the selectedPersonData state here and pass it up or render details directly */}
-        {/* For now, assume DashboardPage renders the sidebar and passes selectedPersonData */}
-        {/* If this component should render the sidebar itself, move the sidebar div here */}
-         <div className="dashboard-details-sidebar card">
-             {/* Pass the selected person's data and the full list of node data */}
-             <PersonDetails selectedPerson={selectedPersonData} allNodesData={allNodesData} activeTreeId={activeTreeId} />
-         </div>
-    </>
+    <div style={containerStyle} className="relative"> {/* Added relative for positioning activeNodeDetails */}
+      <ResponsiveNeoGraph
+        containerId={`neo4j-graph-vis-${familyTreeId}`} // Unique ID for the graph container
+        neo4jUri={NEO4J_URI}
+        neo4jUser={NEO4J_USER}
+        neo4jPassword={NEO4J_PASSWORD}
+        initialCypher={finalCypherQuery}
+        onNodeClick={handleGraphNodeClick}
+        config={{ // Configuration for neovis.js (passed to vis.js)
+          nodes: {
+            font: {
+              size: 14, // Font size for node labels
+              color: '#333'
+            },
+            shape: 'dot', // Default shape
+            size: 18, // Default size
+          },
+          edges: {
+            arrows: {
+              to: { enabled: true, scaleFactor: 0.5 } // Show arrows on relationships
+            },
+            font: {
+              size: 10,
+              align: 'middle'
+            },
+            smooth: { // Make edges curved
+                type: 'cubicBezier',
+                forceDirection: 'horizontal',
+                roundness: 0.4
+            }
+          },
+          physics: { // Enable physics for layout
+            enabled: true,
+            barnesHut: {
+              gravitationalConstant: -3000, // Adjust for spread
+              springLength: 150, // Adjust for edge length
+              springConstant: 0.05,
+              damping: 0.09
+            },
+            minVelocity: 0.75
+          },
+          interaction: {
+            tooltipDelay: 200, // Delay for tooltips
+            hover: true // Enable hover effects
+          },
+          // Define how different node labels are displayed
+          nodeClasses: {
+            "Person": { // Assuming your nodes have the label "Person"
+              label: "name", // Property to use for the node label
+              // title: (node) => `Name: ${node.properties.name}\nBorn: ${node.properties.birthDate || 'Unknown'}`, // HTML for tooltip
+              // color: '#66ccff', // Example color
+              // size: 'importance', // Example: size nodes by an 'importance' property
+            }
+          },
+          // Define how different relationship types are displayed
+          relationshipClasses: {
+            "RELATED_TO": { // Example relationship type
+              // caption: "type", // Property to display on the relationship
+              // color: '#848484',
+              // dashes: true, // Example: dashed line
+            }
+          }
+        }}
+      />
+      {activeNodeDetails && (
+        <div className="absolute bottom-4 right-4 bg-white p-4 shadow-xl rounded-lg border border-gray-200 w-auto max-w-xs z-10">
+          <h3 className="text-base font-semibold mb-2 text-gray-800 border-b pb-1">Selected Person</h3>
+          <p className="text-sm text-gray-700"><strong>Name:</strong> {activeNodeDetails.name}</p>
+          <p className="text-sm text-gray-700"><strong>Birth Date:</strong> {activeNodeDetails.birthDate}</p>
+          {activeNodeDetails.deathDate && activeNodeDetails.deathDate !== 'N/A' && (
+            <p className="text-sm text-gray-700"><strong>Death Date:</strong> {activeNodeDetails.deathDate}</p>
+          )}
+          {/* Add more details as needed */}
+        </div>
+      )}
+    </div>
   );
 };
 
-// Wrap with ReactFlowProvider in the parent component (DashboardPage)
 export default FamilyTreeVisualization;
