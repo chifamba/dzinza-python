@@ -13,6 +13,7 @@ ENV PYTHONPATH=/backend
 ENV FLASK_APP=app.main
 ENV FLASK_RUN_HOST=0.0.0.0
 ENV FLASK_RUN_PORT=8090
+ENV FLASK_DEBUG=1
 # Set FLASK_DEBUG=0 for production builds, or pass via docker-compose for dev
 # ENV FLASK_DEBUG=0
 
@@ -33,7 +34,6 @@ RUN pip install --upgrade pip && \
 
 # Make port 8090 available to the world outside this container
 EXPOSE 8090
-ENV FLASK_APP=app.main
 
 # Define the command to run the application using Flask's built-in server (for development)
 # For production, consider using a production-ready WSGI server like Gunicorn or Waitress
