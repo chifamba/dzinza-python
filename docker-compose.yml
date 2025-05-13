@@ -132,6 +132,7 @@ services:
       - "4317"         # OTLP gRPC receiver
     environment:
       - METRICS_STORAGE_TYPE=prometheus
+      - LOG_LEVEL=error
     logging: *logging
 
   # Grafana
@@ -147,6 +148,7 @@ services:
       - GF_INSTALL_PLUGINS=grafana-opensearch-datasource
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - LOG_LEVEL=error
     volumes:
       - ./otel-config/grafana.ini:/etc/grafana/grafana.ini
       - ./otel-config/graphana-provisioning/:/etc/grafana/provisioning/
@@ -214,6 +216,7 @@ services:
     logging: *logging
     environment:
       - PROMETHEUS_STORAGE_PATH=/prometheus
+      - LOG_LEVEL=error
 
   # OpenSearch
   opensearch:
@@ -233,6 +236,7 @@ services:
       - DISABLE_INSTALL_DEMO_CONFIG=true
       - DISABLE_SECURITY_PLUGIN=true
       - _JAVA_OPTIONS=-Xmx300m
+      - LOG_LEVEL=error
     ulimits:
       memlock:
         soft: -1

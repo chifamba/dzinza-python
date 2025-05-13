@@ -2,5 +2,9 @@
     "IDX.aI.enableInlineCompletion": true,
     "IDX.aI.enableCodebaseIndexing": true,
     "github.copilot.chat.agent.thinkingTool": true,
-    "postman.settings.dotenv-detection-notification-visibility": false
+    "postman.settings.dotenv-detection-notification-visibility": false,
+    "IDX.corgiMode": true,
+    "git.enableSmartCommit": true,
+    "git.fetchOnPull": true,
+    "workbench.editor.closeOnFileDelete": true
 }

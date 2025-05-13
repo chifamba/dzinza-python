@@ -1,7 +1,6 @@
 // frontend/src/components/FamilyTreeVisualization.jsx
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { ResponsiveNeoGraph } from 'neovis.js-react'; // Ensure this is the correct library if you installed a wrapper
-import { getFamilyTree } from '../api'; // API function to fetch tree data from backend
 
 // Neo4j Connection Details from environment variables
 const NEO4J_URI = import.meta.env.VITE_NEO4J_URI;
