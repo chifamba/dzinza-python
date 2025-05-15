@@ -91,7 +91,7 @@ limiter = Limiter(
     get_remote_address,
     app=app,
     storage_uri=redis_url,  # Use Redis as the storage backend for limiter as well
-    default_limits=["200 per day", "50 per hour"],
+    default_limits=["240 per second", "14402 per minute"],
 )
 
 # --- Logging Setup (Using Structlog) ---
@@ -1485,7 +1485,7 @@ def teardown_db_hook(exception=None):
         except Exception as e: logger.error(f"Error closing database session: {e}", exc_info=True)
 
 # --- API Endpoints ---
-@limiter.limit("5 per minute")
+@limiter.limit("10 per minute")
 @app.route('/api/login', methods=['POST'])
 def login():
     data = request.get_json()
@@ -1504,7 +1504,7 @@ def login():
     logger.info("User logged in successfully", user_id=user['id'], username=user['username'])
     return jsonify({"message": "Login successful!", "user": user}), 200
 
-@limiter.limit("2 per minute")
+@limiter.limit("10 per minute")
 @app.route('/api/register', methods=['POST'])
 def register():
     data = request.get_json()
