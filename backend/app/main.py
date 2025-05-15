@@ -91,7 +91,7 @@ limiter = Limiter(
     get_remote_address,
     app=app,
     storage_uri=redis_url,  # Use Redis as the storage backend for limiter as well
-    default_limits=["240 per second", "14402 per minute"],
+    default_limits=["1000 per second", "60002 per minute"],
 )
 
 # --- Logging Setup (Using Structlog) ---
@@ -615,13 +615,13 @@ def require_tree_access(level: str = 'view'):
             tree_id_str = session.get('active_tree_id')
             if not tree_id_str:
                  logger.warning("Tree access required, but no active tree set in session.", user_id=user_id)
-                 abort(400, description="No active tree selected.")
+                 abort(400, description={"message": "No active tree selected", "code": "NO_ACTIVE_TREE"})
             try:
                 tree_id = uuid.UUID(tree_id_str)
             except ValueError:
                  logger.warning("Tree access required, but active_tree_id in session is invalid UUID.", user_id=user_id, active_tree_id=tree_id_str)
                  session.pop('active_tree_id', None)
-                 abort(400, description="Invalid active tree ID in session.")
+                 abort(400, description={"message": "Invalid active tree ID in session", "code": "INVALID_TREE_ID"})
             db = g.db
             tree = db.query(Tree).filter(Tree.id == tree_id).one_or_none()
             if not tree:
@@ -647,7 +647,7 @@ def require_tree_access(level: str = 'view'):
                     elif level == 'admin' and current_access_level == 'admin': has_access = True
             if not has_access:
                 logger.warning("Tree access denied.", user_id=user_id, tree_id=tree_id, required_level=level, granted_level=current_access_level)
-                abort(403, description=f"Access denied to tree {tree_id}.")
+                abort(403, description={"message": f"Access denied to tree {tree_id}", "code": "ACCESS_DENIED"})
             g.active_tree = tree
             g.tree_access_level = current_access_level
             g.active_tree_id = tree_id

@@ -7,9 +7,7 @@ function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
-  const { login, loading: authLoading } = useAuth();
-  // useNavigate is now primarily used within AuthContext for redirection after login/logout
-  // const navigate = useNavigate(); // Keep navigate if needed for other purposes
+  const { login, loading: authLoading, error: authError } = useAuth();
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -35,8 +33,10 @@ function LoginPage() {
     // Use the form-container class for layout
     <div className="form-container">
       <h1>Login</h1>
-      {/* Use message and error-message classes */}
-      {error && <div className="message error-message">{error}</div>}
+      {/* Display either local or auth errors */}
+      {(error || authError) && (
+        <div className="message error-message">{error || authError}</div>
+      )}
 
       <form onSubmit={handleSubmit}>
         {/* Use form-group class */}
