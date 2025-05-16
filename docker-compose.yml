@@ -217,6 +217,10 @@ services:
     environment:
       - PROMETHEUS_STORAGE_PATH=/prometheus
       - LOG_LEVEL=error
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
 
   # OpenSearch
   opensearch:

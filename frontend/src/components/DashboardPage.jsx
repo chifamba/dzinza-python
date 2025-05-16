@@ -81,7 +81,6 @@ function DashboardPage() {
 
   // Basic styles (consider moving to CSS) - Updated to use CSS classes
   // Removed inline styles where classes are appropriate
-
    if (authLoading || loadingTrees) {
        return <div className="main-content-area">Loading dashboard...</div>;
    }

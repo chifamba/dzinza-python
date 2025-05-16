@@ -168,6 +168,29 @@ button:disabled, .button:disabled {
     background-color: var(--color-secondary-hover);
 }
 
+/* Dashboard specific layout */
+.dashboard-container {
+    display: flex;
+    flex-direction: column; /* Stack vertically on small screens */
+    gap: 15px;
+    padding: 15px; /* Default padding */
+    width: 100%;
+    max-width: 1400px; /* Optional: Limit max width */
+    margin: 0 auto; /* Center the container */
+    box-sizing: border-box;
+    flex-grow: 1; /* Allow dashboard to take vertical space */
+}
+
+.dashboard-nav-panel {
+    flex-shrink: 0; /* Don't allow shrinking */
+    /* No fixed width on small screens */
+}
+
+.dashboard-main-content {
+    flex-grow: 1; /* Take up remaining space */
+    display: flex; /* Use flex for content within the main area */
+    flex-direction: column; /* Stack visualization and details vertically */
+}
 
 /* Basic Input/Select/Textarea Styling */
 input[type="text"],
@@ -301,16 +324,6 @@ td button {
     box-shadow: var(--box-shadow-sm);
 }
 
-/* Main Content Area Styling */
-.main-content-area {
-    flex-grow: 1; /* Allow content to take remaining vertical space */
-    padding: 15px; /* Default padding */
-    width: 100%;
-    max-width: 1400px; /* Optional: Max width for very wide screens */
-    margin: 0 auto; /* Center content area */
-    box-sizing: border-box;
-}
-
 /* Navigation Styling */
 .app-nav {
     background-color: var(--color-nav-bg);
@@ -352,12 +365,7 @@ td button {
     background-color: var(--color-secondary-hover);
 }
 
-/* Dashboard specific layout */
 .dashboard-layout {
-    display: flex;
-    flex-direction: column; /* Stack controls, viz, details vertically by default */
-    /* Removed fixed height, let content determine height */
-    gap: 15px;
 }
 .dashboard-controls {
     flex-shrink: 0; /* Prevent controls from shrinking */
@@ -388,7 +396,8 @@ td button {
 }
 
 .dashboard-viz-container {
-    flex-grow: 1; /* Allow visualization to take available space */
+    flex-grow: 1; /* Allow visualization to take available space in main-content */
+    width: 100%; /* Ensure it takes full width in main-content */
     border: 1px solid var(--color-border);
     border-radius: 8px;
     background-color: var(--color-reactflow-bg);
@@ -400,7 +409,7 @@ td button {
 }
 .dashboard-details-sidebar {
     flex-shrink: 0; /* Prevent sidebar from shrinking initially */
-    width: 100%; /* Full width by default */
+    width: 100%; /* Full width on small screens */
     overflow-y: auto; /* Allow scrolling if content overflows */
     /* Card styling applied via className="card" */
     max-height: 40vh; /* Limit height on small screens */
@@ -526,9 +535,6 @@ td button {
         padding: 0.5em 0.7em;
         font-size: 0.85rem;
     }
-    .main-content-area {
-        padding: 10px;
-    }
     .app-nav ul {
         gap: 8px 10px; /* Reduce gap */
     }
@@ -563,9 +569,6 @@ td button {
     .card {
         padding: 20px;
     }
-    .main-content-area {
-        padding: 20px;
-    }
     th, td {
         font-size: 0.95rem;
     }
@@ -573,22 +576,33 @@ td button {
 
 /* Large devices (desktops, 1024px and up) */
 @media (min-width: 1024px) {
-    .dashboard-layout {
+    .dashboard-container {
         flex-direction: row; /* Side-by-side layout */
-        /* Adjust height calculation based on actual nav height */
         height: calc(100vh - 70px); /* Example: Adjust if nav height changes */
+        gap: 20px; /* Increase gap between nav and main content */
+        padding: 20px; /* Adjust padding */
+    }
+    .dashboard-nav-panel {
+        width: 250px; /* Fixed width for navigation panel */
+        padding-right: 20px; /* Add padding to the right */
+        border-right: 1px solid var(--color-border); /* Optional separator */
+        /* Remove card styling from the panel itself if card is used inside */
+    }
+    .dashboard-main-content {
+        flex-direction: row; /* Side-by-side visualization and details */
+        gap: 20px; /* Gap between visualization and details */
     }
     .dashboard-viz-container {
-        min-height: 0; /* Remove min-height constraint */
-    }
-    .dashboard-details-sidebar {
-        width: 320px; /* Fixed width for sidebar */
         max-height: none; /* Remove max-height */
     }
     .dashboard-controls {
         /* Optional: Move controls inside sidebar or keep above */
         flex-direction: row; /* Ensure controls are horizontal */
         align-items: center;
+    }
+    .dashboard-details-sidebar {
+        width: 320px; /* Fixed width for sidebar */
+        max-height: none; /* Remove max-height */
     }
     .admin-table-container table {
         min-width: 0; /* Remove min-width on larger screens */
