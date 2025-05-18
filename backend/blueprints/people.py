@@ -1,4 +1,6 @@
 # backend/blueprints/people.py
+"""Defines the blueprint for API endpoints related to people within a family tree."""
+
 import uuid
 import structlog
 from flask import Blueprint, request, jsonify, g, session, abort
@@ -17,6 +19,7 @@ people_bp = Blueprint('people_api', __name__, url_prefix='/api/people')
 @people_bp.route('', methods=['GET'])
 @require_tree_access('view')
 def get_all_people_endpoint():
+    """Retrieves a paginated list of people in the active tree (requires tree view access)."""
     db = g.db; tree_id = g.active_tree_id
     page, per_page, sort_by, sort_order = get_pagination_params()
     sort_by = sort_by or "last_name"
@@ -34,6 +37,7 @@ def get_all_people_endpoint():
 @people_bp.route('/<uuid:person_id_param>', methods=['GET'])
 @require_tree_access('view')
 def get_person_endpoint(person_id_param: uuid.UUID):
+    """Retrieves details of a specific person in the active tree (requires tree view access)."""
     db = g.db; tree_id = g.active_tree_id
     logger.info("Get person", person_id=person_id_param, tree_id=tree_id)
     try:
@@ -46,6 +50,7 @@ def get_person_endpoint(person_id_param: uuid.UUID):
 @people_bp.route('', methods=['POST'])
 @require_tree_access('edit')
 def create_person_endpoint():
+    """Creates a new person in the active tree (requires tree edit access)."""
     data = request.get_json(); user_id = uuid.UUID(session['user_id'])
     if not data: abort(400, "Request body cannot be empty.")
     db = g.db; tree_id = g.active_tree_id
@@ -60,6 +65,7 @@ def create_person_endpoint():
 @people_bp.route('/<uuid:person_id_param>', methods=['PUT'])
 @require_tree_access('edit')
 def update_person_endpoint(person_id_param: uuid.UUID):
+    """Updates an existing person in the active tree (requires tree edit access)."""
     data = request.get_json()
     if not data: abort(400, "Request body cannot be empty.")
     db = g.db; tree_id = g.active_tree_id
@@ -74,6 +80,7 @@ def update_person_endpoint(person_id_param: uuid.UUID):
 @people_bp.route('/<uuid:person_id_param>', methods=['DELETE'])
 @require_tree_access('edit')
 def delete_person_endpoint(person_id_param: uuid.UUID):
+    """Deletes a person from the active tree (requires tree edit access)."""
     db = g.db; tree_id = g.active_tree_id
     logger.info("Delete person", person_id=person_id_param, tree_id=tree_id)
     try:

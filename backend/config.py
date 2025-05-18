@@ -1,6 +1,10 @@
 # backend/config.py
 import os
 from dotenv import load_dotenv
+
+"""
+This file contains the application configuration loaded from environment variables.
+"""
 from datetime import timedelta
 import redis
 
@@ -19,6 +23,19 @@ PAGINATION_DEFAULTS = {
 
 # --- Application Configuration ---
 class Config:
+    """
+    Holds the configuration settings for the Flask application, including:
+    - Database connection details
+    - Redis connection details for session management and rate limiting
+    - Flask session configuration
+    - CORS origins
+    - Rate limiting defaults
+    - OpenTelemetry settings
+    - Encryption key handling
+    - Initial admin user credentials
+    - Frontend URL
+    - Email server configuration
+    """
     SECRET_KEY = os.getenv("FLASK_SECRET_KEY", "your_default_secret_key_for_session_signing")
     
     # Database

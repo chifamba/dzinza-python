@@ -1,4 +1,7 @@
 # backend/services/person_service.py
+# backend/services/person_service.py
+"""Provides service functions for managing Person objects in the database."""
+
 import uuid
 import structlog
 from datetime import date
@@ -21,7 +24,21 @@ def get_all_people_db(db: DBSession,
                         sort_by: Optional[str] = "last_name",
                         sort_order: Optional[str] = "asc",
                         filters: Optional[Dict[str, Any]] = None
-                        ) -> Dict[str, Any]:
+                        ) -> Dict[str, Any]: # type: ignore
+    # Enhance the existing docstring
+    """
+    Fetches a paginated list of people for a given tree.
+
+    Args:
+        db: The SQLAlchemy database session.
+        tree_id: The UUID of the tree to fetch people from.
+        page: The page number for pagination (defaults to config).
+        per_page: The number of items per page for pagination (defaults to config).
+        sort_by: The field to sort by (defaults to 'last_name').
+        sort_order: The sort order ('asc' or 'desc', defaults to 'asc').
+        filters: An optional dictionary of filters (e.g., {'is_living': True, 'name_contains': 'John'}).
+
+    Returns:
     """Fetches a paginated list of people for a given tree."""
     cfg_pagination = app_config_module.config.PAGINATION_DEFAULTS
     if page == -1: page = cfg_pagination["page"]
@@ -56,11 +73,31 @@ def get_all_people_db(db: DBSession,
     return {}
 
 def get_person_db(db: DBSession, person_id: uuid.UUID, tree_id: uuid.UUID) -> Dict[str, Any]:
+    """
+    Fetches the details of a specific person by ID within a given tree.
+
+    Args:
+        db: The SQLAlchemy database session.
+        person_id: The UUID of the person to fetch.
+        tree_id: The UUID of the tree the person belongs to.
+
+    Returns:
+        A dictionary representation of the Person object.
+
+    Raises:
+        HTTPException: If the person is not found or a database error occurs.
+    """
     logger.info("Fetching person details", person_id=person_id, tree_id=tree_id)
     person = _get_or_404(db, Person, person_id, tree_id=tree_id)
     return person.to_dict()
 
 def create_person_db(db: DBSession, user_id: uuid.UUID, tree_id: uuid.UUID, person_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Creates a new person record in the database for a given tree.
+
+    Args:
+        db: The SQLAlchemy database session.
+        user_id: The UUID of the user creating the person.
     person_name_log = f"{person_data.get('first_name', '')} {person_data.get('last_name', '')}".strip()
     logger.info("Creating new person", user_id=user_id, tree_id=tree_id, person_name=person_name_log)
 
@@ -113,6 +150,19 @@ def create_person_db(db: DBSession, user_id: uuid.UUID, tree_id: uuid.UUID, pers
     return {}
 
 def update_person_db(db: DBSession, person_id: uuid.UUID, tree_id: uuid.UUID, person_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Updates an existing person's record in the database.
+
+    Args:
+        db: The SQLAlchemy database session.
+        person_id: The UUID of the person to update.
+        tree_id: The UUID of the tree the person belongs to.
+        person_data: A dictionary containing the fields to update.
+
+    Returns:
+        A dictionary representation of the updated Person object.
+
+    Raises:
     logger.info("Updating person", person_id=person_id, tree_id=tree_id, data_keys=list(person_data.keys()))
     person = _get_or_404(db, Person, person_id, tree_id=tree_id)
     
@@ -154,6 +204,18 @@ def update_person_db(db: DBSession, person_id: uuid.UUID, tree_id: uuid.UUID, pe
     return {}
 
 def delete_person_db(db: DBSession, person_id: uuid.UUID, tree_id: uuid.UUID) -> bool:
+    """
+    Deletes a person record from the database.
+
+    Args:
+        db: The SQLAlchemy database session.
+        person_id: The UUID of the person to delete.
+        tree_id: The UUID of the tree the person belongs to.
+
+    Returns:
+        True if deletion was successful.
+
+    Raises:
     logger.info("Deleting person", person_id=person_id, tree_id=tree_id)
     person = _get_or_404(db, Person, person_id, tree_id=tree_id)
     try:

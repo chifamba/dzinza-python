@@ -1,4 +1,8 @@
 # backend/database.py
+"""
+This module handles database initialization and session management for the application.
+It includes functions to create the SQLAlchemy engine, session factory, tables, and populate initial data.
+"""
 import structlog
 from sqlalchemy import create_engine, inspect, func, text
 from sqlalchemy.orm import sessionmaker
@@ -14,6 +18,12 @@ engine = None
 SessionLocal = None
 
 def init_engine():
+    """
+    Initializes and returns the SQLAlchemy database engine.
+
+    Reads database configuration from the application config and creates an engine with connection pooling.
+    Also instruments the engine for OpenTelemetry.
+    """
     global engine
     current_config = app_config_module.config
     if not current_config.DATABASE_URL:
@@ -36,6 +46,12 @@ def init_engine():
         raise RuntimeError(f"Database engine initialization failed: {e}")
 
 def init_sessionlocal():
+    """
+    Initializes and returns the SQLAlchemy sessionmaker factory.
+
+    If the engine is not already initialized, it calls `init_engine`.
+    Creates a configured session factory for database interactions.
+    """
     global SessionLocal, engine
     if engine is None:
         init_engine()
@@ -50,6 +66,12 @@ def init_sessionlocal():
 
 
 def create_tables_db(engine_to_use):
+    """
+    Creates database tables based on the defined SQLAlchemy models if they do not exist.
+
+    Args:
+        engine_to_use: The SQLAlchemy engine to use for table creation.
+    """
     logger.info("Attempting to create database tables if they don't exist...")
     try:
         inspector = inspect(engine_to_use)
@@ -73,6 +95,12 @@ def create_tables_db(engine_to_use):
         raise
 
 def populate_initial_data_db(session_factory):
+    """
+    Populates initial data, such as the default admin user, if no users exist in the database.
+
+    Args:
+        session_factory: The SQLAlchemy session factory to create sessions.
+    """
     logger.info("Checking if initial data population is needed...")
     db_session = session_factory()
     current_config = app_config_module.config
@@ -112,6 +140,10 @@ def populate_initial_data_db(session_factory):
         db_session.close()
 
 def initialize_database():
+    """
+    Performs the complete database initialization process.
+    Initializes the engine, session factory, creates tables, and populates initial data.
+    """
     global engine, SessionLocal
     logger.info("Initializing database...")
     try:

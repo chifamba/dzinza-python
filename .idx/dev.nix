@@ -16,11 +16,8 @@
     pkgs.python3Packages.datasets
     pkgs.python3Packages.accelerate
     pkgs.python3Packages.pytest
-    pkgs.tree-sitter
     pkgs.black
-    pkgs.vim
   ]; 
-  
   services = {
     docker = {
       enable = true;
@@ -36,22 +33,25 @@
     workspace = {
       # Runs when a workspace is first created with this `dev.nix` file
       onCreate = {
-        install = "";
+        install = "docker-compose up -d";
         # Open editors for the following files by default, if they exist:
         default.openFiles = [ "README.md" "todo.md" ];
       }; # To run something each time the workspace is (re)started, use the `onStart` hook
     };
-
     # Enable previews and customize configuration
     previews = {
       enable = false;
       previews = {
         web = {
-          command = [ "./devserver.sh" ];
+          command = [ "./run_dev.sh" ];
           env = { PORT = "$PORT"; };
           manager = "web";
         };
       };
     };
   };
+
+  # Expose ports for services
+  exposed_ports = [ 8090 5173 ];
+
 }

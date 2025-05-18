@@ -1,4 +1,7 @@
 # backend/blueprints/relationships.py
+"""This module defines the Flask blueprint for API endpoints related to
+relationships within a family tree, requiring tree access.
+"""
 import uuid
 import structlog
 from flask import Blueprint, request, jsonify, g, session, abort
@@ -17,6 +20,11 @@ relationships_bp = Blueprint('relationships_api', __name__, url_prefix='/api/rel
 @relationships_bp.route('', methods=['GET'])
 @require_tree_access('view')
 def get_all_relationships_endpoint():
+    """
+    Retrieves a paginated list of relationships for the active tree.
+    Requires 'view' access to the tree. Supports filtering by person_id
+    and relationship_type.
+    """
     db = g.db; tree_id = g.active_tree_id
     page, per_page, sort_by, sort_order = get_pagination_params()
     sort_by = sort_by or "created_at"; sort_order = sort_order or "desc"
@@ -34,6 +42,10 @@ def get_all_relationships_endpoint():
 @relationships_bp.route('/<uuid:relationship_id_param>', methods=['GET'])
 @require_tree_access('view')
 def get_relationship_endpoint(relationship_id_param: uuid.UUID):
+    """
+    Retrieves details of a specific relationship by ID within the active tree.
+    Requires 'view' access to the tree.
+    """
     db = g.db; tree_id = g.active_tree_id
     logger.info("Get relationship", relationship_id=relationship_id_param, tree_id=tree_id)
     try:
@@ -46,6 +58,10 @@ def get_relationship_endpoint(relationship_id_param: uuid.UUID):
 @relationships_bp.route('', methods=['POST'])
 @require_tree_access('edit')
 def create_relationship_endpoint():
+    """
+    Creates a new relationship in the active tree.
+    Requires 'edit' access to the tree.
+    """
     data = request.get_json(); user_id = uuid.UUID(session['user_id'])
     if not data: abort(400, "Request body cannot be empty.")
     db = g.db; tree_id = g.active_tree_id
@@ -60,6 +76,10 @@ def create_relationship_endpoint():
 @relationships_bp.route('/<uuid:relationship_id_param>', methods=['PUT'])
 @require_tree_access('edit')
 def update_relationship_endpoint(relationship_id_param: uuid.UUID):
+    """
+    Updates an existing relationship by ID within the active tree.
+    Requires 'edit' access to the tree.
+    """
     data = request.get_json()
     if not data: abort(400, "Request body cannot be empty.")
     db = g.db; tree_id = g.active_tree_id
@@ -74,6 +94,10 @@ def update_relationship_endpoint(relationship_id_param: uuid.UUID):
 @relationships_bp.route('/<uuid:relationship_id_param>', methods=['DELETE'])
 @require_tree_access('edit')
 def delete_relationship_endpoint(relationship_id_param: uuid.UUID):
+    """
+    Deletes a relationship by ID from the active tree.
+    Requires 'edit' access to the tree.
+    """
     db = g.db; tree_id = g.active_tree_id
     logger.info("Delete relationship", relationship_id=relationship_id_param, tree_id=tree_id)
     try:

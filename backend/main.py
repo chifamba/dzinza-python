@@ -1,4 +1,8 @@
 # backend/main.py
+"""
+Main application file for the Flask backend.
+Responsible for creating and configuring the app, registering blueprints, and handling requests and errors.
+"""
 import os
 import uuid
 import structlog
@@ -22,7 +26,15 @@ from blueprints.health import health_bp
 logger = structlog.get_logger(__name__)
 
 def create_app(app_config_obj=app_config_module.config):
-    """Application factory function."""
+    """
+    Application factory function.
+
+    Creates and configures the Flask application instance.
+    Initializes extensions, registers blueprints, sets up request hooks, and error handlers.
+
+    Args:
+        app_config_obj: The configuration object to use (defaults to config.py's config).
+    """
     app = Flask(__name__)
     app.config.from_object(app_config_obj)
 
@@ -79,6 +91,10 @@ def create_app(app_config_obj=app_config_module.config):
 
     @app.before_request
     def before_request_hook():
+        """
+        Hook executed before each request.
+        Creates a database session and binds request-specific context variables for logging.
+        """
         # Always get SessionLocal directly from the database module to ensure it's the initialized one
         if not db_module.SessionLocal: 
             logger.error("db_module.SessionLocal is not initialized. Cannot create DB session for request.")
@@ -91,6 +107,13 @@ def create_app(app_config_obj=app_config_module.config):
 
     @app.teardown_appcontext
     def teardown_db_hook(exception=None):
+        """
+        Hook executed after the application context tears down.
+        Closes the database session and handles rollbacks if an exception occurred during the request.
+
+        Args:
+            exception: The exception that caused the context teardown, if any.
+        """
         db = g.pop('db', None)
         if db is not None:
             try:
@@ -103,6 +126,13 @@ def create_app(app_config_obj=app_config_module.config):
 
     @app.errorhandler(Exception)
     def handle_global_exception(e):
+        """
+        Global error handler for catching unhandled exceptions and HTTPExceptions.
+        Logs the error and returns a standardized JSON error response.
+
+        Args:
+            e: The exception that occurred.
+        """
         if not isinstance(e, HTTPException): # Check if it's already an HTTPException
             logger.error("Unhandled exception caught by global error handler.", exc_info=e, error_type=type(e).__name__)
         

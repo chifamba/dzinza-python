@@ -1,4 +1,8 @@
 # backend/blueprints/health.py
+"""
+Defines the Flask blueprint for health check and metrics API endpoints.
+"""
+
 import time
 import structlog
 from datetime import datetime # For timestamp
@@ -15,6 +19,11 @@ health_bp = Blueprint('health_api', __name__)
 @health_bp.route('/health', methods=['GET'])
 @limiter.limit("60 per minute")
 def health_check_endpoint():
+    """
+    Performs a health check of the application and its dependencies.
+
+    Checks the database connection and reports the status of the service and its dependencies.
+    """
     service_status = "healthy"
     db_status = "unknown"; db_latency_ms = None
     dependencies = {}
@@ -51,6 +60,11 @@ def health_check_endpoint():
 @health_bp.route('/metrics', methods=['GET'])
 @limiter.limit("60 per minute")
 def metrics_api_endpoint():
+    """
+    Provides application metrics in Prometheus exposition format.
+
+    Handles the case where the prometheus_client library is not installed.
+    """
     try:
         from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
         return make_response(generate_latest(), 200, {'Content-Type': CONTENT_TYPE_LATEST})
