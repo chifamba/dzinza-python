@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Family Tree</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #f4f4f4;
+        }
+        .tree-container {
+            width: 100%;
+            max-width: 1200px;
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            overflow-x: auto;
+        }
+
+        .tree {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .generation {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 20px 0;
+        }
+
+        .person {
+            background-color: #e0e0e0;
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin: 0 10px;
+            border-radius: 5px;
+            text-align: center;
+            min-width: 100px;
+            position: relative;
+        }
+        .person.spouse{
+          background-color: #d0d0f0;
+        }
+
+        .relationship-line {
+            border-bottom: 2px solid #ccc;
+            width: 50px;
+            margin-top: 10px;
+            display: flex;
+            justify-content: center;
+        }
+        .relationship-line.spouse-line{
+          width: 20px;
+          border-bottom: 2px solid #0000ff;
+        }
+
+        .vertical-line {
+            border-left: 2px solid #ccc;
+            height: 20px;
+            position: absolute;
+            left: 50%;
+            top: -20px;
+            
+        }
+        .person-name {
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="tree-container">
+        <div class="tree">
+            <div class="generation">
+                <div class="person" id="person-1" style="order: 1;">
+                    <div class="person-name">John Doe</div>
+                    <div>1900-1980</div>
+                </div>
+            </div>
+            <div class="generation">
+                <div class="person" id="person-2" style="order: 1;">
+                    <div class="person-name">Jane Doe</div>
+                    <div>1905-1985</div>
+                </div>
+                <div class="relationship-line spouse-line" style="order: 2;"></div>
+                <div class="person spouse" id="person-3">
+                    <div class="person-name">Peter Smith</div>
+                    <div>1902-1975</div>
+                </div>
+            </div>
+            <div class="relationship-line">
+                <div class="vertical-line"></div>
+            </div>
+            <div class="generation">
+                <div class="person" id="person-4" style="order: 1;">
+                    <div class="person-name">Alice Smith</div>
+                    <div>1930-Present</div>
+                </div>
+                 <div class="person" id="person-5" style="order: 2;">
+                    <div class="person-name">Bob Smith </div>
+                    <div>1935-Present</div>
+                </div>
+                <div class="person" id="person-6">
+                    <div class="person-name">Mike Doe</div>
+                    <div>1932-2000</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

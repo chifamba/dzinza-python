@@ -1,130 +1,130 @@
-# Project TODO List
+# Family Tree Project - Organized Task List
 
-## Core Backend/Features
-- [x] Basic user authentication (login/logout/session check)
-- [x] User registration
-- [x] Add person to family tree
-- [x] Edit person details
-- [x] Delete person (and related relationships)
-- [x] Add relationships between people
-- [x] Edit relationship details
-- [x] Delete relationship
-- [x] View family tree structure (API for visualization)
-- [x] User roles (Admin, Basic)
-- [x] Admin user management (List, Delete, Change Role via API)
-- [x] Search functionality for people (Backend API implemented)
-- [x] Password reset functionality (Backend API and email logic implemented)
-- [x] Audit logging for important actions
-- [x] Data encryption at rest (`users.json`, `family_tree.json`)
+## 1. Foundation & Infrastructure
 
-## Refactoring: React Frontend & Visualization
+### Database Setup
+- [ ] Create migration scripts using Alembic
+- [ ] Implement database indexing for frequently queried fields
+- [ ] Design and implement caching strategy for frequently accessed data
 
-### Phase 1: Backend API Preparation
-- [x] Review and implement `/api/tree_data` endpoint for React Flow format.
-- [x] Create RESTful API endpoint: `POST /api/register`.
-- [x] Create RESTful API endpoint: `POST /api/login`.
-- [x] Create RESTful API endpoint: `POST /api/logout`.
-- [x] Create RESTful API endpoint: `GET /api/session`.
-- [x] Create RESTful API endpoint: `GET /api/people`.
-- [x] Create RESTful API endpoint: `GET /api/people/{id}`.
-- [x] Create RESTful API endpoint: `POST /api/people`.
-- [x] Create RESTful API endpoint: `PUT /api/people/{id}`.
-- [x] Create RESTful API endpoint: `DELETE /api/people/{id}`.
-- [x] Create RESTful API endpoint: `GET /api/relationships`.
-- [x] Create RESTful API endpoint: `POST /api/relationships`.
-- [x] Create RESTful API endpoint: `PUT /api/relationships/{id}`.
-- [x] Create RESTful API endpoint: `DELETE /api/relationships/{id}`.
-- [x] Create RESTful API endpoint: `POST /api/request-password-reset`.
-- [x] Create RESTful API endpoint: `POST /api/reset-password/<token>`.
-- [x] Create RESTful API endpoint: `GET /api/users` (Admin).
-- [x] Create RESTful API endpoint: `DELETE /api/users/{id}` (Admin).
-- [x] Create RESTful API endpoint: `PUT /api/users/{id}/role` (Admin).
-- [x] Define and implement API authentication strategy (Session-based).
-- [x] Implement consistent JSON error handling for all API endpoints.
-- [x] Implement CORS support.
+### Core System Infrastructure
+- [x] Add validation logic for all models (enums, required fields)
+- [x] Add error handling for database constraints
+- [ ] Set up worker thread infrastructure for background tasks
+- [x] Implement logging framework for system events
 
-### Phase 2: Frontend Setup & Basic Interaction (React)
-- [x] Create `frontend/` directory and initialize React project (Vite).
-- [x] Install core dependencies: `react-router-dom`, `axios`, `reactflow`.
-- [x] Set up basic frontend routing (Login, Register, Dashboard, Edit Forms, Admin).
-- [x] Create core React components (App, LoginPage, RegisterPage, DashboardPage, Add/Edit Forms, AdminPage, etc.).
-- [x] Create API service module (`api.js`) for frontend-backend communication.
-- [x] Implement frontend state management (Context API for auth state).
-- [x] Implement frontend login/registration forms and API calls.
-- [x] Implement protected routes (`PrivateRoute`, `AdminRoute`).
+## 2. Authentication & User Management
 
-### Phase 3: Visualization Integration (React Flow)
-- [x] Create `FamilyTreeVisualization` React component.
-- [x] Integrate `<ReactFlow>`, `<Background>`, `<Controls>`, `<MiniMap>`.
-- [x] Fetch data from `/api/tree_data` endpoint in the component.
-- [x] Implement layout strategy (Using Dagre via backend/frontend).
-- [x] Configure hierarchical layout algorithm.
-- [x] Implement basic node/edge rendering using fetched data.
+### User Model Implementation
+- [x] Implement CRUD operations for User model
+- [x] Implement email verification logic
+- [x] Add API endpoints to manage user preferences
+- [x] Add functionality to deactivate users
+- [x] Implement profile image upload functionality
+- [x] Add user session management
 
-### Phase 4: Enhanced Visualization & Interaction
-- [x] Implement `onNodeClick` handler for node selection in React Flow.
-- [x] Fetch detailed person data on node click (`GET /api/people/{id}`).
-- [x] Display person details in a separate sidebar/modal component (`PersonDetails.jsx`).
-- [x] Define and implement custom React Flow nodes (`PersonNode.js`) to show name, dates, photo placeholder, edit button.
+## 3. Tree Management
 
-### Phase 5: Editing & Performance
-- [x] Connect "Edit" button in `PersonNode.jsx` to navigate to `EditPersonPage`.
-- [x] Implement form submission to update person via API (`PUT /api/people/{id}`) in `EditPersonPage.jsx`.
-- [x] Implement form submission to update relationship via API (`PUT /api/relationships/{id}`) in `EditRelationshipPage.jsx`.
-- [ ] Add UI element (e.g., button in `PersonDetails` or on edge click) to navigate to `EditRelationshipPage`.
-- [ ] Investigate/Implement performance optimizations for large trees (if needed):
-    - [ ] Verify viewport rendering effectiveness provided by React Flow.
-    - [ ] Consider lazy loading parts of the tree (requires frontend changes to use `/api/tree_data` query params).
-    - [ ] Evaluate layout performance and consider backend pre-computation if client-side is too slow.
+### Tree Core Functionality
+- [x] Implement CRUD operations for the `Tree` model
+- [x] Add functionality to manage tree privacy levels
+- [x] Design and implement tree structure data model
+- [ ] Implement advanced tree traversal algorithms
 
-### Phase 6: Admin UI
-- [x] Create `AdminPage.jsx` component.
-- [x] Implement fetching and displaying user list (`GET /api/users`).
-- [x] Implement role changing functionality (`PUT /api/users/{id}/role`).
-- [x] Implement user deletion functionality (`DELETE /api/users/{id}`).
-- [x] Protect admin route using `AdminRoute` guard.
+### Tree Access & Collaboration
+- [x] Implement tree sharing using the `TreeAccess` model
+- [x] Implement functionality to manage access levels for users on specific trees
+- [x] Add support for collaborative editing of trees
+- [ ] Log changes to tree access in the `ActivityLog` model
 
-### Phase 7: Cleanup
-- [x] Remove unused Jinja2 templates from `backend/src/templates/` (if any existed).
-- [x] Remove Flask routes in `backend/app.py` used only for old server-side rendering (if any existed).
-- [x] Remove duplicate `frontend/README.md`.
+## 4. Core Entity Models
 
-## Frontend TODOs (Remaining/Refinement)
-- [ ] Implement frontend UI for password reset request and token handling.
-- [ ] Implement frontend search interface to use backend search capabilities.
-- [ ] Add UI element to trigger navigation to `EditRelationshipPage`.
-- [ ] Refactor frontend component structure for better organization/scalability.
-- [ ] Improve UI/UX (loading states, error messages, general flow, styling).
+### Person Model
+- [x] Implement CRUD operations for Person model
+- [x] Add functionality to manage custom attributes for people
+- [x] Implement privacy level enforcement for people
+- [x] Add logic to determine and update the `is_living` field
+- [ ] Implement person merge functionality for duplicate management
 
-## General Improvements (Ongoing)
-- [ ] Improve general backend error handling and logging details.
-- [ ] Refactor database interactions (potentially use a simple ORM or dedicated data layer) - *Lower priority*.
-- [ ] Ensure `load_data`/`save_data` usage is robust, especially error handling during encryption/decryption.
-- [ ] Add password complexity rules during registration/reset.
+### Relationship Model
+- [x] Implement CRUD operations for Relationship model
+- [x] Add functionality to manage the `certainty_level` field for relationships
+- [x] Add functionality to manage custom attributes for relationships
+- [x] Implement validation to ensure valid relationship types and prevent circular relationships
+- [ ] Add relationship suggestion algorithm
 
-## Testing (Updated Focus)
-- **Backend:**
-    - [x] Unit tests for core classes (`Person`, `Relationship`, `User`, `FamilyTree`, `UserManagement`).
-    - [x] Unit tests for utilities (`encryption`, `db_utils`, `audit_log`).
-    - [x] Basic integration tests for Flask app (`test_app.py`).
-    - [x] API Integration tests (`test_api.py` - expanded).
-- **Frontend:**
-    - [x] Basic component tests (`LoginPage.test.jsx`, `DashboardPage.test.jsx`).
-    - [ ] Add more component tests (e.g., `AdminPage`, `EditPersonPage`, `FamilyTreeVisualization`).
-    - [ ] Add tests for context (`AuthContext`).
-    - [ ] Add tests for routing.
-- **End-to-End:**
-    - [ ] Implement E2E tests for key user workflows (e.g., using Cypress or Playwright).
+### Event Model
+- [x] Implement CRUD operations for Event model
+- [x] Add functionality to handle events with date ranges
+- [x] Add functionality to manage custom attributes for events
+- [x] Implement privacy level enforcement for events
+- [ ] Add support for recurrent events
 
-## Documentation
-- [x] Basic `README.md` (updated for new structure, env vars, running tests).
-- [x] Document API endpoints in `api_docs.md` (updated).
-- [x] Improve backend docstrings (ongoing).
-- [ ] Add detailed usage instructions for the React frontend to `README.md`.
-- [ ] (Optional) Set up project documentation website (e.g., using Sphinx for backend, Storybook/Styleguidist for frontend).
+## 5. Supporting Models
 
-## Deployment
-- [ ] Configure Flask backend for production API deployment (e.g., Gunicorn, Nginx).
-- [ ] Configure React frontend build process for production.
-- [ ] Set up database/data storage for production (if moving away from JSON).
-- [ ] Containerize the application (Docker - backend & frontend services).
+### Media Management
+- [x] Implement functionality to upload and manage media files
+- [x] Add logic to extract metadata for uploaded media
+- [ ] Implement thumbnail generation for media files
+- [x] Enforce privacy levels for media files
+- [x] Add support for different media types (images, documents, audio, video)
+
+### Citation Model
+- [x] Implement CRUD operations for Citation model
+- [x] Add functionality to manage the `confidence_level` field for citations
+- [x] Add functionality to manage custom attributes for citations
+- [ ] Implement source validation functionality
+
+### Activity Tracking
+- [ ] Implement audit logging for all CRUD operations and significant actions
+- [ ] Add functionality to track changes to entities
+- [ ] Create user activity dashboard
+- [ ] Implement notification system for collaborative activities
+
+## 6. Advanced Features
+
+### Search & Discovery
+- [ ] Implement basic search functionality across all entities
+- [ ] Extend search to include custom attributes, privacy levels, and living status
+- [ ] Add support for fuzzy matching in search
+- [ ] Implement advanced filtering options
+
+### Data Import/Export
+- [ ] Implement GEDCOM import functionality
+- [ ] Implement GEDCOM export functionality
+- [ ] Add support for CSV import/export
+- [ ] Create backup and restore functionality
+
+## 7. Testing & Optimization
+
+### Testing
+- [ ] Write unit tests for all models
+- [ ] Write integration tests for all CRUD operations
+- [ ] Create end-to-end tests for critical user journeys
+- [ ] Implement automated test suite
+
+### Performance & Optimization
+- [ ] Perform load testing
+- [ ] Optimize database queries for performance
+- [x] Implement database query monitoring
+- [ ] Add performance benchmarking tools
+
+## 8. Final Steps
+
+### Documentation
+- [ ] Create API documentation
+- [ ] Write user guides
+- [ ] Document database schema
+- [ ] Create developer onboarding materials
+
+### Deployment
+- [ ] Configure deployment pipelines
+- [ ] Set up monitoring and alerting
+- [ ] Prepare rollback procedures
+- [ ] Create maintenance plan
+
+## 9. Code Review Additions
+- [ ] Implement to_dict method for Event, Media, Citation, and ActivityLog models
+- [ ] Add unit tests for new decorators: require_auth, require_admin, require_tree_access
+- [ ] Add audit logs to ActivityLog for all entity creation/update/delete
+- [ ] Implement email delivery logic for password reset (currently placeholder)

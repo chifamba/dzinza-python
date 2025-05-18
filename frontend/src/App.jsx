@@ -33,8 +33,9 @@ function Navigation() {
                 {!user && <li><Link to="/register">Register</Link></li>}
 
                 {user && <li><Link to="/dashboard">Dashboard</Link></li>}
-                {user && <li><Link to="/add-person">Add Person</Link></li>}
-                {user && <li><Link to="/add-relationship">Add Relationship</Link></li>}
+                {/* Add Person/Relationship links are now on the Dashboard page */}
+                {/* {user && <li><Link to="/add-person">Add Person</Link></li>} */}
+                {/* {user && <li><Link to="/add-relationship">Add Relationship</Link></li>} */}
 
                 {user && user.role === 'admin' && (
                     <li><Link to="/admin">Admin Panel</Link></li>
@@ -67,6 +68,10 @@ function App() {
                         {/* Public Routes */}
                         <Route path="/login" element={<LoginPage />} />
                         <Route path="/register" element={<RegisterPage />} />
+                        {/* Add Password Reset Routes here */}
+                        {/* <Route path="/request-password-reset" element={<RequestPasswordResetPage />} /> */}
+                        {/* <Route path="/reset-password/:token" element={<ResetPasswordPage />} /> */}
+
 
                         {/* Authenticated Routes */}
                         <Route path="/dashboard" element={<PrivateRoute><DashboardPage /></PrivateRoute>} />
@@ -78,8 +83,9 @@ function App() {
                          {/* Admin Only Route */}
                          <Route path="/admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
 
-                        {/* Default route */}
-                        <Route path="/" element={<PrivateRoute><DashboardPage /></PrivateRoute>} />
+                        {/* Default route - Redirect to dashboard if authenticated, otherwise login */}
+                        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+
 
                          {/* Catch-all */}
                          <Route path="*" element={
@@ -97,3 +103,4 @@ function App() {
 }
 
 export default App;
+

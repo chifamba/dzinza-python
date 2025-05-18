@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom'; // Import Link
 // Correct: Use default import for the api object
 import api from '../api';
 
 function RegisterPage() {
   const [username, setUsername] = useState('');
+  const [email, setEmail] = useState(''); // Added email state
   const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState(''); // Added full name state
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -23,6 +25,11 @@ function RegisterPage() {
         setLoading(false);
         return;
     }
+     if (!email.trim()) {
+        setError("Email cannot be empty.");
+        setLoading(false);
+        return;
+    }
      if (!password) { // Add password validation if needed (e.g., length)
         setError("Password cannot be empty.");
         setLoading(false);
@@ -32,13 +39,14 @@ function RegisterPage() {
 
     try {
       // Correct: Call the register method on the imported api object
-      // Pass username and password directly as arguments if api.register expects them that way
-      // Or pass as an object if that's what api.register expects
-      await api.register(username, password); // Assuming api.register takes (username, password)
+      // Pass username, password, email, and fullName
+      await api.register(username, password, email, fullName);
 
       setSuccessMessage("Registration successful! You can now login.");
       setUsername(''); // Clear form on success
+      setEmail('');
       setPassword('');
+      setFullName('');
       // Redirect to login after a delay
       setTimeout(() => {
         setSuccessMessage(null);
@@ -54,61 +62,77 @@ function RegisterPage() {
     }
   };
 
-  // Styles for basic layout and feedback
-  const styles = {
-    container: { maxWidth: '400px', margin: '40px auto', padding: '20px', border: '1px solid #ccc', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' },
-    formGroup: { marginBottom: '15px' },
-    label: { display: 'block', marginBottom: '5px' },
-    input: { width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: '4px', boxSizing: 'border-box' },
-    button: { width: '100%', padding: '10px', border: 'none', borderRadius: '4px', backgroundColor: '#28a745', color: 'white', cursor: 'pointer', fontSize: '1em' },
-    buttonDisabled: { backgroundColor: '#aaa', cursor: 'not-allowed' },
-    message: { marginBottom: '15px', textAlign: 'center', padding: '10px', border: '1px solid', borderRadius: '4px' },
-    errorMessage: { color: 'red', borderColor: 'red', backgroundColor: '#ffebee' },
-    successMessage: { color: 'green', borderColor: 'green', backgroundColor: '#d4edda' },
-  };
+  // Removed inline styles and rely on index.css classes
+  // const styles = { ... };
 
 
   return (
-    <div style={styles.container}>
+    // Use form-container class
+    <div className="form-container">
       <h1>Register</h1>
       {/* Display success or error messages */}
-      {successMessage && <div style={{...styles.message, ...styles.successMessage}}>{successMessage}</div>}
-      {error && <div style={{...styles.message, ...styles.errorMessage}}>{error}</div>}
+      {successMessage && <div className="message success-message">{successMessage}</div>}
+      {error && <div className="message error-message">{error}</div>}
 
       <form onSubmit={handleSubmit}>
-        <div style={styles.formGroup}>
-          <label htmlFor="username" style={styles.label}>Username:</label>
+        {/* Use form-group class */}
+        <div className="form-group">
+          <label htmlFor="username">Username:</label>
+          {/* Input uses global styles */}
           <input
             type="text"
             id="username"
-            style={styles.input}
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             required
             disabled={loading}
           />
         </div>
-        <div style={styles.formGroup}>
-          <label htmlFor="password" style={styles.label}>Password:</label>
+         <div className="form-group">
+          <label htmlFor="email">Email:</label>
+          <input
+            type="email" // Use type="email" for better mobile keyboards and basic validation
+            id="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            disabled={loading}
+          />
+        </div>
+        <div className="form-group">
+          <label htmlFor="password">Password:</label>
           <input
             type="password"
             id="password"
-            style={styles.input}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
             disabled={loading}
           />
         </div>
+         <div className="form-group">
+          <label htmlFor="fullName">Full Name (Optional):</label>
+          <input
+            type="text"
+            id="fullName"
+            value={fullName}
+            onChange={(e) => setFullName(e.target.value)}
+            disabled={loading}
+          />
+        </div>
 
         <button
             type="submit"
-            style={loading ? {...styles.button, ...styles.buttonDisabled} : styles.button}
             disabled={loading}
+            style={{ width: '100%' }} // Keep width 100% if needed specifically here
         >
             {loading ? 'Registering...' : 'Register'}
         </button>
       </form>
+       {/* Link styling is now global */}
+      <Link to="/login" style={{ marginTop: '15px', textAlign: 'center', display: 'block' }}>
+        Already have an account? Login here.
+      </Link>
     </div>
   );
 }

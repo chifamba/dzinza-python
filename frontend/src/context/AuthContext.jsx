@@ -6,7 +6,9 @@ const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true); // Start as true
+  const [activeTreeId, setActiveTreeId] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const navigate = useNavigate();
 
   // Check session status on initial load
@@ -14,27 +16,30 @@ export const AuthProvider = ({ children }) => {
     let isMounted = true; // Prevent state update if component unmounts quickly
     const checkAuthStatus = async () => {
       try {
+        setError(null);
         const sessionData = await api.getSession();
         if (isMounted && sessionData.isAuthenticated && sessionData.user) {
           setUser(sessionData.user);
+          setActiveTreeId(sessionData.active_tree_id);
         } else if (isMounted) {
-          setUser(null); // Ensure user is null if not authenticated
+          setUser(null);
+          setActiveTreeId(null);
         }
       } catch (error) {
         console.error('Failed to fetch session status:', error);
         if (isMounted) {
-            setUser(null); // Assume logged out if session check fails
+            setUser(null);
+            setActiveTreeId(null);
+            setError(error.response?.data?.message || error.message || 'Failed to get session status');
         }
       } finally {
-        // *** CRITICAL FIX: Ensure loading is set to false even if there's an error ***
+        // Ensure loading is set to false even if there's an error
         if (isMounted) {
             setLoading(false);
         }
       }
     };
 
-    // Set loading to true before starting the check
-    // setLoading(true); // Already set initially
     checkAuthStatus();
 
     // Cleanup function
@@ -44,50 +49,78 @@ export const AuthProvider = ({ children }) => {
   }, []); // Empty dependency array means run once on mount
 
   const login = async (username, password) => {
-    setLoading(true); // Indicate loading during login attempt
+    setLoading(true);
+    setError(null);
     try {
       const userData = await api.login(username, password);
       if (userData && userData.user) {
         setUser(userData.user);
-        navigate('/dashboard'); // Redirect after successful login
+        setActiveTreeId(userData.user.active_tree_id || null);
+        navigate('/dashboard');
       } else {
         throw new Error(userData.message || "Login failed: Invalid response from server.");
       }
     } catch (error) {
       console.error('Login failed in AuthContext:', error);
       setUser(null);
-      throw error; // Re-throw for the component to handle
+      setActiveTreeId(null);
+      setError(error.response?.data?.message || error.message || 'Login failed');
+      throw error;
     } finally {
         setLoading(false); // Stop loading after attempt
     }
   };
 
   const logout = async () => {
-     setLoading(true); // Indicate loading during logout
+     setLoading(true);
+     setError(null);
      try {
           await api.logout();
           setUser(null);
+          setActiveTreeId(null);
           navigate('/login');
      } catch (error) {
           console.error('API Logout failed:', error);
-          setUser(null); // Clear local state even if API fails
+          setUser(null);
+          setActiveTreeId(null);
+          setError(error.response?.data?.message || error.message || 'Logout failed');
           navigate('/login');
      } finally {
          setLoading(false); // Stop loading
      }
   };
 
-  // Provide loading state along with user and functions
-  const value = { user, loading, login, logout };
+   // Function to set the active tree
+   const selectActiveTree = async (treeId) => {
+       setLoading(true); // Indicate loading while setting tree
+       setError(null); // Clear previous errors
+       try {
+           await api.setActiveTree(treeId);
+           setActiveTreeId(treeId); // Update local state
+       } catch (error) {
+           console.error('Failed to set active tree:', error);
+           const errorMessage = error.response?.data?.message || error.message || 'Failed to set active tree';
+           setError(errorMessage);
+           setActiveTreeId(null); // Clear active tree on error
+           // Don't throw the error, handle it here
+       } finally {
+           setLoading(false); // Stop loading
+       }
+   };
 
-  // Render children immediately, let PrivateRoute/AdminRoute handle loading state
-  // OR keep the loading check if you prefer showing nothing until auth is checked
-  // return (
-  //   <AuthContext.Provider value={value}>
-  //     {!loading && children}
-  //   </AuthContext.Provider>
-  // );
-  // Simpler approach: Render provider always, let routes manage loading display
+
+  // Provide state and functions to context consumers
+  const value = {
+    user,
+    activeTreeId,
+    loading,
+    error,
+    login,
+    logout,
+    selectActiveTree,
+    setError
+  };
+
    return (
      <AuthContext.Provider value={value}>
        {children}
@@ -96,5 +129,9 @@ export const AuthProvider = ({ children }) => {
 };
 
 export const useAuth = () => {
-  return useContext(AuthContext);
+  const context = useContext(AuthContext);
+  if (context === null) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
 };

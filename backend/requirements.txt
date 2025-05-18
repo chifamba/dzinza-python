@@ -1,21 +1,34 @@
 # backend/requirements.txt
 
-# Web Framework
-Flask
-Flask-Cors # Added for API Cross-Origin Resource Sharing
+# Core Dependencies
+Flask>=3.1  # Web framework
+SQLAlchemy>=2.0  # ORM and database interaction
+psycopg2-binary>=2.9  # PostgreSQL driver
+bcrypt>=4.3  # Password hashing
+cryptography>=44.0  # Data encryption
+python-dotenv>=1.1  # Load environment variables
 
-# Database (If you were using TinyDB, keep it, otherwise remove if not used)
-# tinydb
+# Logging & Tracing
+structlog>=25.3  # Structured logging
+opentelemetry-api>=1.32  # OpenTelemetry API
+opentelemetry-sdk>=1.32  # OpenTelemetry SDK
+opentelemetry-exporter-otlp-proto-grpc>=1.32  # OpenTelemetry OTLP exporter (gRPC)
+opentelemetry-instrumentation-flask>=0.53b1  # OpenTelemetry Flask instrumentation
+opentelemetry-instrumentation-sqlalchemy>=0.53b1  # OpenTelemetry SQLAlchemy instrumentation
+opentelemetry-instrumentation-requests>=0.53b1  # OpenTelemetry HTTP requests instrumentation
+opentelemetry-instrumentation-logging>=0.53b1  # OpenTelemetry logging instrumentation
+Flask-CORS>=5.0
+redis>=6.0  # Redis client for Python
+# Optional Dependencies
+Flask-Limiter  # Rate limiting
+Flask-WTF  # CSRF protection and form validation
+Flask-Talisman  # Security headers
+prometheus_client>=0.21  # Prometheus metrics
+prometheus_client
+flask_session
 
-# Password Hashing
-bcrypt
-
-# For GEDCOM import/export (Optional - Keep if needed for future API endpoints)
-# gedcom-py
-
-# For data encryption
-pycryptodome
-
-# For sending emails (Password Reset)
-yagmail
-itsdangerous # Required by Flask for session signing, and used for tokens
+# Development Dependencies
+pytest  # Testing framework
+pytest-flask  # Flask testing utilities
+mypy  # Type checking
+flake8  # Linting
