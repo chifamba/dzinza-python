@@ -1,12 +1,12 @@
 # backend/database.py
 import structlog
-from sqlalchemy import create_engine, inspect, func
+from sqlalchemy import create_engine, inspect, func, text
 from sqlalchemy.orm import sessionmaker
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 
-from .config import config
-from .models import Base, User, UserRole # Import Base and models needed for seeding
-from .utils import _hash_password, _validate_password_complexity # For seeding admin
+import config as app_config_module 
+from models import Base, User, UserRole 
+from utils import _hash_password, _validate_password_complexity
 
 logger = structlog.get_logger(__name__)
 
@@ -14,21 +14,20 @@ engine = None
 SessionLocal = None
 
 def init_engine():
-    """Initializes the SQLAlchemy engine."""
     global engine
-    if not config.DATABASE_URL:
+    current_config = app_config_module.config
+    if not current_config.DATABASE_URL:
         logger.critical("DATABASE_URL environment variable is not set. Database engine cannot be initialized.")
         raise RuntimeError("DATABASE_URL is not set.")
     
     try:
         engine = create_engine(
-            config.DATABASE_URL,
-            pool_size=config.DB_POOL_SIZE,
-            max_overflow=config.DB_MAX_OVERFLOW,
-            pool_recycle=config.DB_POOL_RECYCLE,
-            echo=config.SQLALCHEMY_ECHO
+            current_config.DATABASE_URL,
+            pool_size=current_config.DB_POOL_SIZE,
+            max_overflow=current_config.DB_MAX_OVERFLOW,
+            pool_recycle=current_config.DB_POOL_RECYCLE,
+            echo=current_config.SQLALCHEMY_ECHO
         )
-        # Instrument the engine for OpenTelemetry
         SQLAlchemyInstrumentor().instrument(engine=engine)
         logger.info("SQLAlchemy engine created and instrumented successfully.")
         return engine
@@ -37,10 +36,9 @@ def init_engine():
         raise RuntimeError(f"Database engine initialization failed: {e}")
 
 def init_sessionlocal():
-    """Initializes the SQLAlchemy SessionLocal factory."""
     global SessionLocal, engine
     if engine is None:
-        init_engine() # Ensure engine is initialized first
+        init_engine()
     
     try:
         SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -52,7 +50,6 @@ def init_sessionlocal():
 
 
 def create_tables_db(engine_to_use):
-    """Creates database tables if they don't exist."""
     logger.info("Attempting to create database tables if they don't exist...")
     try:
         inspector = inspect(engine_to_use)
@@ -76,57 +73,53 @@ def create_tables_db(engine_to_use):
         raise
 
 def populate_initial_data_db(session_factory):
-    """Populates initial admin data if no users exist."""
     logger.info("Checking if initial data population is needed...")
     db_session = session_factory()
+    current_config = app_config_module.config
     try:
         user_count = db_session.query(func.count(User.id)).scalar()
         if user_count == 0:
             logger.info("No users found. Populating initial admin data...")
-            admin_username = config.INITIAL_ADMIN_USERNAME
-            admin_email = config.INITIAL_ADMIN_EMAIL
-            admin_password = config.INITIAL_ADMIN_PASSWORD
+            admin_username = current_config.INITIAL_ADMIN_USERNAME
+            admin_email = current_config.INITIAL_ADMIN_EMAIL
+            admin_password = current_config.INITIAL_ADMIN_PASSWORD
 
             if not admin_password:
-                 logger.critical("INITIAL_ADMIN_PASSWORD environment variable is not set. Cannot create initial admin user.")
+                 logger.critical("INITIAL_ADMIN_PASSWORD env var not set. Cannot create initial admin.")
                  return
 
             try:
                 _validate_password_complexity(admin_password)
             except ValueError as e:
-                 logger.critical(f"Initial admin password does not meet complexity requirements: {e}. Cannot create initial admin user.")
+                 logger.critical(f"Initial admin password complexity error: {e}. Cannot create admin.")
                  return
 
             hashed_password = _hash_password(admin_password)
             admin_user = User(
-                username=admin_username,
-                email=admin_email.lower(),
-                password_hash=hashed_password,
-                role=UserRole.ADMIN,
-                is_active=True,
-                email_verified=True
+                username=admin_username, email=admin_email.lower(),
+                password_hash=hashed_password, role=UserRole.ADMIN,
+                is_active=True, email_verified=True
             )
             db_session.add(admin_user)
             db_session.commit()
-            logger.info(f"Initial admin user '{admin_user.username}' created successfully.")
+            logger.info(f"Initial admin user '{admin_user.username}' created.")
         else:
-            logger.info(f"Database already contains {user_count} users. Skipping initial admin data population.")
-    except Exception as e: # Catch any error during population
+            logger.info(f"DB has {user_count} users. Skipping initial data population.")
+    except Exception as e:
         logger.error(f"Error during initial data population: {e}", exc_info=True)
         db_session.rollback()
     finally:
         db_session.close()
 
 def initialize_database():
-    """Initializes the database: creates engine, session, tables, and populates initial data."""
-    global engine, SessionLocal # To ensure they are assigned
+    global engine, SessionLocal
     logger.info("Initializing database...")
     try:
-        current_engine = init_engine() # Get the initialized engine
-        current_session_local = init_sessionlocal() # Get the initialized SessionLocal
+        current_engine = init_engine()
+        current_session_local = init_sessionlocal()
 
-        # Test connection
-        with current_engine.connect() as connection:
+        with current_engine.connect() as connection: # Test connection
+            connection.execute(text("SELECT 1")) # Make sure connection is live
             logger.info("Database connection successful.")
         
         create_tables_db(current_engine)
@@ -135,9 +128,3 @@ def initialize_database():
     except Exception as e:
         logger.critical(f"Full database initialization failed: {e}", exc_info=True)
         raise RuntimeError(f"Full database initialization failed: {e}")
-
-# Call initialization when this module is imported, so SessionLocal and engine are available.
-# This should be called by the main app.py during its setup.
-# For now, let's assume it's called explicitly by app.py.
-# init_engine()
-# init_sessionlocal()

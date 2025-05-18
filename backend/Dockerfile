@@ -23,7 +23,7 @@ ENV GUNICORN_WORKERS=${GUNICORN_WORKERS:-4}
 # Copy requirements.txt first to leverage Docker's layer caching.
 # This assumes requirements.txt is in the same directory as the Dockerfile (the build context).
 COPY backend/ /app/
-RUN /bin/bash
+
 # Install Python dependencies
 # Using --no-cache-dir reduces image size.
 RUN pip install --no-cache-dir --upgrade pip
@@ -41,7 +41,7 @@ EXPOSE 8090
 # 'main:app' refers to the 'app' Flask instance in '/app/main.py'.
 # Gunicorn will look for this in the WORKDIR.
 # The number of workers can be tuned based on your server's resources.
-CMD ["gunicorn",  "--bind", "0.0.0.0:8090", "main:app"]
+CMD ["gunicorn", "--workers", "4", "--bind", "0.0.0.0:8090", "main:app"]
 
 # To run in development mode (e.g., by overriding CMD in docker-compose.yml):
 # CMD ["flask", "run"]

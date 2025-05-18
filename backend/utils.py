@@ -6,29 +6,64 @@ import uuid
 import os
 import json
 import structlog
-from typing import Optional, Dict, Any, Tuple, TypeVar, Type
+from typing import Optional, Dict, Any, Tuple, TypeVar, Type, List # Ensure List is imported
 from sqlalchemy.orm import Query, Session as DBSession
 from sqlalchemy import desc, asc, func
 from werkzeug.exceptions import HTTPException
-from flask import abort, request # For get_pagination_params
-from cryptography.fernet import Fernet, InvalidToken
+from flask import abort, request
+from cryptography.fernet import Fernet, InvalidToken 
 from sqlalchemy.exc import IntegrityError, NoResultFound, SQLAlchemyError
 
-from .config import PAGINATION_DEFAULTS, MAX_PAGE_SIZE # Import pagination constants
-# Assuming models.Base is accessible for TypeVar T, or define T more generically
-# from .models import Base # This would create a circular dependency if utils is imported by models
-# For TypeVar T, if it needs to be Base, utils cannot be imported by models.
-# If T is just 'Any SQLAlchemy model', then it's fine.
-from .extensions import db_operation_duration_histogram, get_fernet # For OTel metrics
+# --- Encryption Key Loading (DEFINED VERY EARLY) ---
+def load_encryption_key(env_var_name: str, file_path: str) -> Optional[bytes]:
+    """
+    Load encryption key from environment variable or file.
+    Args:
+        env_var_name: The name of the environment variable for the key.
+        file_path: The absolute path to the JSON key file.
+    Returns:
+        The encryption key as bytes, or None if not found/error.
+    """
+    # Get a logger instance here, as this function might be called early.
+    # It's better if logger is configured by the app first, but for robustness:
+    _utils_logger = structlog.get_logger("backend.utils.load_encryption_key")
 
+    key_str = os.getenv(env_var_name)
+    if key_str:
+        _utils_logger.info("Encryption key loaded from environment variable.", env_var=env_var_name)
+        return key_str.encode('utf-8')
+
+    _utils_logger.info("Attempting to load encryption key from file.", key_file_path=file_path)
+    try:
+        with open(file_path, 'r') as f:
+            data = json.load(f)
+            key_b64_str = data.get('key_b64')
+            if key_b64_str:
+                _utils_logger.info("Encryption key found in JSON file.", key_file_path=file_path)
+                return key_b64_str.encode('utf-8')
+            else:
+                _utils_logger.error("Key 'key_b64' not found in JSON file.", key_file_path=file_path)
+                return None
+    except FileNotFoundError:
+        _utils_logger.warning("Encryption key file not found.", key_file_path=file_path)
+        return None
+    except json.JSONDecodeError as e:
+        _utils_logger.error("Failed to decode encryption key JSON file.", key_file_path=file_path, error=str(e))
+        return None
+    except Exception as e:
+        _utils_logger.error("Unexpected error loading encryption key from file.", key_file_path=file_path, error=str(e), exc_info=True)
+        return None
+
+# Now import local project modules AFTER load_encryption_key is defined.
+import config as app_config_module
+import extensions # For db_operation_duration_histogram
+
+# Initialize logger for the rest of the module.
 logger = structlog.get_logger(__name__)
-Base = object # Placeholder if models.Base cannot be imported due to circularity for TypeVar
 
-T = TypeVar('T') # More generic TypeVar if Base cannot be imported
 
 # --- Password Utilities ---
 def _validate_password_complexity(password: str) -> None:
-    """Validates password complexity requirements."""
     if len(password) < 8: raise ValueError("Password must be at least 8 characters long.")
     if not re.search(r'[A-Z]', password): raise ValueError("Password must contain at least one uppercase letter.")
     if not re.search(r'[a-z]', password): raise ValueError("Password must contain at least one lowercase letter.")
@@ -36,13 +71,10 @@ def _validate_password_complexity(password: str) -> None:
     if not re.search(r'[!@#$%^&*()_+=\-[\]{};\':"\\|,.<>/?`~]', password): raise ValueError("Password must contain at least one special character.")
 
 def _hash_password(password: str) -> str:
-    """Hashes a password using bcrypt."""
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt(rounds=12)).decode('utf-8')
 
 def _verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verifies a plain password against a hashed password."""
-    if not plain_password or not hashed_password:
-        return False
+    if not plain_password or not hashed_password: return False
     try:
         return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
     except Exception as e:
@@ -50,96 +82,105 @@ def _verify_password(plain_password: str, hashed_password: str) -> bool:
         return False
 
 # --- Pagination and Sorting Utilities ---
-def apply_sorting(query: Query, model_cls: Type[T], sort_by: Optional[str], sort_order: Optional[str]) -> Query:
-    """Applies sorting to a SQLAlchemy query."""
+def apply_sorting(query: Query, model_cls: Type[Any], sort_by: Optional[str], sort_order: Optional[str]) -> Query:
     if sort_by and hasattr(model_cls, sort_by):
         column_to_sort = getattr(model_cls, sort_by)
-        if sort_order == "desc":
-            query = query.order_by(desc(column_to_sort))
-        else:
-            query = query.order_by(asc(column_to_sort))
-    elif not query._order_by_clauses: # Check if _order_by_clauses exists and is empty
-        if hasattr(model_cls, "created_at"):
-             query = query.order_by(desc(getattr(model_cls, "created_at")))
-        elif hasattr(model_cls, "name"):
-             query = query.order_by(asc(getattr(model_cls, "name")))
+        if sort_order == "desc": query = query.order_by(desc(column_to_sort))
+        else: query = query.order_by(asc(column_to_sort))
+    elif not query._order_by_clauses: # type: ignore
+        if hasattr(model_cls, "created_at"): query = query.order_by(desc(getattr(model_cls, "created_at")))
+        elif hasattr(model_cls, "name"): query = query.order_by(asc(getattr(model_cls, "name")))
     return query
 
 def paginate_query(
-    query: Query,
-    model_cls: Type[T],
-    page: int,
-    per_page: int,
-    max_per_page: int = MAX_PAGE_SIZE, # Use constant from config
-    sort_by: Optional[str] = None,
-    sort_order: Optional[str] = "asc"
+    query: Query, model_cls: Type[Any], page: int, per_page: int,
+    max_per_page: int = -1, 
+    sort_by: Optional[str] = None, sort_order: Optional[str] = "asc"
 ) -> Dict[str, Any]:
-    """Paginates a SQLAlchemy query."""
+    if max_per_page == -1: # Use config if not overridden
+        max_per_page = app_config_module.config.MAX_PAGE_SIZE
+
     per_page = min(abs(per_page), max_per_page)
-    page = abs(page) if page > 0 else 1 # Ensure page is at least 1
+    page = abs(page) if page > 0 else 1
 
     query_for_sort_count = apply_sorting(query, model_cls, sort_by, sort_order)
     
+    total_items = 0
     try:
-        # Optimized count: remove order_by for counting if it doesn't affect the count result.
-        # However, some complex queries with joins might need specific count approaches.
-        count_query = query_for_sort_count.order_by(None) # Remove order_by for count
+        # Detach order_by for counting, as it can be slow and is not needed for the count itself.
+        count_query = query_for_sort_count.order_by(None) # type: ignore
         total_items = count_query.count()
     except Exception as e:
-        logger.warning(f"Efficient count failed, trying with entities: {e}", exc_info=False)
-        # Fallback for more complex queries if .count() fails after order_by(None)
-        # This might be slower or also fail depending on the query.
+        logger.warning(f"Efficient count failed for {model_cls.__name__}, trying with entities: {e}", exc_info=False)
         try:
-            total_items = query_for_sort_count.with_entities(func.count()).scalar()
+            # Fallback count method for more complex queries
+            total_items = query_for_sort_count.with_entities(func.count()).scalar() # type: ignore
         except Exception as count_err:
-            logger.error(f"Count query failed for pagination: {count_err}", exc_info=True)
+            logger.error(f"Count query failed for pagination of {model_cls.__name__}: {count_err}", exc_info=True)
             abort(500, "Error counting items for pagination.")
 
-
     offset = (page - 1) * per_page
-    # Re-apply sorting to the query that fetches items, if it was removed for count
-    # The original query_for_sort_count already has sorting.
-    items = query_for_sort_count.limit(per_page).offset(offset).all()
+    items_raw = query_for_sort_count.limit(per_page).offset(offset).all()
+    
+    items_list: List[Dict[Any, Any]] = [] # Ensure items_list is always a list of dicts
+    if items_raw:
+        if hasattr(items_raw[0], 'to_dict') and callable(getattr(items_raw[0], 'to_dict')):
+            items_list = [item.to_dict() for item in items_raw] # type: ignore
+        else:
+            logger.warning(f"Model {model_cls.__name__} instances do not have a to_dict method. Pagination items may be incomplete or incorrect.")
+            # Attempting a generic conversion; this might not be suitable for all models.
+            try:
+                items_list = [vars(item) for item in items_raw]
+                # Remove SQLAlchemy internal state if present
+                for item_dict in items_list:
+                    item_dict.pop('_sa_instance_state', None)
+            except TypeError:
+                 logger.error(f"Could not convert items of {model_cls.__name__} to dicts using vars().")
+                 items_list = [] # Fallback to empty list if vars() fails
 
     total_pages = (total_items + per_page - 1) // per_page if total_items > 0 else 0
 
     return {
-        "items": [item.to_dict() for item in items if hasattr(item, 'to_dict')],
-        "page": page,
-        "per_page": per_page,
-        "total_items": total_items,
-        "total_pages": total_pages,
-        "has_next": page < total_pages,
-        "has_prev": page > 1,
-        "sort_by": sort_by,
-        "sort_order": sort_order
+        "items": items_list, "page": page, "per_page": per_page,
+        "total_items": total_items, "total_pages": total_pages,
+        "has_next": page < total_pages, "has_prev": page > 1,
+        "sort_by": sort_by, "sort_order": sort_order
     }
 
 def get_pagination_params() -> Tuple[int, int, Optional[str], Optional[str]]:
-    """Extracts pagination and sorting parameters from request arguments."""
-    page = request.args.get('page', default=PAGINATION_DEFAULTS["page"], type=int)
-    per_page = request.args.get('per_page', default=PAGINATION_DEFAULTS["per_page"], type=int)
+    # Access pagination defaults from the imported config module
+    pagination_defaults = app_config_module.config.PAGINATION_DEFAULTS
+    
+    page_str = request.args.get('page', type=str) # Get as string to handle empty or invalid
+    per_page_str = request.args.get('per_page', type=str)
+
+    try:
+        page = int(page_str) if page_str and page_str.isdigit() else pagination_defaults["page"]
+    except (ValueError, TypeError):
+        page = pagination_defaults["page"]
+    
+    try:
+        per_page = int(per_page_str) if per_page_str and per_page_str.isdigit() else pagination_defaults["per_page"]
+    except (ValueError, TypeError):
+        per_page = pagination_defaults["per_page"]
+
     sort_by = request.args.get('sort_by', default=None, type=str)
     sort_order = request.args.get('sort_order', default="asc", type=str)
 
     page = max(1, page)
-    per_page = max(1, min(per_page, PAGINATION_DEFAULTS["max_per_page"]))
-    if sort_order not in ["asc", "desc"]:
-        sort_order = "asc"
+    per_page = max(1, min(per_page, pagination_defaults["max_per_page"]))
+    if sort_order not in ["asc", "desc"]: sort_order = "asc"
     return page, per_page, sort_by, sort_order
-
 
 # --- Database Utilities ---
 def _handle_sqlalchemy_error(e: SQLAlchemyError, context: str, db: DBSession):
-    """Handles SQLAlchemy errors by rolling back and aborting with appropriate HTTP status."""
-    db.rollback()
-    logger.error(f"SQLAlchemy Error during {context}", exc_info=True, error_type=type(e).__name__, orig_error=str(getattr(e, 'orig', None)))
+    db.rollback() # Ensure rollback happens first
+    logger.error(f"SQLAlchemy Error: {context}", exc_info=True, error_type=type(e).__name__, orig_error=str(getattr(e, 'orig', None)))
     
     if isinstance(e, IntegrityError):
-        detail = getattr(e.orig, 'diag', None)
+        detail = getattr(e.orig, 'diag', None) # For psycopg2, might differ for other DBs
         constraint_name = detail.constraint_name if detail else None
         error_message = str(e.orig).lower() if hasattr(e, 'orig') and e.orig is not None else str(e).lower()
-
 
         if constraint_name == 'users_username_key' or 'unique constraint "users_username_key"' in error_message:
             abort(409, description="Username already exists.")
@@ -148,81 +189,55 @@ def _handle_sqlalchemy_error(e: SQLAlchemyError, context: str, db: DBSession):
         elif constraint_name == 'tree_user_unique' or 'unique constraint "tree_user_unique"' in error_message:
              abort(409, description="User already has access to this tree.")
         elif 'foreign key constraint' in error_message:
-             abort(409, description=f"Cannot complete action due to related data dependencies.")
+             # Try to provide a more generic but helpful message if specific parsing is hard
+             abort(409, description=f"Cannot complete action due to a data dependency conflict in '{context}'.")
         elif "not null constraint failed" in error_message or "null value in column" in error_message:
-            column_match = re.search(r"column \"(.*?)\"", error_message)
+            column_match = re.search(r"column \"(.*?)\"", error_message) # DB specific parsing
             column_name = column_match.group(1) if column_match else "a required field"
-            abort(400, description=f"Missing required field: {column_name}.")
+            abort(400, description=f"Missing required field: {column_name} for '{context}'.")
         else:
-            abort(409, description=f"Database conflict during {context}. Please check your input.")
+            abort(409, description=f"A database conflict occurred while {context}. Please check your input.")
     elif isinstance(e, NoResultFound):
-        abort(404, description="The requested resource was not found.")
-    else:
+        abort(404, description=f"The requested resource for '{context}' was not found.")
+    else: # Catch-all for other SQLAlchemyErrors
         abort(500, description=f"A database error occurred while {context}. Please try again later.")
 
 
-def _get_or_404(db: DBSession, model_cls: Type[T], model_id: uuid.UUID, tree_id: Optional[uuid.UUID] = None) -> T:
-    """Fetches a model instance by ID or aborts with 404 if not found."""
-    # This span is better placed in the service layer that calls this utility.
-    # For simplicity, keeping it here if this util is widely used directly by routes (though less ideal).
-    # with tracer.start_as_current_span(f"db.get.{model_cls.__name__}") as span:
-    #     span.set_attribute("db.system", "postgresql")
-    #     span.set_attribute(f"{model_cls.__name__}.id", str(model_id))
-    #     if tree_id: span.set_attribute("tree.id", str(tree_id))
-        
+def _get_or_404(db: DBSession, model_cls: Type[Any], model_id: uuid.UUID, tree_id: Optional[uuid.UUID] = None) -> Any:
     start_time = time.monotonic()
     obj = None
     try:
         query = db.query(model_cls)
         if tree_id and hasattr(model_cls, 'tree_id'):
-             query = query.filter(model_cls.tree_id == tree_id) # type: ignore
+             query = query.filter(getattr(model_cls, 'tree_id') == tree_id)
         
-        obj = query.filter(model_cls.id == model_id).one_or_none() # type: ignore
+        obj = query.filter(getattr(model_cls, 'id') == model_id).one_or_none()
         
         duration = (time.monotonic() - start_time) * 1000
-        if db_operation_duration_histogram: # Check if metric is initialized
-            db_operation_duration_histogram.record(duration, {"db.operation": f"get.{model_cls.__name__}", "db.status": "success" if obj else "not_found"})
+        if extensions.db_operation_duration_histogram: # Check if metric is initialized
+            extensions.db_operation_duration_histogram.record(duration, {"db.operation": f"get.{model_cls.__name__}", "db.status": "success" if obj else "not_found"})
 
         if obj is None:
             message = f"{model_cls.__name__} with ID {model_id} not found"
-            if tree_id and hasattr(model_cls, 'tree_id'):
-                message += f" in tree {tree_id}"
-            logger.warning("Resource not found", model_name=model_cls.__name__, model_id=model_id, tree_id=tree_id)
-            # if span: span.set_attribute("db.found", False)
+            if tree_id and hasattr(model_cls, 'tree_id'): message += f" in tree {tree_id}"
+            logger.warning("Resource not found by _get_or_404", model_name=model_cls.__name__, model_id=model_id, tree_id=tree_id)
             abort(404, description=message)
         
-        # if span: span.set_attribute("db.found", True)
         return obj
-    except SQLAlchemyError as e:
-        duration = (time.monotonic() - start_time) * 1000
-        if db_operation_duration_histogram:
-            db_operation_duration_histogram.record(duration, {"db.operation": f"get.{model_cls.__name__}", "db.status": "error"})
-        # if span:
-        #     span.record_exception(e)
-        #     span.set_status(trace.Status(trace.StatusCode.ERROR, f"DB Error: {e}"))
+    except SQLAlchemyError as e: # Catch SQLAlchemy errors specifically
+        duration = (time.monotonic() - start_time) # type: ignore
+        if extensions.db_operation_duration_histogram:
+            extensions.db_operation_duration_histogram.record(duration * 1000, {"db.operation": f"get.{model_cls.__name__}", "db.status": "error"})
         _handle_sqlalchemy_error(e, f"fetching {model_cls.__name__} ID {model_id}", db) # This will abort
-    except HTTPException:
+    except HTTPException: # Re-raise HTTPExceptions (like abort(404))
         raise
-    except Exception as e:
-        if 'start_time' in locals():
-            duration = (time.monotonic() - start_time) * 1000
-            if db_operation_duration_histogram:
-                db_operation_duration_histogram.record(duration, {"db.operation": f"get.{model_cls.__name__}", "db.status": "error"})
-        # if span:
-        #     span.record_exception(e)
-        #     span.set_status(trace.Status(trace.StatusCode.ERROR, "Non-DB Error during fetch"))
-        logger.error(f"Unexpected error fetching {model_cls.__name__} ID {model_id}", exc_info=True)
+    except Exception as e: # Catch any other unexpected errors
+        if 'start_time' in locals(): # type: ignore
+            duration = (time.monotonic() - start_time) * 1000 # type: ignore
+            if extensions.db_operation_duration_histogram:
+                extensions.db_operation_duration_histogram.record(duration, {"db.operation": f"get.{model_cls.__name__}", "db.status": "error"})
+        logger.error(f"Unexpected error in _get_or_404 for {model_cls.__name__} ID {model_id}", exc_info=True)
         abort(500, "An unexpected error occurred while retrieving data.")
-    return None # Should be unreachable due to aborts
-
-# --- Encryption Utilities (Fernet related) ---
-# The EncryptedString TypeDecorator is now in models.py for easier model definition.
-# The Fernet suite instance itself should be managed by the app and passed around or accessed via app context/extensions.
-
-# Example of how EncryptedString in models.py might get its Fernet instance:
-# from .extensions import fernet_suite # If fernet_suite is initialized in extensions.py
-# class MyModel(Base):
-#     sensitive_field = Column(EncryptedString(fernet_instance=fernet_suite))
-
-# Or, if EncryptedString uses a global from extensions:
-# from .models import EncryptedString # Assuming EncryptedString internally calls get_fernet()
+    # This line should ideally not be reached if aborts are raised correctly.
+    # Adding a type hint that matches the expected return type if obj is found.
+    return None # Should be unreachable if aborts occur
