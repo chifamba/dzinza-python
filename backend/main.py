@@ -3,12 +3,12 @@ import os
 import uuid
 import structlog
 from flask import Flask, g, jsonify, request
-from werkzeug.exceptions import HTTPException # Ensure HTTPException is imported for error handler
+from werkzeug.exceptions import HTTPException
 from cryptography.fernet import Fernet
 
 import config as app_config_module
 # Import the database module itself to access its members directly after init
-import database as db_module
+import database as db_module 
 import extensions as app_extensions_module
 from utils import load_encryption_key
 
@@ -50,22 +50,23 @@ def create_app(app_config_obj=app_config_module.config):
         app_extensions_module.fernet_suite = None
 
 
+    # Initialize database: engine, session factory, tables, initial data
+    # This will populate _thread_local.engine and _thread_local.session_factory for the main thread.
+    # Worker threads will initialize their own on first access via get_engine()/get_session_factory().
     if not app_config_obj.SKIP_DB_INIT:
         try:
-            db_module.initialize_database() # This calls init_engine and init_sessionlocal within database.py
+            db_module.initialize_database() 
             logger.info("Database initialized successfully by create_app.")
         except Exception as e:
             logger.critical(f"Application startup failed: Database initialization error.", error=str(e), exc_info=True)
             raise 
     else:
         logger.info("Skipping database initialization as per SKIP_DB_INIT.")
-        # Ensure engine and SessionLocal are attempted if not skipping.
-        if not db_module.engine: 
-            try: db_module.init_engine() 
-            except Exception as e: logger.critical(f"DB engine init failed when skipping full init: {e}", exc_info=True); raise
-        if not db_module.SessionLocal: 
-            try: db_module.init_sessionlocal()
-            except Exception as e: logger.critical(f"DB SessionLocal init failed when skipping full init: {e}", exc_info=True); raise
+        # Still ensure engine and session factory are callable for the main thread
+        # if full init is skipped, as they might be accessed by other parts of app setup.
+        # get_engine() and get_session_factory() will handle initialization if not already done.
+        db_module.get_engine()
+        db_module.get_session_factory()
 
 
     app_extensions_module.init_extensions(app)
@@ -79,11 +80,8 @@ def create_app(app_config_obj=app_config_module.config):
 
     @app.before_request
     def before_request_hook():
-        # Always get SessionLocal directly from the database module to ensure it's the initialized one
-        if not db_module.SessionLocal: 
-            logger.error("db_module.SessionLocal is not initialized. Cannot create DB session for request.")
-            app.aborter(500, description="Database session factory not available.")
-        g.db = db_module.SessionLocal() # Use the factory from the database module
+        # Get a thread-local session using the new get_db_session function
+        g.db = db_module.get_db_session()
         structlog.contextvars.bind_contextvars(
             request_id=str(uuid.uuid4()), path=request.path, method=request.method,
             remote_addr=request.remote_addr
@@ -91,19 +89,23 @@ def create_app(app_config_obj=app_config_module.config):
 
     @app.teardown_appcontext
     def teardown_db_hook(exception=None):
-        db = g.pop('db', None)
-        if db is not None:
-            try:
-                if exception: db.rollback(); logger.debug("DB session rolled back due to exception.", exc_info=exception)
-            except Exception as e: logger.error("Error during DB session rollback.", error=str(e), exc_info=True)
-            finally:
-                try: db.close()
-                except Exception as e: logger.error("Error closing DB session.", error=str(e), exc_info=True)
+        # g.db is the session instance from get_db_session()
+        # For scoped_session, remove() is the standard way to return the session to the pool
+        # and clear it from the current thread's scope.
+        # The session itself (g.db) will be closed by scoped_session's management.
+        session_factory = db_module.get_session_factory()
+        if session_factory: # Ensure factory is available
+            session_factory.remove()
+            # logger.debug("DB session removed by scoped_session factory at teardown.") # Optional log
+        
+        # Clean up g.db to avoid potential leaks if remove() didn't clear it from g
+        g.pop('db', None) 
         structlog.contextvars.clear_contextvars()
+
 
     @app.errorhandler(Exception)
     def handle_global_exception(e):
-        if not isinstance(e, HTTPException): # Check if it's already an HTTPException
+        if not isinstance(e, HTTPException): 
             logger.error("Unhandled exception caught by global error handler.", exc_info=e, error_type=type(e).__name__)
         
         response_data = {"error": "Internal Server Error", "message": "An unexpected error occurred."}

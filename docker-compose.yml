@@ -75,7 +75,7 @@ services:
         # Changed from localhost to service name
       - REACT_APP_API_URL=http://backend:8090/api
       - FRONTEND_APP_URL=http://frontend:5173
-    restart: unless-stopped
+    restart: no #unless-stopped
     logging: *logging
   frontend:
     build:
