@@ -32,3 +32,4 @@ pytest  # Testing framework
 pytest-flask  # Flask testing utilities
 mypy  # Type checking
 flake8  # Linting
+gunicorn
