@@ -13,6 +13,7 @@ ENV PYTHONPATH=/backend
 ENV FLASK_APP=app.main
 ENV FLASK_RUN_HOST=0.0.0.0
 ENV FLASK_RUN_PORT=8090
+ENV FLASK_DEBUG=1
 # Set FLASK_DEBUG=0 for production builds, or pass via docker-compose for dev
 # ENV FLASK_DEBUG=0
 

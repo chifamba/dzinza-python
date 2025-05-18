@@ -5,10 +5,7 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Copy the demo service script into the container
-COPY demo_service.py /app/demo_service.py
-
-# Copy the backend directory into the container
-COPY backend /app/backend
+COPY ./ /app/
 
 # Install any needed packages specified in requirements.txt
 RUN pip install --no-cache-dir -r /app/backend/requirements.txt
@@ -17,4 +14,4 @@ RUN pip install --no-cache-dir -r /app/backend/requirements.txt
 EXPOSE 5000
 
 # Run demo_service.py when the container launches
-CMD ["python", "demo_service.py"]
+CMD ["python", "demo.py"]

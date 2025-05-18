@@ -37,7 +37,8 @@ fi
 cleanup() {
     echo "Shutting down Docker Compose services..."
     # Use the detected command
-    $DOCKER_COMPOSE_CMD down -v --remove-orphans # Stop and remove containers, networks, volumes
+    # $DOCKER_COMPOSE_CMD down -v --remove-orphans # Stop and remove containers, networks, volumes
+    $DOCKER_COMPOSE_CMD down --remove-orphans # Stop and remove containers, networks, volumes
     echo "Shutdown complete."
     exit 0
 }
