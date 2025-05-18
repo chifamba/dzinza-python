@@ -22,7 +22,7 @@ logger = structlog.get_logger(__name__)
 
 # Custom EncryptedString Type
 class EncryptedString(TypeDecorator):
-    impl = Text # Use Text for potentially longer encrypted strings
+    impl = Text 
     cache_ok = True
     """
     A custom SQLAlchemy type for encrypting and decrypting string data using Fernet.
@@ -33,15 +33,11 @@ class EncryptedString(TypeDecorator):
         super().__init__(*args, **kwargs)
 
     def _get_fernet_instance(self):
-        # Lazily get the globally configured Fernet instance
-        # This assumes 'extensions' module is importable and 'get_fernet' is defined there
         try:
-            from extensions import get_fernet # Local import to avoid top-level circular issues
+            from extensions import get_fernet 
             fernet_instance = get_fernet()
             if fernet_instance is None:
-                # This log might be noisy if encryption is intentionally disabled.
-                # Consider if this warning level is appropriate or should be debug/info.
-                logger.warning("EncryptedString: Fernet suite not available at runtime. Encryption/Decryption will not occur.")
+                logger.warning("EncryptedString: Fernet suite not available. Encryption/Decryption disabled.")
             return fernet_instance
         except ImportError:
             logger.error("EncryptedString: Could not import 'get_fernet' from 'extensions'. Fernet unavailable.")
@@ -65,7 +61,7 @@ class EncryptedString(TypeDecorator):
                 return fernet.encrypt(encoded_value).decode('utf-8')
             except Exception as e:
                 logger.error("Encryption failed for value.", error=str(e), exc_info=False)
-                logger.critical("Storing plaintext due to encryption failure. Review key setup and Fernet initialization.")
+                logger.critical("Storing plaintext due to encryption failure. Review key setup.")
                 return str(value) 
         return value
     """
@@ -86,7 +82,7 @@ class EncryptedString(TypeDecorator):
                 encrypted_bytes = str(value).encode('utf-8')
                 return fernet.decrypt(encrypted_bytes).decode('utf-8')
             except InvalidToken:
-                logger.error("Decryption failed: Invalid token or signature.", field_value_start=str(value)[:20], exc_info=False)
+                logger.error("Decryption failed: Invalid token.", field_value_start=str(value)[:20], exc_info=False)
                 return None 
             except Exception as e:
                  logger.error("Unexpected error during decryption.", error=str(e), field_value_start=str(value)[:20], exc_info=False)
@@ -104,13 +100,24 @@ class EncryptedString(TypeDecorator):
     """
 
 
+<<<<<<< HEAD
 # Enums
 class RoleEnum(str, enum.Enum):
     user = "user"; admin = "admin"; researcher = "researcher"; guest = "guest"
     """
     Defines the possible roles for a user.
     """
+=======
+# --- Consolidated UserRole Enum ---
+class UserRole(str, enum.Enum):
+    user = "user"
+    admin = "admin"
+    researcher = "researcher"
+    guest = "guest"
+>>>>>>> temp_branch
 
+
+# Other Enums (kept separate as they serve different purposes)
 class RelationshipTypeEnum(str, enum.Enum):
     biological_parent = "biological_parent"; adoptive_parent = "adoptive_parent"; step_parent = "step_parent"
     foster_parent = "foster_parent"; guardian = "guardian"; spouse_current = "spouse_current"
@@ -135,12 +142,15 @@ class MediaTypeEnum(str, enum.Enum):
     Defines the types of media that can be associated with the tree.
     """
 
+<<<<<<< HEAD
 class UserRole(enum.Enum):
     USER = "user"; ADMIN = "admin"
     """
     Defines the distinct roles for users within the application.
     """
 
+=======
+>>>>>>> temp_branch
 # Models
 class User(Base):
     """
@@ -151,8 +161,9 @@ class User(Base):
     username = Column(String(100), nullable=False, unique=True, index=True)
     email = Column(String(255), nullable=False, unique=True, index=True)
     password_hash = Column(String(255), nullable=False)
-    full_name = Column(String(255)) # Could be EncryptedString
-    role = Column(SQLAlchemyEnum(UserRole), default=UserRole.USER, nullable=False)
+    full_name = Column(String(255)) 
+    # Uses the consolidated UserRole enum
+    role = Column(SQLAlchemyEnum(UserRole, name="userrole", create_type=False), default='user', nullable=False)
     is_active = Column(Boolean, default=True)
     email_verified = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
@@ -198,7 +209,7 @@ class Tree(Base):
     description = Column(Text)
     created_by = Column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
     is_public = Column(Boolean, default=False)
-    default_privacy_level = Column(SQLAlchemyEnum(PrivacyLevelEnum), default=PrivacyLevelEnum.private)
+    default_privacy_level = Column(SQLAlchemyEnum(PrivacyLevelEnum, name="privacylevelenum", create_type=False), default=PrivacyLevelEnum.private)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -223,7 +234,7 @@ class TreeAccess(Base):
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tree_id = Column(PG_UUID(as_uuid=True), ForeignKey("trees.id", ondelete="CASCADE"), nullable=False, index=True)
     user_id = Column(PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    access_level = Column(String(50), nullable=False, default="view")
+    access_level = Column(String(50), nullable=False, default="view") # Could also be an Enum if desired
     granted_by = Column(PG_UUID(as_uuid=True), ForeignKey("users.id"))
     granted_at = Column(DateTime, default=datetime.utcnow)
     __table_args__ = (UniqueConstraint("tree_id", "user_id", name="tree_user_unique"),)
@@ -260,7 +271,7 @@ class Person(Base):
     death_date_approx = Column(Boolean, default=False)
     death_place = Column(EncryptedString)
     burial_place = Column(EncryptedString)
-    privacy_level = Column(SQLAlchemyEnum(PrivacyLevelEnum), default=PrivacyLevelEnum.inherit)
+    privacy_level = Column(SQLAlchemyEnum(PrivacyLevelEnum, name="privacylevelenum", create_type=False), default=PrivacyLevelEnum.inherit)
     is_living = Column(Boolean, index=True)
     notes = Column(EncryptedString) 
     custom_attributes = Column(JSONB, default=dict)
@@ -297,7 +308,7 @@ class Relationship(Base):
     tree_id = Column(PG_UUID(as_uuid=True), ForeignKey("trees.id", ondelete="CASCADE"), nullable=False, index=True)
     person1_id = Column(PG_UUID(as_uuid=True), ForeignKey("people.id", ondelete="CASCADE"), nullable=False, index=True)
     person2_id = Column(PG_UUID(as_uuid=True), ForeignKey("people.id", ondelete="CASCADE"), nullable=False, index=True)
-    relationship_type = Column(SQLAlchemyEnum(RelationshipTypeEnum), nullable=False)
+    relationship_type = Column(SQLAlchemyEnum(RelationshipTypeEnum, name="relationshiptypeenum", create_type=False), nullable=False)
     start_date = Column(Date); end_date = Column(Date)
     certainty_level = Column(Integer)
     custom_attributes = Column(JSONB, default=dict)
@@ -338,7 +349,7 @@ class Event(Base):
     place = Column(EncryptedString) 
     description = Column(EncryptedString) 
     custom_attributes = Column(JSONB, default=dict)
-    privacy_level = Column(SQLAlchemyEnum(PrivacyLevelEnum), default=PrivacyLevelEnum.inherit)
+    privacy_level = Column(SQLAlchemyEnum(PrivacyLevelEnum, name="privacylevelenum", create_type=False), default=PrivacyLevelEnum.inherit)
     created_by = Column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -351,12 +362,12 @@ class Media(Base):
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tree_id = Column(PG_UUID(as_uuid=True), ForeignKey("trees.id", ondelete="CASCADE"), nullable=False, index=True)
     file_path = Column(String(512), nullable=False); storage_bucket = Column(String(255), nullable=False)
-    media_type = Column(SQLAlchemyEnum(MediaTypeEnum), nullable=False)
+    media_type = Column(SQLAlchemyEnum(MediaTypeEnum, name="mediatypeenum", create_type=False), nullable=False)
     original_filename = Column(String(255)); file_size = Column(Integer); mime_type = Column(String(100))
     title = Column(String(255), index=True); description = Column(Text)
     date_taken = Column(Date); location = Column(EncryptedString) 
     media_metadata = Column(JSONB, default=dict)
-    privacy_level = Column(SQLAlchemyEnum(PrivacyLevelEnum), default=PrivacyLevelEnum.inherit)
+    privacy_level = Column(SQLAlchemyEnum(PrivacyLevelEnum, name="privacylevelenum", create_type=False), default=PrivacyLevelEnum.inherit)
     created_by = Column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
     uploaded_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

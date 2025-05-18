@@ -5,13 +5,15 @@ Defines the Flask blueprint for health check and metrics API endpoints.
 
 import time
 import structlog
-from datetime import datetime # For timestamp
+from datetime import datetime
 from flask import Blueprint, jsonify, make_response, abort
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import text
+from werkzeug.exceptions import HTTPException # Added for abort context
 
 from extensions import limiter
-from database import SessionLocal # For direct session usage
+# Import get_db_session from the database module
+from database import get_db_session, get_session_factory # get_session_factory for remove()
 
 logger = structlog.get_logger(__name__)
 health_bp = Blueprint('health_api', __name__)
@@ -29,21 +31,34 @@ def health_check_endpoint():
     dependencies = {}
     
     start_time_db_check = time.monotonic()
-    health_db_session = None # Initialize to None
+    health_db_session = None 
     try:
-        if not SessionLocal:
-            raise RuntimeError("SessionLocal not initialized for health check.")
-        health_db_session = SessionLocal()
+        # Use the thread-safe session getter
+        health_db_session = get_db_session()
+        if not health_db_session: # Should not happen if get_db_session is robust
+            raise RuntimeError("Failed to get DB session for health check.")
+            
         health_db_session.execute(text("SELECT 1"))
+        # No explicit commit needed for a SELECT if session is in autocommit or if not modifying data
         db_status = "healthy"
     except SQLAlchemyError as e:
         db_status = "unhealthy"; service_status = "unhealthy"
-        logger.error(f"DB health check failed: {e}", exc_info=False)
-    except Exception as e:
+        logger.error(f"DB health check failed (SQLAlchemyError): {e}", exc_info=False)
+    except RuntimeError as re: # Catch RuntimeError from get_db_session if factory not init
+        db_status = "error"; service_status = "unhealthy"
+        logger.error(f"DB health check failed (RuntimeError getting session): {re}", exc_info=True)
+    except Exception as e: # Catch other unexpected errors
         db_status = "error"; service_status = "unhealthy"
         logger.error(f"Unexpected error during DB health check: {e}", exc_info=True)
     finally:
-        if health_db_session: health_db_session.close()
+        if health_db_session:
+            # For scoped_session, it's good practice to remove it.
+            # The session itself will be closed by the scoped_session manager.
+            session_factory = get_session_factory()
+            if session_factory:
+                session_factory.remove() 
+            # health_db_session.close() # Also acceptable, but remove() is more specific for scoped_session
+        
         end_time_db_check = time.monotonic()
         db_latency_ms = (end_time_db_check - start_time_db_check) * 1000
 
@@ -74,3 +89,4 @@ def metrics_api_endpoint():
     except Exception as e:
         logger.error(f"Error generating Prometheus metrics: {e}", exc_info=True)
         abort(500, "Error generating Prometheus metrics.")
+

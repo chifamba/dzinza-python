@@ -18,7 +18,6 @@ ENV FLASK_RUN_PORT=8090
 # This can be overridden at runtime (e.g., via docker-compose) for development.
 ENV FLASK_DEBUG=0
 # Optional: Set Gunicorn workers, can also be overridden
-ENV GUNICORN_WORKERS=${GUNICORN_WORKERS:-4}
 
 # Copy requirements.txt first to leverage Docker's layer caching.
 # This assumes requirements.txt is in the same directory as the Dockerfile (the build context).
@@ -41,7 +40,7 @@ EXPOSE 8090
 # 'main:app' refers to the 'app' Flask instance in '/app/main.py'.
 # Gunicorn will look for this in the WORKDIR.
 # The number of workers can be tuned based on your server's resources.
-CMD ["gunicorn", "--workers", "4", "--bind", "0.0.0.0:8090", "main:app"]
+CMD ["gunicorn", "--workers", "1", "--bind", "0.0.0.0:8090", "main:app"]
 
 # To run in development mode (e.g., by overriding CMD in docker-compose.yml):
 # CMD ["flask", "run"]

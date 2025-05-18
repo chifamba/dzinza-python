@@ -1,5 +1,5 @@
 import unittest
-from app.main import _hash_password, _verify_password
+from backend.main import _hash_password, _verify_password
 
 class TestPasswordHashing(unittest.TestCase):
 
