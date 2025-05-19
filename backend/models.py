@@ -182,6 +182,7 @@ class Person(Base):
     privacy_level = Column(SQLAlchemyEnum(PrivacyLevelEnum, name="privacylevelenum", create_type=False), default=PrivacyLevelEnum.inherit)
     is_living = Column(Boolean, index=True)
     notes = Column(EncryptedString) 
+    biography = Column(EncryptedString)
     custom_attributes = Column(JSONB, default=dict)
     created_by = Column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
@@ -198,7 +199,7 @@ class Person(Base):
             "death_date_approx": self.death_date_approx, "death_place": self.death_place,
             "place_of_death": self.place_of_death,
             "burial_place": self.burial_place, "privacy_level": self.privacy_level.value,
-            "is_living": self.is_living, "notes": self.notes, "custom_attributes": self.custom_attributes,
+            "is_living": self.is_living, "notes": self.notes, "biography": self.biography, "custom_attributes": self.custom_attributes,
             "created_by": str(self.created_by),
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None}
