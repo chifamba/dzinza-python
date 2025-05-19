@@ -1,0 +1,59 @@
+{
+  "users": [
+    {
+      "username": "admin",
+      "password": "01Admin_2025",
+      "role": "admin"
+    },
+    {
+      "username": "demo01",
+      "password": "demo01_2025",
+      "role": "user"
+    },
+    {
+      "username": "demo02",
+      "password": "demo02_2025",
+      "role": "user"
+    },
+    {
+      "username": "demo03",
+      "password": "demo03_2025",
+      "role": "user"
+    },
+    {
+      "username": "demo04",
+      "password": "demo04_2025",
+      "role": "user"
+    },
+    {
+      "username": "demo05",
+      "password": "demo05_2025",
+      "role": "user"
+    },
+    {
+      "username": "demo06",
+      "password": "demo06_2025",
+      "role": "user"
+    },
+    {
+      "username": "demo07",
+      "password": "demo07_2025",
+      "role": "user"
+    },
+    {
+      "username": "demo08",
+      "password": "demo08_2025",
+      "role": "user"
+    },
+    {
+      "username": "demo09",
+      "password": "demo09_2025",
+      "role": "user"
+    },
+    {
+      "username": "demo10",
+      "password": "demo10_2025",
+      "role": "user"
+    }
+  ]
+}

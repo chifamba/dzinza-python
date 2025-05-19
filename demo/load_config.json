@@ -1,0 +1,27 @@
+{
+  "api_base_url": "http://127.0.0.1:8090",
+  "num_users_to_process": null,
+  "users_to_process": [
+    "admin",
+    "demo01",
+    "demo02",
+    "demo03",
+    "demo04",
+    "demo05",
+    "demo06",
+    "demo07",
+    "demo08",
+    "demo09",
+    "demo10"
+  ],
+  "num_trees_per_user": 1,
+  "tree_base_name": "Demo Generated Family Tree",
+  "num_generations": 10,
+  "initial_couples_per_tree": 1,
+  "min_children_per_couple": 0,
+  "max_children_per_couple": 6,
+  "chance_of_marriage_in_generation": 0.8,
+  "max_retries": 3,
+  "retry_delay_seconds": 5,
+  "log_level": "INFO"
+}
