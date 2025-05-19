@@ -1,7 +1,4 @@
 # backend/blueprints/admin.py
-"""Blueprint for admin-related API endpoints."""
-
-
 import uuid
 import structlog
 from flask import Blueprint, request, jsonify, g, session, abort
@@ -17,7 +14,6 @@ admin_bp = Blueprint('admin_api', __name__, url_prefix='/api/users')
 @admin_bp.route('', methods=['GET'])
 @require_admin
 def get_all_users_endpoint():
-    """Retrieves a paginated list of all users."""
     db = g.db
     page, per_page, sort_by, sort_order = get_pagination_params()
     sort_by = sort_by or "username"
@@ -33,7 +29,6 @@ def get_all_users_endpoint():
 @admin_bp.route('/<uuid:user_id_param>', methods=['DELETE'])
 @require_admin
 def delete_user_endpoint(user_id_param: uuid.UUID):
-    """Deletes a user by their ID."""
     current_admin_id = session.get('user_id')
     if current_admin_id and uuid.UUID(current_admin_id) == user_id_param:
         abort(403, "Admins cannot delete their own account via this endpoint.")
@@ -50,7 +45,6 @@ def delete_user_endpoint(user_id_param: uuid.UUID):
 @admin_bp.route('/<uuid:user_id_param>/role', methods=['PUT'])
 @require_admin
 def set_user_role_endpoint(user_id_param: uuid.UUID):
-    """Updates the role of a user."""
     data = request.get_json()
     if not data or 'role' not in data: abort(400, "'role' field is required.")
     new_role_str = data['role']

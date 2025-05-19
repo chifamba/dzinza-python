@@ -14,9 +14,6 @@ import config as app_config_module
 
 logger = structlog.get_logger(__name__)
 
-"""
-Service functions for managing Relationship objects in the database.
-"""
 def get_all_relationships_db(db: DBSession,
                                tree_id: uuid.UUID,
                                page: int = -1, per_page: int = -1,
@@ -24,21 +21,6 @@ def get_all_relationships_db(db: DBSession,
                                sort_order: Optional[str] = "desc",
                                filters: Optional[Dict[str, Any]] = None
                                ) -> Dict[str, Any]:
-    """
-    Fetches a paginated list of relationships for a given tree, with optional filters and sorting.
-
-    Args:
-        db: The SQLAlchemy database session.
-        tree_id: The UUID of the tree.
-        page: The page number for pagination (defaults to config).
-        per_page: The number of items per page for pagination (defaults to config).
-        sort_by: The column to sort by (defaults to "created_at").
-        sort_order: The sort order ("asc" or "desc", defaults to "desc").
-        filters: An optional dictionary of filters.
-                 Supported keys: 'person_id' (UUID string), 'relationship_type' (RelationshipTypeEnum value string).
-
-    Returns:
-        A dictionary containing paginated relationship data and metadata."""
     cfg_pagination = app_config_module.config.PAGINATION_DEFAULTS
     if page == -1: page = cfg_pagination["page"]
     if per_page == -1: per_page = cfg_pagination["per_page"]
@@ -66,34 +48,11 @@ def get_all_relationships_db(db: DBSession,
     return {}
 
 def get_relationship_db(db: DBSession, relationship_id: uuid.UUID, tree_id: uuid.UUID) -> Dict[str, Any]:
-    """
-    Fetches details of a specific relationship by its ID within a tree.
-
-    Args:
-        db: The SQLAlchemy database session.
-        relationship_id: The UUID of the relationship to fetch.
-        tree_id: The UUID of the tree the relationship belongs to.
-
-    Returns:
-        A dictionary representation of the relationship.
-
-    Raises:
-        404: If the relationship is not found in the specified tree.
-        500: If a database or unexpected error occurs.
-    """
     logger.info("Fetching relationship", relationship_id=relationship_id, tree_id=tree_id)
     relationship = _get_or_404(db, Relationship, relationship_id, tree_id=tree_id)
     return relationship.to_dict()
 
 def create_relationship_db(db: DBSession, user_id: uuid.UUID, tree_id: uuid.UUID, rel_data: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Creates a new relationship in the database for a given tree.
-
-    Args:
-        db: The SQLAlchemy database session.
-        user_id: The UUID of the user creating the relationship.
-        tree_id: The UUID of the tree the relationship belongs to.
-        rel_data: A dictionary containing the data for the new relationship."""
     logger.info("Creating relationship", user_id=user_id, tree_id=tree_id, data_keys=list(rel_data.keys()))
     p1_id_str = rel_data.get('person1_id'); p2_id_str = rel_data.get('person2_id'); rel_type_str = rel_data.get('relationship_type')
     errors = {}
@@ -131,19 +90,6 @@ def create_relationship_db(db: DBSession, user_id: uuid.UUID, tree_id: uuid.UUID
     return {}
 
 def update_relationship_db(db: DBSession, relationship_id: uuid.UUID, tree_id: uuid.UUID, rel_data: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Updates an existing relationship in the database.
-
-    Args:
-        db: The SQLAlchemy database session.
-        relationship_id: The UUID of the relationship to update.
-        tree_id: The UUID of the tree the relationship belongs to.
-        rel_data: A dictionary containing the updated data for the relationship.
-
-    Returns:
-        A dictionary representation of the updated relationship.
-
-    Raises:"""
     logger.info("Updating relationship", rel_id=relationship_id, tree_id=tree_id, data_keys=list(rel_data.keys()))
     relationship = _get_or_404(db, Relationship, relationship_id, tree_id=tree_id)
     validation_errors = {}; allowed_fields = ['person1_id', 'person2_id', 'relationship_type', 'start_date', 'end_date',
@@ -183,18 +129,6 @@ def update_relationship_db(db: DBSession, relationship_id: uuid.UUID, tree_id: u
     return {}
 
 def delete_relationship_db(db: DBSession, relationship_id: uuid.UUID, tree_id: uuid.UUID) -> bool:
-    """
-    Deletes a relationship from the database.
-
-    Args:
-        db: The SQLAlchemy database session.
-        relationship_id: The UUID of the relationship to delete.
-        tree_id: The UUID of the tree the relationship belongs to.
-
-    Returns:
-        True if the relationship was successfully deleted.
-
-    Raises:"""
     logger.info("Deleting relationship", rel_id=relationship_id, tree_id=tree_id)
     relationship = _get_or_404(db, Relationship, relationship_id, tree_id=tree_id)
     try:

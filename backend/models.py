@@ -13,10 +13,6 @@ from cryptography.fernet import Fernet, InvalidToken
 import structlog
 
 # Base for SQLAlchemy models
-"""
-SQLAlchemy declarative base for defining database models.
-"""
-
 Base = declarative_base()
 logger = structlog.get_logger(__name__)
 
@@ -24,10 +20,6 @@ logger = structlog.get_logger(__name__)
 class EncryptedString(TypeDecorator):
     impl = Text 
     cache_ok = True
-    """
-    A custom SQLAlchemy type for encrypting and decrypting string data using Fernet.
-    Data is encrypted before being stored in the database and decrypted upon retrieval.
-    """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -45,12 +37,6 @@ class EncryptedString(TypeDecorator):
         except Exception as e:
             logger.error(f"EncryptedString: Error getting Fernet instance: {e}", exc_info=True)
             return None
-        """
-        Lazily retrieves the global Fernet instance from the extensions module.
-
-        Returns:
-            Fernet or None: The Fernet instance if available, otherwise None.
-        """
 
 
     def process_bind_param(self, value, dialect):
@@ -64,16 +50,6 @@ class EncryptedString(TypeDecorator):
                 logger.critical("Storing plaintext due to encryption failure. Review key setup.")
                 return str(value) 
         return value
-    """
-    Encrypts the value using Fernet before it is bound to a database parameter.
-
-    Args:
-        value: The value to encrypt.
-        dialect: The SQLAlchemy dialect.
-
-    Returns:
-        str or None: The encrypted string or the original value if encryption fails or Fernet is not available.
-    """
 
     def process_result_value(self, value, dialect):
         fernet = self._get_fernet_instance()
@@ -88,33 +64,14 @@ class EncryptedString(TypeDecorator):
                  logger.error("Unexpected error during decryption.", error=str(e), field_value_start=str(value)[:20], exc_info=False)
                  return None
         return value
-    """
-    Decrypts the value using Fernet after it is retrieved from the database.
-
-    Args:
-        value: The value to decrypt.
-        dialect: The SQLAlchemy dialect.
-
-    Returns:
-        str or None: The decrypted string or None if decryption fails or Fernet is not available.
-    """
 
 
-<<<<<<< HEAD
-# Enums
-class RoleEnum(str, enum.Enum):
-    user = "user"; admin = "admin"; researcher = "researcher"; guest = "guest"
-    """
-    Defines the possible roles for a user.
-    """
-=======
 # --- Consolidated UserRole Enum ---
 class UserRole(str, enum.Enum):
     user = "user"
     admin = "admin"
     researcher = "researcher"
     guest = "guest"
->>>>>>> temp_branch
 
 
 # Other Enums (kept separate as they serve different purposes)
@@ -125,37 +82,16 @@ class RelationshipTypeEnum(str, enum.Enum):
     adoptive_child = "adoptive_child"; step_child = "step_child"; foster_child = "foster_child"
     sibling_full = "sibling_full"; sibling_half = "sibling_half"; sibling_step = "sibling_step"
     sibling_adoptive = "sibling_adoptive"; other = "other"
-    """
-    Defines the possible types of relationships between people.
-    """
 
 class PrivacyLevelEnum(str, enum.Enum):
     inherit = "inherit"; private = "private"; public = "public"
     connections = "connections"; researchers = "researchers"
-    """
-    Defines the privacy levels for various entities in the family tree.
-    """
 
 class MediaTypeEnum(str, enum.Enum):
     photo = "photo"; document = "document"; audio = "audio"; video = "video"; other = "other"
-    """
-    Defines the types of media that can be associated with the tree.
-    """
 
-<<<<<<< HEAD
-class UserRole(enum.Enum):
-    USER = "user"; ADMIN = "admin"
-    """
-    Defines the distinct roles for users within the application.
-    """
-
-=======
->>>>>>> temp_branch
 # Models
 class User(Base):
-    """
-    Represents a user of the application.
-    """
     __tablename__ = "users"
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     username = Column(String(100), nullable=False, unique=True, index=True)
@@ -175,15 +111,6 @@ class User(Base):
     password_reset_expires = Column(DateTime)
 
     def to_dict(self, include_sensitive=False):
-        """
-        Serializes the User instance to a dictionary.
-
-        Args:
-            include_sensitive (bool): If True, includes sensitive fields like password hash and reset token.
-
-        Returns:
-            dict: A dictionary representation of the User.
-        """
         data = {
             "id": str(self.id), "username": self.username, "email": self.email,
             "full_name": self.full_name, "role": self.role.value, "is_active": self.is_active,
@@ -200,9 +127,6 @@ class User(Base):
         return data
 
 class Tree(Base):
-    """
-    Represents a family tree owned by a user.
-    """
     __tablename__ = "trees"
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(255), nullable=False, index=True)
@@ -214,12 +138,6 @@ class Tree(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     def to_dict(self):
-        """
-        Serializes the Tree instance to a dictionary.
-
-        Returns:
-            dict: A dictionary representation of the Tree.
-        """
         return {"id": str(self.id), "name": self.name, "description": self.description,
             "created_by": str(self.created_by), "is_public": self.is_public,
             "default_privacy_level": self.default_privacy_level.value,
@@ -227,9 +145,6 @@ class Tree(Base):
             "updated_at": self.updated_at.isoformat() if self.updated_at else None}
 
 class TreeAccess(Base):
-    """
-    Represents access permissions for a user on a specific tree.
-    """
     __tablename__ = "tree_access"
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tree_id = Column(PG_UUID(as_uuid=True), ForeignKey("trees.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -240,12 +155,6 @@ class TreeAccess(Base):
     __table_args__ = (UniqueConstraint("tree_id", "user_id", name="tree_user_unique"),)
 
     def to_dict(self):
-        """
-        Serializes the TreeAccess instance to a dictionary.
-
-        Returns:
-            dict: A dictionary representation of the TreeAccess.
-        """
         return {"id": str(self.id), "tree_id": str(self.tree_id), "user_id": str(self.user_id),
             "access_level": self.access_level,
             "granted_by": str(self.granted_by) if self.granted_by else None,
@@ -253,9 +162,6 @@ class TreeAccess(Base):
 
 class Person(Base):
     __tablename__ = "people"
-    """
-    Represents a person within a family tree.
-    """
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tree_id = Column(PG_UUID(as_uuid=True), ForeignKey("trees.id", ondelete="CASCADE"), nullable=False, index=True)
     first_name = Column(EncryptedString, index=True) 
@@ -280,12 +186,6 @@ class Person(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     def to_dict(self):
-        """
-        Serializes the Person instance to a dictionary.
-
-        Returns:
-            dict: A dictionary representation of the Person.
-        """
         return {"id": str(self.id), "tree_id": str(self.tree_id), "first_name": self.first_name,
             "middle_names": self.middle_names, "last_name": self.last_name, "maiden_name": self.maiden_name,
             "nickname": self.nickname, "gender": self.gender,
@@ -300,9 +200,6 @@ class Person(Base):
             "updated_at": self.updated_at.isoformat() if self.updated_at else None}
 
 class Relationship(Base):
-    """
-    Represents a relationship between two people in a family tree.
-    """
     __tablename__ = "relationships"
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tree_id = Column(PG_UUID(as_uuid=True), ForeignKey("trees.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -319,12 +216,6 @@ class Relationship(Base):
     __table_args__ = (UniqueConstraint("tree_id", "person1_id", "person2_id", "relationship_type", name="uq_relationship_key_fields"),)
 
     def to_dict(self):
-        """
-        Serializes the Relationship instance to a dictionary.
-
-        Returns:
-            dict: A dictionary representation of the Relationship.
-        """
         return {"id": str(self.id), "tree_id": str(self.tree_id),
             "person1_id": str(self.person1_id), "person2_id": str(self.person2_id),
             "relationship_type": self.relationship_type.value,
@@ -336,9 +227,6 @@ class Relationship(Base):
             "updated_at": self.updated_at.isoformat() if self.updated_at else None}
 
 class Event(Base):
-    """
-    Represents a life event associated with a person in a family tree.
-    """
     __tablename__ = "events"
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tree_id = Column(PG_UUID(as_uuid=True), ForeignKey("trees.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -355,9 +243,6 @@ class Event(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 class Media(Base):
-    """
-    Represents a media file associated with a family tree.
-    """
     __tablename__ = "media"
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tree_id = Column(PG_UUID(as_uuid=True), ForeignKey("trees.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -373,9 +258,6 @@ class Media(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 class Citation(Base):
-    """
-    Represents a citation linking a source (media) to information in the tree.
-    """
     __tablename__ = "citations"
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tree_id = Column(PG_UUID(as_uuid=True), ForeignKey("trees.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -388,9 +270,6 @@ class Citation(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 class ActivityLog(Base):
-    """
-    Logs significant activities performed by users on the family trees.
-    """
     __tablename__ = "activity_log"
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tree_id = Column(PG_UUID(as_uuid=True), ForeignKey("trees.id", ondelete="SET NULL"), index=True)
@@ -403,12 +282,6 @@ class ActivityLog(Base):
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
     def to_dict(self):
-        """
-        Serializes the ActivityLog instance to a dictionary.
-
-        Returns:
-            dict: A dictionary representation of the ActivityLog.
-        """
         return {"id": str(self.id),
             "tree_id": str(self.tree_id) if self.tree_id else None,
             "user_id": str(self.user_id) if self.user_id else None,

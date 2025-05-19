@@ -1,6 +1,4 @@
 # backend/services/activity_service.py
-"""Provides service functions for interacting with activity logs in the database."""
-
 import uuid
 import structlog
 from typing import Optional, Dict, Any
@@ -23,24 +21,7 @@ def get_activity_log_db(db: DBSession,
                         sort_by: str = "created_at",
                         sort_order: str = "desc"
                         ) -> Dict[str, Any]:
-    """
-    Fetches a paginated list of activity logs from the database.
-
-    Args:
-        db: The SQLAlchemy database session.
-        tree_id: Optional UUID to filter logs by tree.
-        user_id: Optional UUID to filter logs by user.
-        page: The page number for pagination (defaults to config).
-        per_page: The number of items per page for pagination (defaults to config).
-        sort_by: The column to sort by (defaults to 'created_at').
-        sort_order: The sort order ('asc' or 'desc', defaults to 'desc').
-
-    Returns:
-        A dictionary containing paginated activity log data, including:
-        'items': A list of activity log dictionaries.
-        Pagination metadata ('page', 'per_page', 'total_items', 'total_pages', etc.).
-    """
-
+    """Fetches a paginated list of activity logs."""
     cfg_pagination = app_config_module.config.PAGINATION_DEFAULTS
     if page == -1: page = cfg_pagination["page"]
     if per_page == -1: per_page = cfg_pagination["per_page"]

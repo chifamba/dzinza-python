@@ -1,8 +1,4 @@
 # backend/main.py
-"""
-Main application file for the Flask backend.
-Responsible for creating and configuring the app, registering blueprints, and handling requests and errors.
-"""
 import os
 import uuid
 import structlog
@@ -26,15 +22,7 @@ from blueprints.health import health_bp
 logger = structlog.get_logger(__name__)
 
 def create_app(app_config_obj=app_config_module.config):
-    """
-    Application factory function.
-
-    Creates and configures the Flask application instance.
-    Initializes extensions, registers blueprints, sets up request hooks, and error handlers.
-
-    Args:
-        app_config_obj: The configuration object to use (defaults to config.py's config).
-    """
+    """Application factory function."""
     app = Flask(__name__)
     app.config.from_object(app_config_obj)
 
@@ -92,20 +80,8 @@ def create_app(app_config_obj=app_config_module.config):
 
     @app.before_request
     def before_request_hook():
-<<<<<<< HEAD
-        """
-        Hook executed before each request.
-        Creates a database session and binds request-specific context variables for logging.
-        """
-        # Always get SessionLocal directly from the database module to ensure it's the initialized one
-        if not db_module.SessionLocal: 
-            logger.error("db_module.SessionLocal is not initialized. Cannot create DB session for request.")
-            app.aborter(500, description="Database session factory not available.")
-        g.db = db_module.SessionLocal() # Use the factory from the database module
-=======
         # Get a thread-local session using the new get_db_session function
         g.db = db_module.get_db_session()
->>>>>>> temp_branch
         structlog.contextvars.bind_contextvars(
             request_id=str(uuid.uuid4()), path=request.path, method=request.method,
             remote_addr=request.remote_addr
@@ -113,23 +89,6 @@ def create_app(app_config_obj=app_config_module.config):
 
     @app.teardown_appcontext
     def teardown_db_hook(exception=None):
-<<<<<<< HEAD
-        """
-        Hook executed after the application context tears down.
-        Closes the database session and handles rollbacks if an exception occurred during the request.
-
-        Args:
-            exception: The exception that caused the context teardown, if any.
-        """
-        db = g.pop('db', None)
-        if db is not None:
-            try:
-                if exception: db.rollback(); logger.debug("DB session rolled back due to exception.", exc_info=exception)
-            except Exception as e: logger.error("Error during DB session rollback.", error=str(e), exc_info=True)
-            finally:
-                try: db.close()
-                except Exception as e: logger.error("Error closing DB session.", error=str(e), exc_info=True)
-=======
         # g.db is the session instance from get_db_session()
         # For scoped_session, remove() is the standard way to return the session to the pool
         # and clear it from the current thread's scope.
@@ -141,24 +100,12 @@ def create_app(app_config_obj=app_config_module.config):
         
         # Clean up g.db to avoid potential leaks if remove() didn't clear it from g
         g.pop('db', None) 
->>>>>>> temp_branch
         structlog.contextvars.clear_contextvars()
 
 
     @app.errorhandler(Exception)
     def handle_global_exception(e):
-<<<<<<< HEAD
-        """
-        Global error handler for catching unhandled exceptions and HTTPExceptions.
-        Logs the error and returns a standardized JSON error response.
-
-        Args:
-            e: The exception that occurred.
-        """
-        if not isinstance(e, HTTPException): # Check if it's already an HTTPException
-=======
         if not isinstance(e, HTTPException): 
->>>>>>> temp_branch
             logger.error("Unhandled exception caught by global error handler.", exc_info=e, error_type=type(e).__name__)
         
         response_data = {"error": "Internal Server Error", "message": "An unexpected error occurred."}

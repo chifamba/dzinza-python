@@ -1,8 +1,5 @@
 # backend/services/__init__.py
-"""
-This file makes the 'services' directory a Python package.
-It can optionally be used to expose service functions for cleaner imports.
-"""
+# This file makes 'services' a Python package.
 # For cleaner imports in blueprints, you can expose service functions here,
 # but direct imports from service modules are also fine.
 

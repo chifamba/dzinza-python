@@ -1,7 +1,4 @@
 # backend/blueprints/__init__.py
-"""
-This file makes the 'blueprints' directory a Python package and imports the individual blueprint objects.
-"""
 # This file makes 'blueprints' a Python package.
 
 # Import blueprints to make them available for registration by the app factory

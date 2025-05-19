@@ -1,8 +1,4 @@
 # backend/blueprints/auth.py
-"""
-This file defines the Flask blueprint for authentication-related API endpoints,
-including login, registration, logout, session status, and password reset.
-"""
 import structlog
 from flask import Blueprint, request, jsonify, g, session, abort
 from werkzeug.exceptions import HTTPException # Import HTTPException
@@ -22,10 +18,6 @@ auth_bp = Blueprint('auth_api', __name__, url_prefix='/api')
 @auth_bp.route('/login', methods=['POST'])
 @limiter.limit("10 per minute")
 def login_endpoint():
-    """
-    Handles user login. Authenticates the user and sets session variables.
-    Rate limited to 10 attempts per minute per IP.
-    """
     data = request.get_json()
     if not data or 'username' not in data or 'password' not in data:
         abort(400, "Username and password are required.")
@@ -48,10 +40,6 @@ def login_endpoint():
 @auth_bp.route('/register', methods=['POST'])
 @limiter.limit("5 per minute")
 def register_endpoint():
-    """
-    Handles user registration. Creates a new user account.
-    Rate limited to 5 attempts per minute per IP.
-    """
     data = request.get_json()
     if not data or not data.get('username') or not data.get('password') or not data.get('email'):
         abort(400, "Username, email, and password are required.")
@@ -71,9 +59,6 @@ def register_endpoint():
 @auth_bp.route('/logout', methods=['POST'])
 @require_auth
 def logout_endpoint():
-    """
-    Logs out the currently authenticated user by clearing the session.
-    """
     user_id = session.get('user_id'); username = session.get('username')
     session.clear()
     logger.info("User logged out.", user_id=user_id, username=username)
@@ -81,9 +66,6 @@ def logout_endpoint():
 
 @auth_bp.route('/session', methods=['GET'])
 def session_status_endpoint():
-    """
-    Checks and returns the current user's authentication status and basic info.
-    """
     if 'user_id' in session and 'username' in session and 'role' in session:
         user_info = {"id": session['user_id'], "username": session['username'], "role": session['role']}
         active_tree_id = session.get('active_tree_id')
@@ -96,10 +78,6 @@ def session_status_endpoint():
 @auth_bp.route('/request-password-reset', methods=['POST'])
 @limiter.limit("5 per 15minute")
 def request_password_reset_api_endpoint():
-    """
-    Handles requests to initiate a password reset flow.
-    Rate limited to 5 attempts per 15 minutes per IP.
-    """
     data = request.get_json()
     if not data or not data.get('email_or_username'): abort(400, "Email or username required.")
     email_or_username_input = data['email_or_username']
@@ -115,12 +93,7 @@ def request_password_reset_api_endpoint():
 
 @auth_bp.route('/reset-password/<string:token>', methods=['POST'])
 @limiter.limit("5 per 15minute")
-
 def reset_password_api_endpoint(token: str):
-    """
-    Handles the password reset using a valid token.
-    Rate limited to 5 attempts per 15 minutes per IP.
-    """
     data = request.get_json()
     if not data or not data.get('new_password'): abort(400, "New password required.")
     new_password = data['new_password']

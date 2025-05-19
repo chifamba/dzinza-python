@@ -1,7 +1,4 @@
 # backend/extensions.py
-"""Initializes and configures Flask extensions."""
-
-
 import logging
 import structlog
 from flask_cors import CORS
@@ -57,16 +54,6 @@ def get_fernet():
 
 
 def init_opentelemetry(app):
-    """
-    Initializes and configures OpenTelemetry tracing and metrics for the application.
-
-    Sets up tracer and meter providers, configures OTLP exporters based on
-    environment variables, instruments Flask and logging, and creates custom metrics.
-    If OTEL_EXPORTER_OTLP_ENDPOINT is not set, instrumentation is skipped.
-
-    Args:
-        app: The Flask application instance.
-    """
     global tracer_provider, meter_provider
     global user_registration_counter, db_operation_duration_histogram, auth_failure_counter, role_change_counter
 

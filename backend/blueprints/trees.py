@@ -1,8 +1,4 @@
 # backend/blueprints/trees.py
-"""
-This file defines the Flask blueprint for API endpoints related to family trees.
-Requires user authentication and/or specific tree access.
-"""
 import uuid
 import structlog
 from flask import Blueprint, request, jsonify, g, session, abort
@@ -23,10 +19,6 @@ trees_bp = Blueprint('trees_api', __name__, url_prefix='/api') # Base prefix /ap
 @trees_bp.route('/trees', methods=['POST'])
 @require_auth
 def create_tree_endpoint():
-    """
-    POST /api/trees
-    Creates a new family tree for the authenticated user. Requires authentication.
-    """
     data = request.get_json()
     if not data: abort(400, "Request body cannot be empty.")
     user_id = uuid.UUID(session['user_id']); db = g.db
@@ -44,10 +36,6 @@ def create_tree_endpoint():
 @trees_bp.route('/trees', methods=['GET'])
 @require_auth
 def get_user_trees_endpoint():
-    """
-    GET /api/trees
-    Retrieves a paginated list of trees that the authenticated user has access to. Requires authentication.
-    """
     user_id = uuid.UUID(session['user_id']); db = g.db
     page, per_page, sort_by, sort_order = get_pagination_params()
     sort_by = sort_by or "name"; sort_order = sort_order or "asc"
@@ -62,10 +50,6 @@ def get_user_trees_endpoint():
 @trees_bp.route('/session/active_tree', methods=['PUT'])
 @require_auth
 def set_active_tree_endpoint():
-    """
-    PUT /api/session/active_tree
-    Sets the active tree for the current session. Requires authentication and access to the specified tree.
-    """
     data = request.get_json()
     if not data or 'tree_id' not in data: abort(400, "tree_id is required.")
     tree_id_str = data['tree_id']; user_id = uuid.UUID(session['user_id']); db = g.db
@@ -86,11 +70,6 @@ def set_active_tree_endpoint():
 @trees_bp.route('/tree_data', methods=['GET'])
 @require_tree_access('view')
 @limiter.limit("10 per minute")
-"""
-    GET /api/tree_data
-    Retrieves data for the currently active tree, formatted for visualization.
-    Requires 'view' access to the active tree.
-"""
 def get_tree_data_endpoint():
     db = g.db; tree_id = g.active_tree_id
     logger.info("Get tree_data for visualization", tree_id=tree_id)
