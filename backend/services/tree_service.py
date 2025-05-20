@@ -7,9 +7,9 @@ from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from sqlalchemy import or_
 from flask import abort
 
-from models import Tree, TreeAccess, Person, Relationship, PrivacyLevelEnum
-from utils import _get_or_404, _handle_sqlalchemy_error, paginate_query
-import config as app_config_module
+from backend.models import Tree, TreeAccess, Person, Relationship, PrivacyLevelEnum
+from backend.utils import _get_or_404, _handle_sqlalchemy_error, paginate_query
+from backend import config as app_config_module
 
 logger = structlog.get_logger(__name__)
 
@@ -19,9 +19,11 @@ def create_tree_db(db: DBSession, user_id: uuid.UUID, tree_data: Dict[str, Any])
     if not tree_name: abort(400, "Tree name is required.")
     try: default_privacy_enum = PrivacyLevelEnum(tree_data.get('default_privacy_level', PrivacyLevelEnum.private.value))
     except ValueError: abort(400, f"Invalid default_privacy_level: {tree_data.get('default_privacy_level')}.")
+    cover_image_url = tree_data.get('cover_image_url')
     try:
         new_tree = Tree(name=tree_name, description=tree_data.get('description'), created_by=user_id,
-            is_public=bool(tree_data.get('is_public', False)), default_privacy_level=default_privacy_enum)
+            is_public=bool(tree_data.get('is_public', False)), default_privacy_level=default_privacy_enum,
+            cover_image_url=cover_image_url)
         db.add(new_tree); db.flush()
         tree_access = TreeAccess(tree_id=new_tree.id, user_id=user_id, access_level='admin', granted_by=user_id)
         db.add(tree_access); db.commit(); db.refresh(new_tree)
@@ -60,7 +62,7 @@ def get_user_trees_db(db: DBSession, user_id: uuid.UUID, page: int = -1, per_pag
 def update_tree_db(db: DBSession, tree_id: uuid.UUID, tree_data: Dict[str, Any]) -> Dict[str, Any]:
     logger.info("Updating tree", tree_id=tree_id, data_keys=list(tree_data.keys()))
     tree = _get_or_404(db, Tree, tree_id)
-    allowed_fields = ['name', 'description', 'is_public', 'default_privacy_level']
+    allowed_fields = ['name', 'description', 'is_public', 'default_privacy_level', 'cover_image_url']
     try:
         for key, value in tree_data.items():
             if key in allowed_fields:

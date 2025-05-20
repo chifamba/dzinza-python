@@ -4,14 +4,14 @@ import structlog
 from flask import Blueprint, request, jsonify, g, session, abort
 from werkzeug.exceptions import HTTPException
 
-from decorators import require_auth, require_tree_access
-from services.tree_service import (
+from backend.decorators import require_auth, require_tree_access
+from backend.services.tree_service import (
     create_tree_db, get_user_trees_db,
     get_tree_data_for_visualization_db
 )
-from utils import get_pagination_params
-from extensions import limiter
-from models import Tree, TreeAccess # For direct query in set_active_tree
+from backend.utils import get_pagination_params
+from backend.extensions import limiter
+from backend.models import Tree, TreeAccess # For direct query in set_active_tree
 
 logger = structlog.get_logger(__name__)
 trees_bp = Blueprint('trees_api', __name__, url_prefix='/api') # Base prefix /api

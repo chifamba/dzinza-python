@@ -10,9 +10,9 @@ from flask import abort
 from werkzeug.exceptions import HTTPException
 
 # Absolute imports from the app root
-from models import Person, PrivacyLevelEnum
-from utils import _get_or_404, _handle_sqlalchemy_error, paginate_query
-import config as app_config_module
+from backend.models import Person, PrivacyLevelEnum
+from backend.utils import _get_or_404, _handle_sqlalchemy_error, paginate_query
+from backend import config as app_config_module
 
 logger = structlog.get_logger(__name__)
 
@@ -136,6 +136,7 @@ def create_person_db(db: DBSession, user_id: uuid.UUID, tree_id: uuid.UUID, pers
             is_living=person_data.get('is_living'), # Will be auto-set if None
             notes=person_data.get('notes'),
             biography=person_data.get('biography'),
+            profile_picture_url=person_data.get('profile_picture_url'),
             custom_attributes=person_data.get('custom_attributes', {})
         )
         # If is_living is not explicitly provided, determine it based on death_date.
@@ -168,7 +169,7 @@ def update_person_db(db: DBSession, person_id: uuid.UUID, tree_id: uuid.UUID, pe
         'first_name', 'middle_names', 'last_name', 'maiden_name', 'nickname', 'gender',
         'birth_date', 'birth_date_approx', 'birth_place', 'place_of_birth', 
         'death_date', 'death_date_approx', 'death_place', 'place_of_death', 
-        'burial_place', 'privacy_level', 'is_living', 'notes', 'biography', 'custom_attributes'
+        'burial_place', 'privacy_level', 'is_living', 'notes', 'biography', 'profile_picture_url', 'custom_attributes'
     ]
 
     for field, value in person_data.items():
