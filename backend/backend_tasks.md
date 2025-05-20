@@ -18,12 +18,12 @@ This section focuses on enriching the existing data models and related API endpo
   Files to Update: `models.py`, `services/person_service.py`, `blueprints/people.py`.  
   Action: Include database migration.
 
-- **Task 1.3: Add Profile Picture URL to Person Model**  
+- **DONE - Task 1.3: Add Profile Picture URL to Person Model**  
   Description: Add `profile_picture_url` (String). Actual file upload is a separate feature (see II.A).  
   Files to Update: `models.py`, `services/person_service.py`, `blueprints/people.py`.  
   Action: Include database migration.
 
-- **Task 1.4: Implement Custom Fields/Tags for Persons**  
+- **DONE - Task 1.4: Implement Custom Fields/Tags for Persons**  
   Description: Allow users to add custom key-value attributes to a person.  
   Design Choice: JSONB field in Person model or a separate PersonCustomField table.  
   Files to Update: `models.py`, `services/person_service.py`, `blueprints/people.py`.  
@@ -31,7 +31,7 @@ This section focuses on enriching the existing data models and related API endpo
 
 ### B. Relationship Model Enhancements
 
-- **Task 1.5: Add Location to Relationship Model**  
+- **DONE - Task 1.5: Add Location to Relationship Model**  
   Description: Add `location` (String) field (e.g., place of marriage).  
   Files to Update: `models.py`, `services/relationship_service.py`, `blueprints/relationships.py`.  
   Action: Include database migration.
@@ -48,7 +48,7 @@ This section focuses on enriching the existing data models and related API endpo
 
 ### C. Tree Model Enhancements
 
-- **Task 1.8: Add Cover Image URL to Tree Model**  
+- **DONE - Task 1.8: Add Cover Image URL to Tree Model**  
   Description: Add `cover_image_url` (String). File upload is separate (see II.A).  
   Files to Update: `models.py`, `services/tree_service.py`, `blueprints/trees.py`.  
   Action: Include database migration.
