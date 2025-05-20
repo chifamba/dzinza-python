@@ -48,7 +48,7 @@ This section focuses on enriching the existing data models and related API endpo
 
 ### C. Tree Model Enhancements
 
-- **Task 1.8: Add Cover Image URL to Tree Model**  
+- **DONE - Task 1.8: Add Cover Image URL to Tree Model**  
   Description: Add `cover_image_url` (String). File upload is separate (see II.A).  
   Files to Update: `models.py`, `services/tree_service.py`, `blueprints/trees.py`.  
   Action: Include database migration.

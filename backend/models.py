@@ -131,6 +131,7 @@ class Tree(Base):
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(255), nullable=False, index=True)
     description = Column(Text)
+    cover_image_url = Column(String(512))
     created_by = Column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
     is_public = Column(Boolean, default=False)
     default_privacy_level = Column(SQLAlchemyEnum(PrivacyLevelEnum, name="privacylevelenum", create_type=False), default=PrivacyLevelEnum.private)
@@ -139,6 +140,7 @@ class Tree(Base):
 
     def to_dict(self):
         return {"id": str(self.id), "name": self.name, "description": self.description,
+            "cover_image_url": self.cover_image_url,
             "created_by": str(self.created_by), "is_public": self.is_public,
             "default_privacy_level": self.default_privacy_level.value,
             "created_at": self.created_at.isoformat() if self.created_at else None,
