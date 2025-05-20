@@ -83,28 +83,38 @@ def require_tree_access(level: str = 'view'):
                 abort(404, description=f"Tree with ID {tree_id} not found.")
 
             has_permission = False
-            actual_access_level = None
+            actual_access_level = None # This will store the determined access level as string ('view', 'edit', 'admin')
 
-            if tree.created_by == user_id:
-                 actual_access_level = 'admin'
-            else:
-                tree_access_entry = db.query(models.TreeAccess).filter(
-                    models.TreeAccess.tree_id == tree_id, models.TreeAccess.user_id == user_id
-                ).one_or_none()
-                if tree_access_entry: actual_access_level = tree_access_entry.access_level
+            # 1. Check for public tree access (only for 'view' level)
+            if tree.privacy_setting == models.TreePrivacySettingEnum.PUBLIC and level == 'view':
+                has_permission = True
+                actual_access_level = 'view' # Granted 'view' due to public setting
             
-            if not actual_access_level and tree.is_public: # Public grants 'view' if no other access
-                actual_access_level = 'view'
+            # 2. If not granted by public setting, check ownership or TreeAccess table
+            if not has_permission:
+                if tree.created_by == user_id:
+                    actual_access_level = 'admin' # Owner is always admin
+                else:
+                    tree_access_entry = db.query(models.TreeAccess).filter(
+                        models.TreeAccess.tree_id == tree_id, models.TreeAccess.user_id == user_id
+                    ).one_or_none()
+                    if tree_access_entry:
+                        actual_access_level = tree_access_entry.access_level
+            
+            # if not actual_access_level and tree.is_public: # Old logic using is_public, now handled by privacy_setting
+            #     actual_access_level = 'view'
 
             access_hierarchy = {'view': 1, 'edit': 2, 'admin': 3} # Higher value means more permission
             required_level_val = access_hierarchy.get(level, 0) 
-            granted_level_val = access_hierarchy.get(actual_access_level, 0)
+            granted_level_val = access_hierarchy.get(actual_access_level or "", 0) # Default to 0 if actual_access_level is None
 
-            if granted_level_val >= required_level_val: has_permission = True
+            if granted_level_val >= required_level_val:
+                has_permission = True
             
-            if not has_permission:
+            if not has_permission: # This check now correctly uses the potentially updated has_permission
                 logger.warning("Tree access denied.", user_id=user_id, tree_id=tree_id,
-                               required_level=level, granted_level=actual_access_level or "none")
+                               required_level=level, granted_level=actual_access_level or "none",
+                               tree_privacy=tree.privacy_setting.value)
                 abort(403, description={
                     "message": f"You do not have sufficient permissions ('{level}' required) for this tree.",
                     "code": "ACCESS_DENIED_TREE"
@@ -112,7 +122,7 @@ def require_tree_access(level: str = 'view'):
             
             g.active_tree = tree
             g.active_tree_id = tree_id 
-            g.tree_access_level = actual_access_level
+            g.tree_access_level = actual_access_level # Store the determined access level
             
             return f(*args, **kwargs)
         return decorated_function

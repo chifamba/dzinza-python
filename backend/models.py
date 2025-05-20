@@ -90,6 +90,10 @@ class PrivacyLevelEnum(str, enum.Enum):
 class MediaTypeEnum(str, enum.Enum):
     photo = "photo"; document = "document"; audio = "audio"; video = "video"; other = "other"
 
+class TreePrivacySettingEnum(str, enum.Enum):
+    PUBLIC = "PUBLIC"
+    PRIVATE = "PRIVATE"
+
 # Models
 class User(Base):
     __tablename__ = "users"
@@ -137,12 +141,17 @@ class Tree(Base):
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     cover_image_url = Column(String(512), nullable=True) # Added cover_image_url
+    privacy_setting = Column(SQLAlchemyEnum(TreePrivacySettingEnum, name="treeprivacysettingenum", create_type=False), 
+                             nullable=False, default=TreePrivacySettingEnum.PRIVATE, 
+                             server_default=TreePrivacySettingEnum.PRIVATE.value) # New field
 
     def to_dict(self):
         return {"id": str(self.id), "name": self.name, "description": self.description,
-            "created_by": str(self.created_by), "is_public": self.is_public,
+            "created_by": str(self.created_by), 
+            # "is_public": self.is_public, # Removed is_public
+            "privacy_setting": self.privacy_setting.value, # Added privacy_setting
             "default_privacy_level": self.default_privacy_level.value,
-            "cover_image_url": self.cover_image_url, # Added to to_dict
+            "cover_image_url": self.cover_image_url, 
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None}
 
@@ -224,6 +233,7 @@ class Relationship(Base):
     created_by = Column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    location = Column(String(255), nullable=True) # Added location field
     __table_args__ = (UniqueConstraint("tree_id", "person1_id", "person2_id", "relationship_type", name="uq_relationship_key_fields"),)
 
     def to_dict(self):
@@ -232,6 +242,7 @@ class Relationship(Base):
             "relationship_type": self.relationship_type.value,
             "start_date": self.start_date.isoformat() if self.start_date else None,
             "end_date": self.end_date.isoformat() if self.end_date else None,
+            "location": self.location, # Added location to to_dict
             "certainty_level": self.certainty_level, "custom_attributes": self.custom_attributes,
             "notes": self.notes, "created_by": str(self.created_by),
             "created_at": self.created_at.isoformat() if self.created_at else None,
@@ -241,17 +252,38 @@ class Event(Base):
     __tablename__ = "events"
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tree_id = Column(PG_UUID(as_uuid=True), ForeignKey("trees.id", ondelete="CASCADE"), nullable=False, index=True)
-    person_id = Column(PG_UUID(as_uuid=True), ForeignKey("people.id", ondelete="CASCADE"), nullable=False, index=True)
+    person_id = Column(PG_UUID(as_uuid=True), ForeignKey("people.id", ondelete="CASCADE"), nullable=True, index=True) # Changed to nullable=True
     event_type = Column(String(100), nullable=False, index=True)
     date = Column(Date, index=True); date_approx = Column(Boolean, default=False)
     date_range_start = Column(Date); date_range_end = Column(Date)
     place = Column(EncryptedString) 
     description = Column(EncryptedString) 
     custom_attributes = Column(JSONB, default=dict)
+    related_person_ids = Column(JSONB, nullable=True, default=list) # New field, stores list of UUIDs as strings or actual UUIDs
     privacy_level = Column(SQLAlchemyEnum(PrivacyLevelEnum, name="privacylevelenum", create_type=False), default=PrivacyLevelEnum.inherit)
     created_by = Column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "id": str(self.id),
+            "tree_id": str(self.tree_id),
+            "person_id": str(self.person_id) if self.person_id else None, # Handle nullable person_id
+            "event_type": self.event_type,
+            "date": self.date.isoformat() if self.date else None,
+            "date_approx": self.date_approx,
+            "date_range_start": self.date_range_start.isoformat() if self.date_range_start else None,
+            "date_range_end": self.date_range_end.isoformat() if self.date_range_end else None,
+            "place": self.place,
+            "description": self.description,
+            "custom_attributes": self.custom_attributes,
+            "related_person_ids": [str(pid) for pid in self.related_person_ids] if self.related_person_ids else [], # Ensure UUIDs are strings
+            "privacy_level": self.privacy_level.value if self.privacy_level else None,
+            "created_by": str(self.created_by),
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
 
 class MediaItem(Base): # Renamed Media to MediaItem
     __tablename__ = "media" # Table name remains "media"

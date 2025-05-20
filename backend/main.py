@@ -18,7 +18,8 @@ from blueprints.people import people_bp
 from blueprints.relationships import relationships_bp
 from blueprints.admin import admin_bp
 from blueprints.health import health_bp
-from blueprints.media import media_bp # Added import for media_bp
+from blueprints.media import media_bp 
+from blueprints.events import events_bp # Added import for events_bp
 
 logger = structlog.get_logger(__name__)
 
@@ -78,7 +79,8 @@ def create_app(app_config_obj=app_config_module.config):
     app.register_blueprint(relationships_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(health_bp)
-    app.register_blueprint(media_bp) # Registered media_bp
+    app.register_blueprint(media_bp) 
+    app.register_blueprint(events_bp) # Registered events_bp
 
     @app.before_request
     def before_request_hook():

@@ -14,6 +14,30 @@ import config as app_config_module
 
 logger = structlog.get_logger(__name__)
 
+# For future use: Map of relationship types to their inverses.
+# Not used for automatic creation in the current implementation.
+INVERSE_RELATIONSHIP_MAP = {
+    RelationshipTypeEnum.biological_parent: RelationshipTypeEnum.biological_child,
+    RelationshipTypeEnum.adoptive_parent: RelationshipTypeEnum.adoptive_child,
+    RelationshipTypeEnum.step_parent: RelationshipTypeEnum.step_child,
+    RelationshipTypeEnum.foster_parent: RelationshipTypeEnum.foster_child,
+    RelationshipTypeEnum.guardian: None,  # Guardian relationship might not have a direct inverse in this list
+    RelationshipTypeEnum.biological_child: RelationshipTypeEnum.biological_parent,
+    RelationshipTypeEnum.adoptive_child: RelationshipTypeEnum.adoptive_parent,
+    RelationshipTypeEnum.step_child: RelationshipTypeEnum.step_parent,
+    RelationshipTypeEnum.foster_child: RelationshipTypeEnum.foster_parent,
+    # Symmetrical relationships map to themselves
+    RelationshipTypeEnum.spouse_current: RelationshipTypeEnum.spouse_current,
+    RelationshipTypeEnum.spouse_former: RelationshipTypeEnum.spouse_former,
+    RelationshipTypeEnum.partner: RelationshipTypeEnum.partner,
+    RelationshipTypeEnum.sibling_full: RelationshipTypeEnum.sibling_full,
+    RelationshipTypeEnum.sibling_half: RelationshipTypeEnum.sibling_half,
+    RelationshipTypeEnum.sibling_step: RelationshipTypeEnum.sibling_step,
+    RelationshipTypeEnum.sibling_adoptive: RelationshipTypeEnum.sibling_adoptive,
+    RelationshipTypeEnum.other: RelationshipTypeEnum.other, # 'other' is symmetrical by default
+}
+
+
 def get_all_relationships_db(db: DBSession,
                                tree_id: uuid.UUID,
                                page: int = -1, per_page: int = -1,
@@ -78,7 +102,7 @@ def create_relationship_db(db: DBSession, user_id: uuid.UUID, tree_id: uuid.UUID
         new_rel = Relationship(tree_id=tree_id, created_by=user_id, person1_id=person1_id, person2_id=person2_id,
             relationship_type=relationship_type, start_date=start_date, end_date=end_date,
             certainty_level=rel_data.get('certainty_level'), custom_attributes=rel_data.get('custom_attributes', {}),
-            notes=rel_data.get('notes'))
+            notes=rel_data.get('notes'), location=rel_data.get('location')) # Added location
         db.add(new_rel); db.commit(); db.refresh(new_rel)
         logger.info("Relationship created.", rel_id=new_rel.id, tree_id=tree_id)
         return new_rel.to_dict()
@@ -93,7 +117,7 @@ def update_relationship_db(db: DBSession, relationship_id: uuid.UUID, tree_id: u
     logger.info("Updating relationship", rel_id=relationship_id, tree_id=tree_id, data_keys=list(rel_data.keys()))
     relationship = _get_or_404(db, Relationship, relationship_id, tree_id=tree_id)
     validation_errors = {}; allowed_fields = ['person1_id', 'person2_id', 'relationship_type', 'start_date', 'end_date',
-        'certainty_level', 'custom_attributes', 'notes']
+        'certainty_level', 'custom_attributes', 'notes', 'location'] # Added location to allowed_fields
     for field, value in rel_data.items():
         if field not in allowed_fields: continue
         try:
