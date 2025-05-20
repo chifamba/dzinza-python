@@ -11,11 +11,11 @@ from flask import abort
 # Import type hints
 from typing import Dict, Any, Optional # Added this line
 
-from models import User, UserRole
-from utils import (_validate_password_complexity, _hash_password, _verify_password,
+from backend.models import User, UserRole
+from backend.utils import (_validate_password_complexity, _hash_password, _verify_password,
                      _get_or_404, _handle_sqlalchemy_error, paginate_query)
-import config as app_config_module
-import extensions # For metrics and get_fernet
+from backend import config as app_config_module
+from backend import extensions # For metrics and get_fernet
 
 logger = structlog.get_logger(__name__)
 

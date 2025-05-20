@@ -7,9 +7,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from flask import abort
 
 # Absolute imports for modules at the app root (/app)
-from models import ActivityLog
-from utils import paginate_query, _handle_sqlalchemy_error
-import config as app_config_module # To access PAGINATION_DEFAULTS
+from backend.models import ActivityLog
+from backend.utils import paginate_query, _handle_sqlalchemy_error
+from backend import config as app_config_module # To access PAGINATION_DEFAULTS
 
 logger = structlog.get_logger(__name__)
 

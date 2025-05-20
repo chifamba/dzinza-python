@@ -4,12 +4,12 @@ import structlog
 from flask import Blueprint, request, jsonify, g, session, abort
 from werkzeug.exceptions import HTTPException
 
-from decorators import require_tree_access
-from services.person_service import (
+from backend.decorators import require_tree_access
+from backend.services.person_service import (
     get_all_people_db, get_person_db, create_person_db,
     update_person_db, delete_person_db
 )
-from utils import get_pagination_params
+from backend.utils import get_pagination_params
 
 logger = structlog.get_logger(__name__)
 people_bp = Blueprint('people_api', __name__, url_prefix='/api/people')

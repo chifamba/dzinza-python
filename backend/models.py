@@ -131,6 +131,7 @@ class Tree(Base):
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(255), nullable=False, index=True)
     description = Column(Text)
+    cover_image_url = Column(String(512))
     created_by = Column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
     is_public = Column(Boolean, default=False)
     default_privacy_level = Column(SQLAlchemyEnum(PrivacyLevelEnum, name="privacylevelenum", create_type=False), default=PrivacyLevelEnum.private)
@@ -139,6 +140,7 @@ class Tree(Base):
 
     def to_dict(self):
         return {"id": str(self.id), "name": self.name, "description": self.description,
+            "cover_image_url": self.cover_image_url,
             "created_by": str(self.created_by), "is_public": self.is_public,
             "default_privacy_level": self.default_privacy_level.value,
             "created_at": self.created_at.isoformat() if self.created_at else None,
@@ -183,6 +185,7 @@ class Person(Base):
     is_living = Column(Boolean, index=True)
     notes = Column(EncryptedString) 
     biography = Column(EncryptedString)
+    profile_picture_url = Column(String(512))
     custom_attributes = Column(JSONB, default=dict)
     created_by = Column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
@@ -201,9 +204,8 @@ class Person(Base):
             "death_date_approx": self.death_date_approx, "death_place": self.death_place,
             "place_of_death": self.place_of_death,
             "burial_place": self.burial_place, "privacy_level": self.privacy_level.value,
-            "is_living": self.is_living, "notes": self.notes, "biography": self.biography, "custom_attributes": self.custom_attributes,
-            "profile_picture_url": self.profile_picture_url,  # Added to to_dict
-            "custom_fields": self.custom_fields,  # Added custom_fields to to_dict
+            "is_living": self.is_living, "notes": self.notes, "biography": self.biography, 
+            "profile_picture_url": self.profile_picture_url, "custom_attributes": self.custom_attributes,
             "created_by": str(self.created_by),
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None}
@@ -215,6 +217,7 @@ class Relationship(Base):
     person1_id = Column(PG_UUID(as_uuid=True), ForeignKey("people.id", ondelete="CASCADE"), nullable=False, index=True)
     person2_id = Column(PG_UUID(as_uuid=True), ForeignKey("people.id", ondelete="CASCADE"), nullable=False, index=True)
     relationship_type = Column(SQLAlchemyEnum(RelationshipTypeEnum, name="relationshiptypeenum", create_type=False), nullable=False)
+    location = Column(EncryptedString)
     start_date = Column(Date); end_date = Column(Date)
     certainty_level = Column(Integer)
     custom_attributes = Column(JSONB, default=dict)
@@ -228,6 +231,7 @@ class Relationship(Base):
         return {"id": str(self.id), "tree_id": str(self.tree_id),
             "person1_id": str(self.person1_id), "person2_id": str(self.person2_id),
             "relationship_type": self.relationship_type.value,
+            "location": self.location,
             "start_date": self.start_date.isoformat() if self.start_date else None,
             "end_date": self.end_date.isoformat() if self.end_date else None,
             "certainty_level": self.certainty_level, "custom_attributes": self.custom_attributes,
