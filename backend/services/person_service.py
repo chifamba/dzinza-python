@@ -10,9 +10,9 @@ from flask import abort
 from werkzeug.exceptions import HTTPException
 
 # Absolute imports from the app root
-from models import Person, PrivacyLevelEnum
-from utils import _get_or_404, _handle_sqlalchemy_error, paginate_query
-import config as app_config_module
+from backend.models import Person, PrivacyLevelEnum
+from backend.utils import _get_or_404, _handle_sqlalchemy_error, paginate_query
+from backend import config as app_config_module
 
 logger = structlog.get_logger(__name__)
 

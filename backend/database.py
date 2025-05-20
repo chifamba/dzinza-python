@@ -10,10 +10,10 @@ from sqlalchemy.orm import sessionmaker, scoped_session, Session
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError, ProgrammingError
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 
-import config as app_config_module
+from backend import config as app_config_module
 # Import the consolidated UserRole and other enums
-from models import Base, User, UserRole, PrivacyLevelEnum, MediaTypeEnum, RelationshipTypeEnum
-from utils import _hash_password, _validate_password_complexity
+from backend.models import Base, User, UserRole, PrivacyLevelEnum, MediaTypeEnum, RelationshipTypeEnum
+from backend.utils import _hash_password, _validate_password_complexity
 
 logger = structlog.get_logger(__name__)
 

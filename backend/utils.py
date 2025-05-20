@@ -55,8 +55,8 @@ def load_encryption_key(env_var_name: str, file_path: str) -> Optional[bytes]:
         return None
 
 # Now import local project modules AFTER load_encryption_key is defined.
-import config as app_config_module
-import extensions # For db_operation_duration_histogram
+from backend import config as app_config_module
+from backend import extensions # For db_operation_duration_histogram
 
 # Initialize logger for the rest of the module.
 logger = structlog.get_logger(__name__)

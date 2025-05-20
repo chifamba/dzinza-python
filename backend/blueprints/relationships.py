@@ -4,12 +4,12 @@ import structlog
 from flask import Blueprint, request, jsonify, g, session, abort
 from werkzeug.exceptions import HTTPException
 
-from decorators import require_tree_access
-from services.relationship_service import (
+from backend.decorators import require_tree_access
+from backend.services.relationship_service import (
     get_all_relationships_db, get_relationship_db, create_relationship_db,
     update_relationship_db, delete_relationship_db
 )
-from utils import get_pagination_params
+from backend.utils import get_pagination_params
 
 logger = structlog.get_logger(__name__)
 relationships_bp = Blueprint('relationships_api', __name__, url_prefix='/api/relationships')

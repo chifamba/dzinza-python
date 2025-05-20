@@ -4,7 +4,8 @@ from functools import wraps
 from flask import session, g, abort # current_app not used directly here
 import structlog
 
-import models # Absolute import for models module
+from backend import models # For direct attribute access like models.User
+from backend.models import UserRole, Tree, TreeAccess # For specific classes
 
 logger = structlog.get_logger(__name__)
 
@@ -33,7 +34,7 @@ def require_admin(f):
     @wraps(f)
     @require_auth 
     def decorated_function(*args, **kwargs):
-        if session.get('role') != models.UserRole.ADMIN.value: # Use models.UserRole
+        if session.get('role') != UserRole.ADMIN.value: # Use UserRole directly
             logger.warning("Admin access required, but user is not admin.",
                            user_id=session.get('user_id'),
                            user_role=session.get('role'))
@@ -75,8 +76,8 @@ def require_tree_access(level: str = 'view'):
                 logger.error("Database session not found in g for @require_tree_access.")
                 abort(500, "Internal server error during access check.")
 
-            # Use models.Tree and models.TreeAccess from the imported models module
-            tree = db.query(models.Tree).filter(models.Tree.id == tree_id).one_or_none()
+            # Use Tree and TreeAccess directly
+            tree = db.query(Tree).filter(Tree.id == tree_id).one_or_none()
             if not tree:
                 logger.warning("Tree access check failed: Tree not found in DB.", user_id=user_id, tree_id=tree_id)
                 if tree_id_to_check_str == session.get('active_tree_id'): session.pop('active_tree_id', None)
@@ -88,8 +89,8 @@ def require_tree_access(level: str = 'view'):
             if tree.created_by == user_id:
                  actual_access_level = 'admin'
             else:
-                tree_access_entry = db.query(models.TreeAccess).filter(
-                    models.TreeAccess.tree_id == tree_id, models.TreeAccess.user_id == user_id
+                tree_access_entry = db.query(TreeAccess).filter(
+                    TreeAccess.tree_id == tree_id, TreeAccess.user_id == user_id
                 ).one_or_none()
                 if tree_access_entry: actual_access_level = tree_access_entry.access_level
             

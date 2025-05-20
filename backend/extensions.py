@@ -18,7 +18,7 @@ from opentelemetry.instrumentation.flask import FlaskInstrumentor
 from opentelemetry.instrumentation.logging import LoggingInstrumentor
 # from urllib.parse import urljoin # Not used currently
 
-import config as app_config_module
+from backend import config as app_config_module
 
 logger = structlog.get_logger(__name__)
 

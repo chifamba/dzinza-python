@@ -7,9 +7,9 @@ from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from sqlalchemy import or_
 from flask import abort
 
-from models import Tree, TreeAccess, Person, Relationship, PrivacyLevelEnum
-from utils import _get_or_404, _handle_sqlalchemy_error, paginate_query
-import config as app_config_module
+from backend.models import Tree, TreeAccess, Person, Relationship, PrivacyLevelEnum
+from backend.utils import _get_or_404, _handle_sqlalchemy_error, paginate_query
+from backend import config as app_config_module
 
 logger = structlog.get_logger(__name__)
 
