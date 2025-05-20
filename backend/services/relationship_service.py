@@ -8,9 +8,9 @@ from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from sqlalchemy import or_
 from flask import abort
 
-from backend.models import Relationship, Person, RelationshipTypeEnum
-from backend.utils import _get_or_404, _handle_sqlalchemy_error, paginate_query
-from backend import config as app_config_module
+from models import Relationship, Person, RelationshipTypeEnum
+from utils import _get_or_404, _handle_sqlalchemy_error, paginate_query
+import config as app_config_module
 
 logger = structlog.get_logger(__name__)
 
@@ -75,11 +75,10 @@ def create_relationship_db(db: DBSession, user_id: uuid.UUID, tree_id: uuid.UUID
         except ValueError: abort(400, {"message": "Validation failed", "details": {"end_date": "Invalid date format."}})
     if start_date and end_date and end_date < start_date: abort(400, {"message": "Validation failed", "details": {"date_comparison": "End date before start."}})
     try:
-        location = rel_data.get('location')
         new_rel = Relationship(tree_id=tree_id, created_by=user_id, person1_id=person1_id, person2_id=person2_id,
             relationship_type=relationship_type, start_date=start_date, end_date=end_date,
             certainty_level=rel_data.get('certainty_level'), custom_attributes=rel_data.get('custom_attributes', {}),
-            notes=rel_data.get('notes'), location=location)
+            notes=rel_data.get('notes'))
         db.add(new_rel); db.commit(); db.refresh(new_rel)
         logger.info("Relationship created.", rel_id=new_rel.id, tree_id=tree_id)
         return new_rel.to_dict()
@@ -94,7 +93,7 @@ def update_relationship_db(db: DBSession, relationship_id: uuid.UUID, tree_id: u
     logger.info("Updating relationship", rel_id=relationship_id, tree_id=tree_id, data_keys=list(rel_data.keys()))
     relationship = _get_or_404(db, Relationship, relationship_id, tree_id=tree_id)
     validation_errors = {}; allowed_fields = ['person1_id', 'person2_id', 'relationship_type', 'start_date', 'end_date',
-        'certainty_level', 'custom_attributes', 'notes', 'location']
+        'certainty_level', 'custom_attributes', 'notes']
     for field, value in rel_data.items():
         if field not in allowed_fields: continue
         try:

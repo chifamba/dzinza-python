@@ -31,7 +31,7 @@ This section focuses on enriching the existing data models and related API endpo
 
 ### B. Relationship Model Enhancements
 
-- **DONE - Task 1.5: Add Location to Relationship Model**  
+- **Task 1.5: Add Location to Relationship Model**  
   Description: Add `location` (String) field (e.g., place of marriage).  
   Files to Update: `models.py`, `services/relationship_service.py`, `blueprints/relationships.py`.  
   Action: Include database migration.
@@ -48,7 +48,7 @@ This section focuses on enriching the existing data models and related API endpo
 
 ### C. Tree Model Enhancements
 
-- **DONE - Task 1.8: Add Cover Image URL to Tree Model**  
+- **Task 1.8: Add Cover Image URL to Tree Model**  
   Description: Add `cover_image_url` (String). File upload is separate (see II.A).  
   Files to Update: `models.py`, `services/tree_service.py`, `blueprints/trees.py`.  
   Action: Include database migration.
@@ -75,18 +75,18 @@ This section focuses on features that directly improve user interaction and capa
 
 ### A. Media/File Uploads
 
-- **Task 2.1: Configure Object Storage**  
+- **DONE - Task 2.1: Configure Object Storage**  
   Description: Integrate with an object storage solution (e.g., MinIO for self-hosting in Kubernetes, or AWS S3/Google Cloud Storage).  
   Files to Update: `config.py` (storage credentials, bucket names via env vars).
 
-- **Task 2.2: Implement Profile Picture Upload**  
+- **DONE - Task 2.2: Implement Profile Picture Upload**  
   Description: Endpoint in `blueprints/people.py` to upload a profile picture for a person. `person_service.py` to handle file stream, save to object storage, update `Person.profile_picture_url`.  
   Consideration: Image resizing/thumbnail generation (possibly via background task - see III.D).
 
-- **Task 2.3: Implement Tree Cover Image Upload**  
+- **DONE - Task 2.3: Implement Tree Cover Image Upload**  
   Description: Similar to profile pictures, for `blueprints/trees.py` and `services/tree_service.py`.
 
-- **Task 2.4: Generic Document/Media Attachment System**  
+- **DONE - Task 2.4: Generic Document/Media Attachment System**  
   Description: Allow users to attach various media (photos, documents, videos) to People, Events, or Trees.  
   Model: New MediaItem model (media_id, uploader_user_id, file_name, file_type, storage_path, linked_entity_type (Person, Event, Tree), linked_entity_id, upload_date, caption, thumbnail_url).  
   Files to Create/Update: `models.py`, new `services/media_service.py`, new `blueprints/media.py`.

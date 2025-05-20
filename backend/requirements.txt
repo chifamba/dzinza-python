@@ -27,6 +27,11 @@ prometheus_client>=0.21  # Prometheus metrics
 prometheus_client
 flask_session
 
+flask_session
+
+# Cloud/Storage Dependencies
+boto3>=1.20.0,<2.0.0 # AWS SDK for Python, used for S3/MinIO
+
 # Development Dependencies
 pytest  # Testing framework
 pytest-flask  # Flask testing utilities

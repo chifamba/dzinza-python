@@ -5,11 +5,17 @@ from typing import Dict, Any, Optional
 from sqlalchemy.orm import Session as DBSession
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from sqlalchemy import or_
+import os
 from flask import abort
+from werkzeug.utils import secure_filename
+from botocore.exceptions import S3UploadFailedError, ClientError
 
-from backend.models import Tree, TreeAccess, Person, Relationship, PrivacyLevelEnum
-from backend.utils import _get_or_404, _handle_sqlalchemy_error, paginate_query
-from backend import config as app_config_module
+
+from models import Tree, TreeAccess, Person, Relationship, PrivacyLevelEnum
+from utils import _get_or_404, _handle_sqlalchemy_error, paginate_query
+from config import config # Direct import of the config instance
+from storage_client import get_storage_client, create_bucket_if_not_exists
+
 
 logger = structlog.get_logger(__name__)
 
@@ -19,11 +25,9 @@ def create_tree_db(db: DBSession, user_id: uuid.UUID, tree_data: Dict[str, Any])
     if not tree_name: abort(400, "Tree name is required.")
     try: default_privacy_enum = PrivacyLevelEnum(tree_data.get('default_privacy_level', PrivacyLevelEnum.private.value))
     except ValueError: abort(400, f"Invalid default_privacy_level: {tree_data.get('default_privacy_level')}.")
-    cover_image_url = tree_data.get('cover_image_url')
     try:
         new_tree = Tree(name=tree_name, description=tree_data.get('description'), created_by=user_id,
-            is_public=bool(tree_data.get('is_public', False)), default_privacy_level=default_privacy_enum,
-            cover_image_url=cover_image_url)
+            is_public=bool(tree_data.get('is_public', False)), default_privacy_level=default_privacy_enum)
         db.add(new_tree); db.flush()
         tree_access = TreeAccess(tree_id=new_tree.id, user_id=user_id, access_level='admin', granted_by=user_id)
         db.add(tree_access); db.commit(); db.refresh(new_tree)
@@ -62,7 +66,7 @@ def get_user_trees_db(db: DBSession, user_id: uuid.UUID, page: int = -1, per_pag
 def update_tree_db(db: DBSession, tree_id: uuid.UUID, tree_data: Dict[str, Any]) -> Dict[str, Any]:
     logger.info("Updating tree", tree_id=tree_id, data_keys=list(tree_data.keys()))
     tree = _get_or_404(db, Tree, tree_id)
-    allowed_fields = ['name', 'description', 'is_public', 'default_privacy_level', 'cover_image_url']
+    allowed_fields = ['name', 'description', 'is_public', 'default_privacy_level']
     try:
         for key, value in tree_data.items():
             if key in allowed_fields:
@@ -122,4 +126,82 @@ def get_tree_data_for_visualization_db(db: DBSession, tree_id: uuid.UUID) -> Dic
     except Exception as e:
         logger.error("Unexpected error fetching tree data for viz.", tree_id=tree_id, exc_info=True)
         abort(500, "Error fetching tree data for visualization.")
+    return {}
+
+
+def upload_tree_cover_image_db(db: DBSession, tree_id: uuid.UUID, user_id: uuid.UUID, 
+                               file_stream, filename: str, content_type: str) -> Dict[str, Any]:
+    """
+    Uploads a cover image for a tree, saves it to object storage,
+    and updates the tree's cover_image_url with the object key.
+    """
+    logger.info("Attempting to upload tree cover image", tree_id=tree_id, user_id=user_id, filename=filename)
+    
+    tree = _get_or_404(db, Tree, tree_id)
+
+    # Authorization check: Only the tree creator can change the cover image for now.
+    if tree.created_by != user_id:
+        logger.warning("User is not authorized to upload cover image for this tree.",
+                       tree_id=tree_id, user_id=user_id, tree_owner=tree.created_by)
+        abort(403, description="You are not authorized to change the cover image for this tree.")
+
+    try:
+        s3_client = get_storage_client()
+        if not s3_client:
+             logger.error("S3 client not available for tree cover image upload.", tree_id=tree_id)
+             abort(500, description="Storage service is currently unavailable.")
+
+        if not create_bucket_if_not_exists(s3_client, config.OBJECT_STORAGE_BUCKET_NAME):
+            logger.error("Bucket could not be verified or created for tree cover image upload.",
+                         bucket_name=config.OBJECT_STORAGE_BUCKET_NAME)
+            abort(500, description="Storage bucket is not ready.")
+
+        secured_filename = secure_filename(filename)
+        file_extension = os.path.splitext(secured_filename)[1]
+        object_key = f"tree_cover_images/{tree_id}/{uuid.uuid4()}{file_extension}"
+        
+        logger.debug(f"Uploading tree cover to S3: bucket='{config.OBJECT_STORAGE_BUCKET_NAME}', key='{object_key}'")
+
+        s3_client.upload_fileobj(
+            file_stream,
+            config.OBJECT_STORAGE_BUCKET_NAME,
+            object_key,
+            ExtraArgs={'ContentType': content_type}
+        )
+        
+        old_object_key = tree.cover_image_url
+        if old_object_key and old_object_key != object_key:
+            try:
+                logger.info(f"Deleting old tree cover image from S3: {old_object_key}", tree_id=tree_id)
+                s3_client.delete_object(Bucket=config.OBJECT_STORAGE_BUCKET_NAME, Key=old_object_key)
+            except ClientError as e:
+                logger.error(f"Failed to delete old tree cover image {old_object_key} from S3.",
+                             error=str(e), tree_id=tree_id)
+                # Non-critical error, proceed with updating the new image URL
+
+        tree.cover_image_url = object_key
+        db.commit()
+        db.refresh(tree)
+        
+        logger.info("Tree cover image uploaded and record updated successfully.",
+                    tree_id=tree_id, object_key=object_key)
+        return tree.to_dict()
+
+    except S3UploadFailedError as e:
+        db.rollback()
+        logger.error("S3 upload failed for tree cover image.", tree_id=tree_id, error=str(e), exc_info=True)
+        abort(500, description="Failed to upload tree cover image to storage.")
+    except ClientError as e:
+        db.rollback()
+        logger.error("Boto3 client error during tree cover image upload.", tree_id=tree_id, error=str(e), exc_info=True)
+        abort(500, description="A storage service error occurred during tree cover image upload.")
+    except SQLAlchemyError as e:
+        db.rollback()
+        _handle_sqlalchemy_error(e, f"updating tree cover_image_url for tree ID {tree_id}", db)
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error("Unexpected error during tree cover image upload.", tree_id=tree_id, error=str(e), exc_info=True)
+        abort(500, description="An unexpected error occurred while processing the tree cover image.")
     return {}
