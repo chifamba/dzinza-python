@@ -4,14 +4,17 @@ import structlog
 from flask import Blueprint, request, jsonify, g, session, abort
 from werkzeug.exceptions import HTTPException
 
-from backend.decorators import require_auth, require_tree_access
-from backend.services.tree_service import (
+from decorators import require_auth, require_tree_access
+from services.tree_service import (
     create_tree_db, get_user_trees_db,
-    get_tree_data_for_visualization_db
+    get_tree_data_for_visualization_db,
+    upload_tree_cover_image_db
 )
-from backend.utils import get_pagination_params
-from backend.extensions import limiter
-from backend.models import Tree, TreeAccess # For direct query in set_active_tree
+from services.media_service import get_media_for_entity_db # Added for tree media
+from utils import get_pagination_params
+# werkzeug.utils.secure_filename is imported in service now
+from extensions import limiter
+from models import Tree, TreeAccess # For direct query in set_active_tree
 
 logger = structlog.get_logger(__name__)
 trees_bp = Blueprint('trees_api', __name__, url_prefix='/api') # Base prefix /api
@@ -79,3 +82,80 @@ def get_tree_data_endpoint():
         logger.error("Error fetching tree_data for viz.", tree_id=tree_id, exc_info=True)
         if not isinstance(e, HTTPException): abort(500, "Error fetching tree data for visualization.")
         raise
+
+@trees_bp.route('/trees/<uuid:tree_id_param>/cover_image', methods=['POST'])
+@require_auth 
+# The service layer currently checks if user_id == tree.created_by.
+# If more complex roles (e.g. admin from TreeAccess) should be allowed,
+# @require_tree_access('edit') or similar would be more appropriate here,
+# and the service layer check might need adjustment or removal.
+def upload_tree_cover_image_endpoint(tree_id_param: uuid.UUID):
+    if 'file' not in request.files:
+        abort(400, description="No file part in the request.")
+    file = request.files['file']
+    if file.filename == '':
+        abort(400, description="No selected file.")
+
+    db_session = g.db # db session from global context
+    
+    if 'user_id' not in session:
+        logger.warning("User ID not found in session for tree cover image upload.")
+        abort(401, description="Authentication required.")
+    try:
+        current_user_id = uuid.UUID(session['user_id'])
+    except ValueError:
+        logger.error("Invalid user_id format in session.", session_user_id=session['user_id'])
+        abort(400, description="Invalid user identifier in session.")
+
+    logger.info("Upload tree cover image endpoint", tree_id=tree_id_param, user_id=current_user_id, filename=file.filename)
+    try:
+        updated_tree_dict = upload_tree_cover_image_db(
+            db=db_session,
+            tree_id=tree_id_param,
+            user_id=current_user_id,
+            file_stream=file.stream,
+            filename=file.filename,
+            content_type=file.content_type
+        )
+        return jsonify(updated_tree_dict), 200
+    except HTTPException as e: # Re-raise HTTPExceptions (aborts from service or here)
+        raise
+    except Exception as e:
+        logger.error("Error uploading tree cover image.", tree_id=tree_id_param, exc_info=True)
+        abort(500, description="An error occurred while uploading the tree cover image.")
+    return {} # Should be unreachable
+
+
+@trees_bp.route('/trees/<uuid:tree_id_param>/media', methods=['GET'])
+@require_auth
+@require_tree_access('view')
+def get_tree_media_endpoint(tree_id_param: uuid.UUID):
+    db_session = g.db
+    # active_tree_id from g should match tree_id_param due to @require_tree_access
+    # but we use tree_id_param as it's the specific subject of this request.
+    active_tree_id = uuid.UUID(g.active_tree_id)
+    if active_tree_id != tree_id_param:
+        logger.warning("Mismatch between active_tree_id in session and tree_id_param in URL for get_tree_media_endpoint.",
+                       active_tree_id_session=str(active_tree_id), tree_id_url=str(tree_id_param))
+        abort(400, "URL tree ID does not match active tree context.")
+
+
+    page, per_page, sort_by, sort_order = get_pagination_params()
+    sort_by = sort_by if sort_by else "created_at"
+    sort_order = sort_order if sort_order else "desc"
+
+    logger.info("Get media for tree endpoint", tree_id=tree_id_param,
+                page=page, per_page=per_page, sort_by=sort_by, sort_order=sort_order)
+    try:
+        # Here, tree_id_param is used for both tree_id and entity_id context in get_media_for_entity_db
+        media_list_dict = get_media_for_entity_db(
+            db_session, tree_id_param, "Tree", tree_id_param, 
+            page, per_page, sort_by, sort_order
+        )
+        return jsonify(media_list_dict), 200
+    except HTTPException as e:
+        raise
+    except Exception as e:
+        logger.error("Error in get_tree_media_endpoint", exc_info=True)
+        abort(500, description="Error fetching media for tree.")
+    return {}

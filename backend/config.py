@@ -86,5 +86,16 @@ class Config:
     FLASK_RUN_HOST = os.getenv('FLASK_RUN_HOST', '0.0.0.0')
     FLASK_RUN_PORT = int(os.getenv('FLASK_RUN_PORT', 8090))
 
+    # Object Storage (S3/MinIO)
+    OBJECT_STORAGE_TYPE = os.getenv("OBJECT_STORAGE_TYPE", "minio")
+    OBJECT_STORAGE_ENDPOINT_URL = os.getenv("OBJECT_STORAGE_ENDPOINT_URL", "http://minio:9000")
+    OBJECT_STORAGE_ACCESS_KEY = os.getenv("OBJECT_STORAGE_ACCESS_KEY", "minioadmin")
+    OBJECT_STORAGE_SECRET_KEY = os.getenv("OBJECT_STORAGE_SECRET_KEY", "minioadmin")
+    OBJECT_STORAGE_BUCKET_NAME = os.getenv("OBJECT_STORAGE_BUCKET_NAME", "family-tree-media")
+    # Default OBJECT_STORAGE_SECURE to False if OBJECT_STORAGE_TYPE is 'minio', else True
+    _object_storage_secure_default = "false" if OBJECT_STORAGE_TYPE == "minio" else "true"
+    OBJECT_STORAGE_SECURE = os.getenv("OBJECT_STORAGE_SECURE", _object_storage_secure_default).lower() == "true"
+
+
 # Instantiate config
 config = Config()

@@ -4,9 +4,9 @@ import structlog
 from flask import Blueprint, request, jsonify, g, session, abort
 
 # Absolute imports from the app root
-from backend.decorators import require_admin
-from backend.services.user_service import get_all_users_db, delete_user_db, update_user_role_db
-from backend.utils import get_pagination_params # For pagination
+from decorators import require_admin
+from services.user_service import get_all_users_db, delete_user_db, update_user_role_db
+from utils import get_pagination_params # For pagination
 
 logger = structlog.get_logger(__name__)
 admin_bp = Blueprint('admin_api', __name__, url_prefix='/api/users')

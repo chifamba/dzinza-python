@@ -6,18 +6,19 @@ from flask import Flask, g, jsonify, request
 from werkzeug.exceptions import HTTPException
 from cryptography.fernet import Fernet
 
-from backend import config as app_config_module
+import config as app_config_module
 # Import the database module itself to access its members directly after init
-from backend import database as db_module 
-from backend import extensions as app_extensions_module # Assuming extensions.py is also in backend
-from backend.utils import load_encryption_key # Assuming utils.py is also in backend
+import database as db_module 
+import extensions as app_extensions_module
+from utils import load_encryption_key
 
-from backend.blueprints.auth import auth_bp
-from backend.blueprints.trees import trees_bp
-from backend.blueprints.people import people_bp
-from backend.blueprints.relationships import relationships_bp
-from backend.blueprints.admin import admin_bp
-from backend.blueprints.health import health_bp
+from blueprints.auth import auth_bp
+from blueprints.trees import trees_bp
+from blueprints.people import people_bp
+from blueprints.relationships import relationships_bp
+from blueprints.admin import admin_bp
+from blueprints.health import health_bp
+from blueprints.media import media_bp # Added import for media_bp
 
 logger = structlog.get_logger(__name__)
 
@@ -77,6 +78,7 @@ def create_app(app_config_obj=app_config_module.config):
     app.register_blueprint(relationships_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(health_bp)
+    app.register_blueprint(media_bp) # Registered media_bp
 
     @app.before_request
     def before_request_hook():
@@ -134,4 +136,4 @@ if __name__ == '__main__':
                      port=app_config_module.config.FLASK_RUN_PORT,
                      debug=app_config_module.config.DEBUG)
 
-# app = create_app() # Commented out to prevent premature app creation
+app = create_app()

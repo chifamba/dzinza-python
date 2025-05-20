@@ -7,9 +7,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import text
 from werkzeug.exceptions import HTTPException # Added for abort context
 
-from backend.extensions import limiter
+from extensions import limiter
 # Import get_db_session from the database module
-from backend.database import get_db_session, get_session_factory # get_session_factory for remove()
+from database import get_db_session, get_session_factory # get_session_factory for remove()
 
 logger = structlog.get_logger(__name__)
 health_bp = Blueprint('health_api', __name__)

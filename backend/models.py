@@ -131,18 +131,18 @@ class Tree(Base):
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(255), nullable=False, index=True)
     description = Column(Text)
-    cover_image_url = Column(String(512))
     created_by = Column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
     is_public = Column(Boolean, default=False)
     default_privacy_level = Column(SQLAlchemyEnum(PrivacyLevelEnum, name="privacylevelenum", create_type=False), default=PrivacyLevelEnum.private)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    cover_image_url = Column(String(512), nullable=True) # Added cover_image_url
 
     def to_dict(self):
         return {"id": str(self.id), "name": self.name, "description": self.description,
-            "cover_image_url": self.cover_image_url,
             "created_by": str(self.created_by), "is_public": self.is_public,
             "default_privacy_level": self.default_privacy_level.value,
+            "cover_image_url": self.cover_image_url, # Added to to_dict
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None}
 
@@ -185,7 +185,6 @@ class Person(Base):
     is_living = Column(Boolean, index=True)
     notes = Column(EncryptedString) 
     biography = Column(EncryptedString)
-    profile_picture_url = Column(String(512))
     custom_attributes = Column(JSONB, default=dict)
     created_by = Column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
@@ -204,8 +203,9 @@ class Person(Base):
             "death_date_approx": self.death_date_approx, "death_place": self.death_place,
             "place_of_death": self.place_of_death,
             "burial_place": self.burial_place, "privacy_level": self.privacy_level.value,
-            "is_living": self.is_living, "notes": self.notes, "biography": self.biography, 
-            "profile_picture_url": self.profile_picture_url, "custom_attributes": self.custom_attributes,
+            "is_living": self.is_living, "notes": self.notes, "biography": self.biography, "custom_attributes": self.custom_attributes,
+            "profile_picture_url": self.profile_picture_url,  # Added to to_dict
+            "custom_fields": self.custom_fields,  # Added custom_fields to to_dict
             "created_by": str(self.created_by),
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None}
@@ -217,7 +217,6 @@ class Relationship(Base):
     person1_id = Column(PG_UUID(as_uuid=True), ForeignKey("people.id", ondelete="CASCADE"), nullable=False, index=True)
     person2_id = Column(PG_UUID(as_uuid=True), ForeignKey("people.id", ondelete="CASCADE"), nullable=False, index=True)
     relationship_type = Column(SQLAlchemyEnum(RelationshipTypeEnum, name="relationshiptypeenum", create_type=False), nullable=False)
-    location = Column(EncryptedString)
     start_date = Column(Date); end_date = Column(Date)
     certainty_level = Column(Integer)
     custom_attributes = Column(JSONB, default=dict)
@@ -231,7 +230,6 @@ class Relationship(Base):
         return {"id": str(self.id), "tree_id": str(self.tree_id),
             "person1_id": str(self.person1_id), "person2_id": str(self.person2_id),
             "relationship_type": self.relationship_type.value,
-            "location": self.location,
             "start_date": self.start_date.isoformat() if self.start_date else None,
             "end_date": self.end_date.isoformat() if self.end_date else None,
             "certainty_level": self.certainty_level, "custom_attributes": self.custom_attributes,
@@ -255,26 +253,51 @@ class Event(Base):
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-class Media(Base):
-    __tablename__ = "media"
+class MediaItem(Base): # Renamed Media to MediaItem
+    __tablename__ = "media" # Table name remains "media"
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    uploader_user_id = Column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True) # Renamed created_by
     tree_id = Column(PG_UUID(as_uuid=True), ForeignKey("trees.id", ondelete="CASCADE"), nullable=False, index=True)
-    file_path = Column(String(512), nullable=False); storage_bucket = Column(String(255), nullable=False)
-    media_type = Column(SQLAlchemyEnum(MediaTypeEnum, name="mediatypeenum", create_type=False), nullable=False)
-    original_filename = Column(String(255)); file_size = Column(Integer); mime_type = Column(String(100))
-    title = Column(String(255), index=True); description = Column(Text)
-    date_taken = Column(Date); location = Column(EncryptedString) 
-    media_metadata = Column(JSONB, default=dict)
-    privacy_level = Column(SQLAlchemyEnum(PrivacyLevelEnum, name="privacylevelenum", create_type=False), default=PrivacyLevelEnum.inherit)
-    created_by = Column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
-    uploaded_at = Column(DateTime, default=datetime.utcnow, index=True)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    file_name = Column(String(255), nullable=False) # Renamed original_filename, made non-nullable
+    file_type = Column(SQLAlchemyEnum(MediaTypeEnum, name="mediatypeenum", create_type=False), nullable=False) # Was media_type
+    mime_type = Column(String(100)) # Existed
+    file_size = Column(Integer) # Existed
+
+    storage_path = Column(String(512), nullable=False) # Renamed file_path, removed storage_bucket
+    
+    linked_entity_type = Column(String(50), nullable=False, index=True) # New field
+    linked_entity_id = Column(PG_UUID(as_uuid=True), nullable=False, index=True) # New field
+    
+    caption = Column(Text) # Renamed description
+    thumbnail_url = Column(String(512)) # New field
+    
+    created_at = Column(DateTime, default=datetime.utcnow, index=True) # Renamed uploaded_at
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow) # Existed
+
+    def to_dict(self):
+        return {
+            "id": str(self.id),
+            "uploader_user_id": str(self.uploader_user_id),
+            "tree_id": str(self.tree_id),
+            "file_name": self.file_name,
+            "file_type": self.file_type.value if self.file_type else None,
+            "mime_type": self.mime_type,
+            "file_size": self.file_size,
+            "storage_path": self.storage_path,
+            "linked_entity_type": self.linked_entity_type,
+            "linked_entity_id": str(self.linked_entity_id),
+            "caption": self.caption,
+            "thumbnail_url": self.thumbnail_url,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
 
 class Citation(Base):
     __tablename__ = "citations"
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tree_id = Column(PG_UUID(as_uuid=True), ForeignKey("trees.id", ondelete="CASCADE"), nullable=False, index=True)
-    source_id = Column(PG_UUID(as_uuid=True), ForeignKey("media.id", ondelete="CASCADE"), nullable=False, index=True)
+    source_id = Column(PG_UUID(as_uuid=True), ForeignKey("media.id", ondelete="CASCADE"), nullable=False, index=True) # This foreign key should point to 'media.id'
     citation_text = Column(Text, nullable=False); page_number = Column(String(50))
     confidence_level = Column(Integer); notes = Column(Text)
     custom_attributes = Column(JSONB, default=dict)

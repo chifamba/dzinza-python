@@ -4,9 +4,9 @@ from flask import Blueprint, request, jsonify, g, session, abort
 from werkzeug.exceptions import HTTPException # Import HTTPException
 
 # Absolute imports from the app root
-from backend.extensions import limiter
-from backend.decorators import require_auth
-from backend.services.user_service import (
+from extensions import limiter
+from decorators import require_auth
+from services.user_service import (
     register_user_db, authenticate_user_db, 
     request_password_reset_db, reset_password_db
 )

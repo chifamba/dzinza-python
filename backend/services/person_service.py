@@ -9,10 +9,16 @@ from sqlalchemy import or_
 from flask import abort
 from werkzeug.exceptions import HTTPException
 
+import os # For path manipulation if needed for filename
+from werkzeug.utils import secure_filename # For sanitizing filenames
+from botocore.exceptions import S3UploadFailedError, ClientError # More specific Boto3 exceptions
+
 # Absolute imports from the app root
-from backend.models import Person, PrivacyLevelEnum
-from backend.utils import _get_or_404, _handle_sqlalchemy_error, paginate_query
-from backend import config as app_config_module
+from models import Person, PrivacyLevelEnum # MediaItem, MediaTypeEnum (Not needed for this task)
+from utils import _get_or_404, _handle_sqlalchemy_error, paginate_query
+from config import config # Direct import of the config instance
+from storage_client import get_storage_client, create_bucket_if_not_exists
+# from services.media_service import create_media_item_record_db # Not using for direct profile pic update
 
 logger = structlog.get_logger(__name__)
 
@@ -136,8 +142,9 @@ def create_person_db(db: DBSession, user_id: uuid.UUID, tree_id: uuid.UUID, pers
             is_living=person_data.get('is_living'), # Will be auto-set if None
             notes=person_data.get('notes'),
             biography=person_data.get('biography'),
-            profile_picture_url=person_data.get('profile_picture_url'),
-            custom_attributes=person_data.get('custom_attributes', {})
+            custom_attributes=person_data.get('custom_attributes', {}),
+            profile_picture_url=person_data.get('profile_picture_url'),  # Added profile_picture_url
+            custom_fields=person_data.get('custom_fields', {})  # Added custom_fields
         )
         # If is_living is not explicitly provided, determine it based on death_date.
         if new_person.is_living is None:
@@ -169,7 +176,7 @@ def update_person_db(db: DBSession, person_id: uuid.UUID, tree_id: uuid.UUID, pe
         'first_name', 'middle_names', 'last_name', 'maiden_name', 'nickname', 'gender',
         'birth_date', 'birth_date_approx', 'birth_place', 'place_of_birth', 
         'death_date', 'death_date_approx', 'death_place', 'place_of_death', 
-        'burial_place', 'privacy_level', 'is_living', 'notes', 'biography', 'profile_picture_url', 'custom_attributes'
+        'burial_place', 'privacy_level', 'is_living', 'notes', 'biography', 'custom_attributes',
         'profile_picture_url',  # Added profile_picture_url to allowed fields
         'custom_fields'  # Added custom_fields to allowed fields
     ]
@@ -255,3 +262,83 @@ def delete_person_db(db: DBSession, person_id: uuid.UUID, tree_id: uuid.UUID) ->
         logger.error("Unexpected error during person deletion.", person_id=person_id, tree_id=tree_id, exc_info=True)
         abort(500, description="An unexpected error occurred during person deletion.")
     return False # Should be unreachable
+
+
+def upload_profile_picture_db(db: DBSession, person_id: uuid.UUID, tree_id: uuid.UUID, 
+                              user_id: uuid.UUID, # user_id for auditing, consistency
+                              file_stream, filename: str, content_type: str) -> Dict[str, Any]:
+    """
+    Uploads a profile picture for a person, saves it to object storage,
+    and updates the person's profile_picture_url with the object key.
+    """
+    logger.info("Attempting to upload profile picture", person_id=person_id, tree_id=tree_id, filename=filename)
+    
+    person = _get_or_404(db, Person, person_id, tree_id=tree_id)
+
+    try:
+        s3_client = get_storage_client()
+        if not s3_client:
+             logger.error("S3 client not available for profile picture upload.", person_id=person_id)
+             abort(500, description="Storage service is currently unavailable.")
+
+        # Ensure bucket exists (optional here if app startup guarantees it, but good for robustness)
+        if not create_bucket_if_not_exists(s3_client, config.OBJECT_STORAGE_BUCKET_NAME):
+            logger.error("Bucket could not be verified or created for profile picture upload.", bucket_name=config.OBJECT_STORAGE_BUCKET_NAME)
+            abort(500, description="Storage bucket is not ready.")
+
+        # Sanitize filename before using it in the path
+        secured_filename = secure_filename(filename)
+        # Generate a unique object key
+        # Example: "profile_pictures/tree_uuid/person_uuid/random_uuid_original_filename.ext"
+        file_extension = os.path.splitext(secured_filename)[1]
+        object_key = f"profile_pictures/{tree_id}/{person_id}/{uuid.uuid4()}{file_extension}"
+        
+        logger.debug(f"Uploading to S3: bucket='{config.OBJECT_STORAGE_BUCKET_NAME}', key='{object_key}'")
+
+        s3_client.upload_fileobj(
+            file_stream,
+            config.OBJECT_STORAGE_BUCKET_NAME,
+            object_key,
+            ExtraArgs={'ContentType': content_type}
+        )
+        
+        # Store the object key as the profile_picture_url
+        # The full URL can be constructed on the client-side or via a dedicated endpoint if needed
+        # This also handles potential deletion: if a new picture is uploaded, the old key is overwritten.
+        # For actual deletion of old S3 objects, a separate mechanism would be needed if person.profile_picture_url stores the old key.
+        
+        old_object_key = person.profile_picture_url
+        if old_object_key and old_object_key != object_key:
+            try:
+                logger.info(f"Deleting old profile picture from S3: {old_object_key}", person_id=person_id)
+                s3_client.delete_object(Bucket=config.OBJECT_STORAGE_BUCKET_NAME, Key=old_object_key)
+            except ClientError as e:
+                logger.error(f"Failed to delete old profile picture {old_object_key} from S3.", error=str(e), person_id=person_id)
+                # Non-critical error, so we don't abort the upload of the new picture
+
+        person.profile_picture_url = object_key
+        db.commit()
+        db.refresh(person)
+        
+        logger.info("Profile picture uploaded and person record updated successfully.",
+                    person_id=person_id, object_key=object_key)
+        return person.to_dict()
+
+    except S3UploadFailedError as e:
+        db.rollback()
+        logger.error("S3 upload failed for profile picture.", person_id=person_id, error=str(e), exc_info=True)
+        abort(500, description="Failed to upload profile picture to storage.")
+    except ClientError as e: # Catch other Boto3 client errors
+        db.rollback()
+        logger.error("Boto3 client error during profile picture upload.", person_id=person_id, error=str(e), exc_info=True)
+        abort(500, description="A storage service error occurred.")
+    except SQLAlchemyError as e:
+        db.rollback() # Rollback SQLAlchemy transaction
+        _handle_sqlalchemy_error(e, f"updating person profile_picture_url for person ID {person_id}", db) # This will abort
+    except HTTPException: # Re-raise aborts
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error("Unexpected error during profile picture upload.", person_id=person_id, error=str(e), exc_info=True)
+        abort(500, description="An unexpected error occurred while processing the profile picture.")
+    return {} # Should be unreachable
