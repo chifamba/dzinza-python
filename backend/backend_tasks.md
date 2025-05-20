@@ -93,11 +93,11 @@ This section focuses on features that directly improve user interaction and capa
 
 ### B. Advanced Search & Filtering
 
-- **Task 2.5: Full-Text Search for People**  
+- **DONE - Task 2.5: Full-Text Search for People**  
   Description: Implement search across names, notes, biography within a user's accessible trees.  
   Files to Update: `blueprints/people.py` (add search query params), `services/person_service.py` (use database FTS like PostgreSQL's tsvector or ILIKE).
 
-- **Task 2.6: Advanced Filtering for People**  
+- **DONE - Task 2.6: Advanced Filtering for People**  
   Description: Filter people by date ranges (birth, death), gender, custom fields, event participation.  
   Files to Update: `blueprints/people.py` (add filter params), `services/person_service.py`.
 
