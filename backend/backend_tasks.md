@@ -31,7 +31,7 @@ This section focuses on enriching the existing data models and related API endpo
 
 ### B. Relationship Model Enhancements
 
-- **Task 1.5: Add Location to Relationship Model**  
+- **DONE - Task 1.5: Add Location to Relationship Model**  
   Description: Add `location` (String) field (e.g., place of marriage).  
   Files to Update: `models.py`, `services/relationship_service.py`, `blueprints/relationships.py`.  
   Action: Include database migration.

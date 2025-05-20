@@ -213,6 +213,7 @@ class Relationship(Base):
     person1_id = Column(PG_UUID(as_uuid=True), ForeignKey("people.id", ondelete="CASCADE"), nullable=False, index=True)
     person2_id = Column(PG_UUID(as_uuid=True), ForeignKey("people.id", ondelete="CASCADE"), nullable=False, index=True)
     relationship_type = Column(SQLAlchemyEnum(RelationshipTypeEnum, name="relationshiptypeenum", create_type=False), nullable=False)
+    location = Column(EncryptedString)
     start_date = Column(Date); end_date = Column(Date)
     certainty_level = Column(Integer)
     custom_attributes = Column(JSONB, default=dict)
@@ -226,6 +227,7 @@ class Relationship(Base):
         return {"id": str(self.id), "tree_id": str(self.tree_id),
             "person1_id": str(self.person1_id), "person2_id": str(self.person2_id),
             "relationship_type": self.relationship_type.value,
+            "location": self.location,
             "start_date": self.start_date.isoformat() if self.start_date else None,
             "end_date": self.end_date.isoformat() if self.end_date else None,
             "certainty_level": self.certainty_level, "custom_attributes": self.custom_attributes,
