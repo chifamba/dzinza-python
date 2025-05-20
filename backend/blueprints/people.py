@@ -25,8 +25,40 @@ def get_all_people_endpoint():
     page, per_page, sort_by, sort_order = get_pagination_params()
     sort_by = sort_by or "last_name"
     filters = {}
-    if request.args.get('is_living') is not None: filters['is_living'] = request.args.get('is_living', type=str).lower() == 'true'
-    if request.args.get('name_contains'): filters['name_contains'] = request.args.get('name_contains', type=str)
+    # Existing filters
+    if request.args.get('is_living') is not None: 
+        filters['is_living'] = request.args.get('is_living', type=str).lower() == 'true'
+    if request.args.get('gender'): 
+        filters['gender'] = request.args.get('gender', type=str)
+    if request.args.get('search_term'): 
+        filters['search_term'] = request.args.get('search_term', type=str)
+    
+    # New date range filters
+    if request.args.get('birth_start_date'): 
+        filters['birth_date_range_start'] = request.args.get('birth_start_date')
+    if request.args.get('birth_end_date'): 
+        filters['birth_date_range_end'] = request.args.get('birth_end_date')
+    if request.args.get('death_start_date'): 
+        filters['death_date_range_start'] = request.args.get('death_start_date')
+    if request.args.get('death_end_date'): 
+        filters['death_date_range_end'] = request.args.get('death_end_date')
+        
+    # New custom fields filter
+    # Ensure both key and value are present if either is provided for this specific filter type
+    custom_fields_key = request.args.get('custom_fields_key')
+    custom_fields_value = request.args.get('custom_fields_value') # Value can be an empty string
+    if custom_fields_key is not None and custom_fields_value is not None: # Check both are provided
+        filters['custom_fields_key'] = custom_fields_key
+        filters['custom_fields_value'] = custom_fields_value
+    elif custom_fields_key is not None or custom_fields_value is not None:
+        # If only one is provided, it's an invalid filter combination for this specific logic
+        # Service layer might also validate this, but good to catch early.
+        # For now, we'll let service handle if only one is passed, or adjust if strict check needed here.
+        # For this implementation, we require both if either is present to trigger the filter.
+        logger.debug("Partial custom_fields filter provided, ensure both key and value are sent to activate filter.", 
+                     key_present=custom_fields_key is not None, value_present=custom_fields_value is not None)
+
+
     logger.info("Get all people", tree_id=tree_id, page=page, per_page=per_page, filters=filters)
     try:
         return jsonify(get_all_people_db(db, tree_id, page, per_page, sort_by, sort_order, filters=filters)), 200

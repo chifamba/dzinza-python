@@ -34,29 +34,63 @@ def get_all_people_db(db: DBSession,
     Fetches a paginated list of people for a given tree.
     Correctly indented docstring.
     """
-    cfg_pagination = app_config_module.config.PAGINATION_DEFAULTS
-    # Use default from config if page/per_page are sentinel -1
-    current_page = page if page != -1 else cfg_pagination["page"]
-    current_per_page = per_page if per_page != -1 else cfg_pagination["per_page"]
+    # cfg_pagination = app_config_module.config.PAGINATION_DEFAULTS # Using direct config import
+    current_page = page if page != -1 else config.PAGINATION_DEFAULTS["page"]
+    current_per_page = per_page if per_page != -1 else config.PAGINATION_DEFAULTS["per_page"]
 
     logger.info("Fetching people for tree", tree_id=tree_id, page=current_page, per_page=current_per_page, sort_by=sort_by, filters=filters)
     try:
         query = db.query(Person).filter(Person.tree_id == tree_id)
+        
+        filter_conditions = [] 
 
         if filters:
+            # Existing filters
             if 'is_living' in filters and isinstance(filters['is_living'], bool):
-                query = query.filter(Person.is_living == filters['is_living'])
-            if 'gender' in filters and filters['gender']: # Ensure gender filter is not empty string
-                query = query.filter(Person.gender.ilike(f"%{filters['gender']}%")) # Case-insensitive partial match
-            if 'name_contains' in filters and filters['name_contains']: # Ensure name_contains filter is not empty
-                term = f"%{filters['name_contains']}%"
-                query = query.filter(
-                    or_(Person.first_name.ilike(term), 
-                        Person.last_name.ilike(term),
-                        Person.nickname.ilike(term), 
-                        Person.maiden_name.ilike(term)) # Assuming maiden_name is EncryptedString if searched
-                )
+                filter_conditions.append(Person.is_living == filters['is_living'])
+            if 'gender' in filters and filters['gender']: 
+                filter_conditions.append(Person.gender.ilike(f"%{filters['gender']}%"))
+            if 'search_term' in filters and filters['search_term']:
+                term = f"%{filters['search_term']}%"
+                search_conditions = [
+                    Person.first_name.ilike(term), 
+                    Person.last_name.ilike(term),
+                    Person.nickname.ilike(term), 
+                    Person.maiden_name.ilike(term)
+                ]
+                filter_conditions.append(or_(*search_conditions))
+
+            # Date range filters
+            date_filter_fields = {
+                'birth_date_range_start': (Person.birth_date, '>='),
+                'birth_date_range_end': (Person.birth_date, '<='),
+                'death_date_range_start': (Person.death_date, '>='),
+                'death_date_range_end': (Person.death_date, '<=')
+            }
+            for filter_key, (model_field, operator) in date_filter_fields.items():
+                if filters.get(filter_key):
+                    try:
+                        parsed_date = date.fromisoformat(filters[filter_key])
+                        if operator == '>=':
+                            filter_conditions.append(model_field >= parsed_date)
+                        elif operator == '<=':
+                            filter_conditions.append(model_field <= parsed_date)
+                    except ValueError:
+                        logger.warning(f"Invalid date format for {filter_key}: {filters[filter_key]}. Aborting.", exc_info=True)
+                        abort(400, description={"message": "Validation failed", "details": {filter_key: f"Invalid date format: {filters[filter_key]}. Use YYYY-MM-DD."}})
+            
+            # Custom fields filter (key-value equality)
+            # Targets Person.custom_fields JSONB column
+            if filters.get('custom_fields_key') and 'custom_fields_value' in filters: # value can be empty string
+                key = filters['custom_fields_key']
+                value = filters['custom_fields_value']
+                # Using .astext for direct string comparison. 
+                # For non-string values or more complex queries, different JSON operators would be needed.
+                filter_conditions.append(Person.custom_fields[key].astext == value)
         
+        if filter_conditions:
+            query = query.filter(*filter_conditions) 
+
         # Validate sort_by attribute
         if not (sort_by and hasattr(Person, sort_by)): # Check if sort_by is None or not an attribute
             logger.warning(f"Invalid or missing sort_by column '{sort_by}' for Person. Defaulting to 'last_name'.")
