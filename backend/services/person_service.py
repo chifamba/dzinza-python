@@ -170,6 +170,8 @@ def update_person_db(db: DBSession, person_id: uuid.UUID, tree_id: uuid.UUID, pe
         'birth_date', 'birth_date_approx', 'birth_place', 'place_of_birth', 
         'death_date', 'death_date_approx', 'death_place', 'place_of_death', 
         'burial_place', 'privacy_level', 'is_living', 'notes', 'biography', 'profile_picture_url', 'custom_attributes'
+        'profile_picture_url',  # Added profile_picture_url to allowed fields
+        'custom_fields'  # Added custom_fields to allowed fields
     ]
 
     for field, value in person_data.items():
@@ -189,6 +191,10 @@ def update_person_db(db: DBSession, person_id: uuid.UUID, tree_id: uuid.UUID, pe
             elif field == 'custom_attributes':
                  if not isinstance(value, dict) and value is not None: 
                      validation_errors[field] = "Custom attributes must be a dictionary or null."
+                 else: setattr(person, field, value if value is not None else {}) # Default to empty dict if null
+            elif field == 'custom_fields':  # Added custom_fields handling
+                 if not isinstance(value, dict) and value is not None:
+                     validation_errors[field] = "Custom fields must be a dictionary or null."
                  else: setattr(person, field, value if value is not None else {}) # Default to empty dict if null
             elif field in ['is_living', 'birth_date_approx', 'death_date_approx']:
                  if not isinstance(value, bool) and value is not None: 

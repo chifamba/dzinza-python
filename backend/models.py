@@ -190,6 +190,8 @@ class Person(Base):
     created_by = Column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    profile_picture_url = Column(String(512))  # Added profile_picture_url field
+    custom_fields = Column(JSONB, nullable=True, default=dict)  # Added custom_fields
 
     def to_dict(self):
         return {"id": str(self.id), "tree_id": str(self.tree_id), "first_name": self.first_name,
