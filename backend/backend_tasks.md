@@ -31,17 +31,17 @@ This section focuses on enriching the existing data models and related API endpo
 
 ### B. Relationship Model Enhancements
 
-- **Task 1.5: Add Location to Relationship Model**  
+- **DONE - Task 1.5: Add Location to Relationship Model**  
   Description: Add `location` (String) field (e.g., place of marriage).  
   Files to Update: `models.py`, `services/relationship_service.py`, `blueprints/relationships.py`.  
   Action: Include database migration.
 
-- **Task 1.6: Add Notes to Relationship Model**  
+- **DONE - Task 1.6: Add Notes to Relationship Model**  
   Description: Add `notes` (Text type) field for details about the relationship.  
   Files to Update: `models.py`, `services/relationship_service.py`, `blueprints/relationships.py`.  
   Action: Include database migration.
 
-- **Task 1.7: Expand Relationship Types**  
+- **DONE - Task 1.7: Expand Relationship Types**  
   Description: Support more granular relationship types (e.g., "ADOPTIVE_PARENT_OF", "STEP_PARENT_OF", "SIBLING", "HALF_SIBLING").  
   Files to Update: `models.py` (enum/choices), `services/relationship_service.py` (validation, inverse relationship logic).  
   Action: Ensure relationship_service can automatically create or suggest inverse relationships (e.g., if A is PARENT_OF B, B is CHILD_OF A).
@@ -53,19 +53,19 @@ This section focuses on enriching the existing data models and related API endpo
   Files to Update: `models.py`, `services/tree_service.py`, `blueprints/trees.py`.  
   Action: Include database migration.
 
-- **Task 1.9: Implement Tree Privacy Settings**  
+- **DONE - Task 1.9: Implement Tree Privacy Settings**  
   Description: Add `privacy_setting` (e.g., "PUBLIC", "PRIVATE_LINK_VIEW", "PRIVATE_LINK_EDIT", "PRIVATE_MEMBERS_ONLY") to Tree model.  
   Files to Update: `models.py`, `services/tree_service.py` (authorization logic), `decorators.py`, `blueprints/trees.py`.  
   Action: Include database migration.
 
 ### D. Event/Milestone System
 
-- **Task 1.10: Design and Implement Event Model**  
+- **DONE - Task 1.10: Design and Implement Event Model**  
   Description: Create an Event model (event_id, person_id (nullable), tree_id, event_type (e.g., "BIRTH", "DEATH", "MARRIAGE", "EDUCATION", "OCCUPATION", "MIGRATION", "RESIDENCE"), date_start, date_end (optional), location, description, related_person_ids (JSON/Array for multiple people in an event like marriage)).  
   Files to Create/Update: `models.py`, new `services/event_service.py`, new `blueprints/events.py`.  
   Action: Include database migration.
 
-- **Task 1.11: API Endpoints for Linking Events**  
+- **DONE - Task 1.11: API Endpoints for Linking Events**  
   Description: Endpoints to associate events with people and trees; list events for a person/tree.  
   Files to Update: `blueprints/people.py`, `blueprints/trees.py`, `blueprints/events.py`.
 

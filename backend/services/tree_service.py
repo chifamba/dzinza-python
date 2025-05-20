@@ -11,9 +11,10 @@ from werkzeug.utils import secure_filename
 from botocore.exceptions import S3UploadFailedError, ClientError
 
 
-from models import Tree, TreeAccess, Person, Relationship, PrivacyLevelEnum
+from models import Tree, TreeAccess, Person, Relationship, PrivacyLevelEnum, TreePrivacySettingEnum # Added TreePrivacySettingEnum
 from utils import _get_or_404, _handle_sqlalchemy_error, paginate_query
 from config import config # Direct import of the config instance
+# import config as app_config_module # Keep this if used by get_user_trees_db's cfg_pagination
 from storage_client import get_storage_client, create_bucket_if_not_exists
 
 
@@ -22,15 +23,31 @@ logger = structlog.get_logger(__name__)
 def create_tree_db(db: DBSession, user_id: uuid.UUID, tree_data: Dict[str, Any]) -> Dict[str, Any]:
     tree_name = tree_data.get('name')
     logger.info("Creating new tree", user_id=user_id, tree_name=tree_name)
-    if not tree_name: abort(400, "Tree name is required.")
-    try: default_privacy_enum = PrivacyLevelEnum(tree_data.get('default_privacy_level', PrivacyLevelEnum.private.value))
-    except ValueError: abort(400, f"Invalid default_privacy_level: {tree_data.get('default_privacy_level')}.")
+    if not tree_name: abort(400, description="Tree name is required.") # Use description consistently
+    
+    try: 
+        default_privacy_enum = PrivacyLevelEnum(tree_data.get('default_privacy_level', PrivacyLevelEnum.private.value))
+    except ValueError: 
+        abort(400, description=f"Invalid default_privacy_level: {tree_data.get('default_privacy_level')}.")
+
+    privacy_setting_str = tree_data.get('privacy_setting', TreePrivacySettingEnum.PRIVATE.value)
     try:
-        new_tree = Tree(name=tree_name, description=tree_data.get('description'), created_by=user_id,
-            is_public=bool(tree_data.get('is_public', False)), default_privacy_level=default_privacy_enum)
-        db.add(new_tree); db.flush()
+        privacy_setting_enum = TreePrivacySettingEnum(privacy_setting_str)
+    except ValueError:
+        abort(400, description=f"Invalid privacy_setting: {privacy_setting_str}.")
+
+    try:
+        new_tree = Tree(
+            name=tree_name, 
+            description=tree_data.get('description'), 
+            created_by=user_id,
+            default_privacy_level=default_privacy_enum,
+            privacy_setting=privacy_setting_enum # Set new field
+            # is_public field is removed from direct assignment
+        )
+        db.add(new_tree); db.flush() # Flush to get new_tree.id for TreeAccess
         tree_access = TreeAccess(tree_id=new_tree.id, user_id=user_id, access_level='admin', granted_by=user_id)
-        db.add(tree_access); db.commit(); db.refresh(new_tree)
+        db.add(tree_access); db.commit(); db.refresh(new_tree) # Commit all changes
         logger.info("Tree created with owner access.", tree_id=new_tree.id, created_by=user_id)
         return new_tree.to_dict()
     except SQLAlchemyError as e: _handle_sqlalchemy_error(e, "creating tree", db)
@@ -42,19 +59,22 @@ def create_tree_db(db: DBSession, user_id: uuid.UUID, tree_data: Dict[str, Any])
 def get_user_trees_db(db: DBSession, user_id: uuid.UUID, page: int = -1, per_page: int = -1,
                         sort_by: Optional[str] = "name", sort_order: Optional[str] = "asc"
                         ) -> Dict[str, Any]:
-    cfg_pagination = app_config_module.config.PAGINATION_DEFAULTS
-    if page == -1: page = cfg_pagination["page"]
-    if per_page == -1: per_page = cfg_pagination["per_page"]
-    logger.info("Fetching trees for user", user_id=user_id, page=page, per_page=per_page)
+    # cfg_pagination = app_config_module.config.PAGINATION_DEFAULTS # Using direct config import
+    current_page = page if page != -1 else config.PAGINATION_DEFAULTS["page"]
+    current_per_page = per_page if per_page != -1 else config.PAGINATION_DEFAULTS["per_page"]
+    logger.info("Fetching trees for user", user_id=user_id, page=current_page, per_page=current_per_page)
     try:
         owned_trees_sq = db.query(Tree.id.label("tree_id")).filter(Tree.created_by == user_id)
         shared_trees_sq = db.query(TreeAccess.tree_id.label("tree_id")).filter(TreeAccess.user_id == user_id)
         accessible_tree_ids_sq = owned_trees_sq.union(shared_trees_sq).distinct().subquery('accessible_tree_ids')
         query = db.query(Tree).join(accessible_tree_ids_sq, Tree.id == accessible_tree_ids_sq.c.tree_id)
-        if not hasattr(Tree, sort_by or ""):
-            logger.warning(f"Invalid sort_by '{sort_by}' for Tree. Defaulting to 'name'.")
+        if not hasattr(Tree, sort_by or ""): # Ensure sort_by is not None before hasattr
+            logger.warning(f"Invalid or missing sort_by column '{sort_by}' for Tree. Defaulting to 'name'.")
             sort_by = "name"
-        paginated_result = paginate_query(query, Tree, page, per_page, cfg_pagination["max_per_page"], sort_by, sort_order)
+        if sort_order not in ['asc', 'desc']:
+            sort_order = 'asc'
+            
+        paginated_result = paginate_query(query, Tree, current_page, current_per_page, config.PAGINATION_DEFAULTS["max_per_page"], sort_by, sort_order)
         logger.info(f"Found {paginated_result['total_items']} trees for user {user_id}")
         return paginated_result
     except SQLAlchemyError as e: _handle_sqlalchemy_error(e, "fetching user trees", db)
@@ -66,19 +86,35 @@ def get_user_trees_db(db: DBSession, user_id: uuid.UUID, page: int = -1, per_pag
 def update_tree_db(db: DBSession, tree_id: uuid.UUID, tree_data: Dict[str, Any]) -> Dict[str, Any]:
     logger.info("Updating tree", tree_id=tree_id, data_keys=list(tree_data.keys()))
     tree = _get_or_404(db, Tree, tree_id)
-    allowed_fields = ['name', 'description', 'is_public', 'default_privacy_level']
+    # Removed 'is_public', added 'privacy_setting'
+    allowed_fields = ['name', 'description', 'default_privacy_level', 'privacy_setting'] 
+    validation_errors = {}
+
     try:
         for key, value in tree_data.items():
             if key in allowed_fields:
-                if key == 'default_privacy_level': setattr(tree, key, PrivacyLevelEnum(value))
-                elif key == 'is_public': setattr(tree, key, bool(value))
-                else: setattr(tree, key, value)
+                if key == 'default_privacy_level':
+                    try: setattr(tree, key, PrivacyLevelEnum(value))
+                    except ValueError: validation_errors[key] = f"Invalid value: {value}"
+                elif key == 'privacy_setting':
+                    try: setattr(tree, key, TreePrivacySettingEnum(value))
+                    except ValueError: validation_errors[key] = f"Invalid value: {value}"
+                # elif key == 'is_public': # Logic for is_public removed
+                #     pass 
+                else: 
+                    setattr(tree, key, value)
+        
+        if validation_errors:
+            abort(400, description={"message": "Validation failed", "details": validation_errors})
+
         db.commit(); db.refresh(tree)
         logger.info("Tree updated.", tree_id=tree.id)
         return tree.to_dict()
-    except ValueError as ve: abort(400, f"Invalid value for default_privacy_level: {tree_data.get('default_privacy_level')}. Error: {ve}")
+    # Removed specific ValueError for default_privacy_level, handled by common validation_errors
     except SQLAlchemyError as e: _handle_sqlalchemy_error(e, "updating tree", db)
-    except Exception as e:
+    except HTTPException: # Re-raise aborts from validation
+        raise
+    except Exception as e: # Catch any other unexpected errors
         db.rollback(); logger.error("Unexpected error updating tree.", tree_id=tree_id, exc_info=True)
         abort(500, "Error updating tree.")
     return {}

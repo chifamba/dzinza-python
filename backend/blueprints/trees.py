@@ -11,6 +11,7 @@ from services.tree_service import (
     upload_tree_cover_image_db
 )
 from services.media_service import get_media_for_entity_db # Added for tree media
+from services.event_service import get_events_for_tree_db # Added for tree events
 from utils import get_pagination_params
 # werkzeug.utils.secure_filename is imported in service now
 from extensions import limiter
@@ -58,10 +59,12 @@ def set_active_tree_endpoint():
     tree_id_str = data['tree_id']; user_id = uuid.UUID(session['user_id']); db = g.db
     try: tree_id_uuid = uuid.UUID(tree_id_str)
     except ValueError: abort(400, "Invalid UUID for tree_id.")
-    tree = db.query(Tree).filter(Tree.id == tree_id_uuid).one_or_none()
+    tree = db.query(Tree).filter(Tree.id == tree_id_uuid).one_or_none() # Tree model should have privacy_setting now
     if not tree: abort(404, f"Tree with ID {tree_id_str} not found.")
     can_set_active = False
-    if tree.created_by == user_id or tree.is_public: can_set_active = True
+    # Updated to use privacy_setting
+    if tree.created_by == user_id or tree.privacy_setting == TreePrivacySettingEnum.PUBLIC: 
+        can_set_active = True
     else:
         if db.query(TreeAccess).filter(TreeAccess.tree_id == tree_id_uuid, TreeAccess.user_id == user_id).first():
             can_set_active = True
@@ -158,4 +161,40 @@ def get_tree_media_endpoint(tree_id_param: uuid.UUID):
     except Exception as e:
         logger.error("Error in get_tree_media_endpoint", exc_info=True)
         abort(500, description="Error fetching media for tree.")
+    return {}
+
+@trees_bp.route('/trees/<uuid:tree_id_param>/events', methods=['GET'])
+@require_auth
+@require_tree_access('view')
+def get_tree_events_endpoint(tree_id_param: uuid.UUID):
+    db_session = g.db
+    active_tree_id = uuid.UUID(g.active_tree_id) # Ensure it's UUID
+    
+    if active_tree_id != tree_id_param: # Should be guaranteed by @require_tree_access if tree_id_param is used by it
+        logger.warning("Mismatch between active_tree_id in session and tree_id_param in URL for get_tree_events_endpoint.",
+                       active_tree_id_session=str(active_tree_id), tree_id_url=str(tree_id_param))
+        abort(400, "URL tree ID does not match active tree context.")
+
+    page, per_page, sort_by, sort_order = get_pagination_params()
+    sort_by = sort_by if sort_by else "date" 
+    sort_order = sort_order if sort_order else "asc"
+    
+    # Example filter: by event_type
+    filters = {}
+    if 'event_type' in request.args:
+        filters['event_type'] = request.args.get('event_type')
+
+    logger.info("Get events for tree endpoint", tree_id=tree_id_param, page=page, per_page=per_page, 
+                sort_by=sort_by, sort_order=sort_order, filters=filters)
+    try:
+        events_list_dict = get_events_for_tree_db(
+            db_session, tree_id_param,
+            page, per_page, sort_by, sort_order, filters=filters
+        )
+        return jsonify(events_list_dict), 200
+    except HTTPException as e:
+        raise
+    except Exception as e:
+        logger.error("Error in get_tree_events_endpoint", exc_info=True)
+        abort(500, description="Error fetching events for tree.")
     return {}

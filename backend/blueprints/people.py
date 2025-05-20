@@ -11,6 +11,7 @@ from services.person_service import (
     upload_profile_picture_db
 )
 from services.media_service import get_media_for_entity_db # Added for person media
+from services.event_service import get_events_for_person_db # Added for person events
 from utils import get_pagination_params
 # werkzeug.utils.secure_filename is imported in service now
 
@@ -156,4 +157,31 @@ def get_person_media_endpoint(person_id_param: uuid.UUID):
     except Exception as e:
         logger.error("Error in get_person_media_endpoint", exc_info=True)
         abort(500, description="Error fetching media for person.")
+    return {}
+
+@people_bp.route('/<uuid:person_id_param>/events', methods=['GET'])
+@require_auth
+@require_tree_access('view')
+def get_person_events_endpoint(person_id_param: uuid.UUID):
+    db_session = g.db
+    active_tree_id = uuid.UUID(g.active_tree_id) # Ensure it's UUID
+
+    page, per_page, sort_by, sort_order = get_pagination_params()
+    # Default sort for events, could be 'date' or 'created_at'
+    sort_by = sort_by if sort_by else "date" 
+    sort_order = sort_order if sort_order else "asc" # Events typically chronological
+
+    logger.info("Get events for person endpoint", tree_id=active_tree_id, person_id=person_id_param,
+                page=page, per_page=per_page, sort_by=sort_by, sort_order=sort_order)
+    try:
+        events_list_dict = get_events_for_person_db(
+            db_session, active_tree_id, person_id_param,
+            page, per_page, sort_by, sort_order
+        )
+        return jsonify(events_list_dict), 200
+    except HTTPException as e:
+        raise
+    except Exception as e:
+        logger.error("Error in get_person_events_endpoint", exc_info=True)
+        abort(500, description="Error fetching events for person.")
     return {}
