@@ -8,12 +8,12 @@ This section focuses on enriching the existing data models and related API endpo
 
 ### A. Person Model Enhancements
 
-- **Task 1.1: Add More Granular Location Data to Person Model**  
+- **DONE - Task 1.1: Add More Granular Location Data to Person Model**  
   Description: Add `place_of_birth` (String) and `place_of_death` (String) fields.  
   Files to Update: `models.py`, `services/person_service.py`, `blueprints/people.py`.  
   Action: Include database migration script (e.g., Alembic).
 
-- **Task 1.2: Add Extended Biography to Person Model**  
+- **DONE - Task 1.2: Add Extended Biography to Person Model**  
   Description: Add a `biography` (Text type) field for detailed descriptions.  
   Files to Update: `models.py`, `services/person_service.py`, `blueprints/people.py`.  
   Action: Include database migration.

@@ -173,13 +173,16 @@ class Person(Base):
     birth_date = Column(Date, index=True) 
     birth_date_approx = Column(Boolean, default=False)
     birth_place = Column(EncryptedString)
+    place_of_birth = Column(EncryptedString)
     death_date = Column(Date, index=True)
     death_date_approx = Column(Boolean, default=False)
     death_place = Column(EncryptedString)
+    place_of_death = Column(EncryptedString)
     burial_place = Column(EncryptedString)
     privacy_level = Column(SQLAlchemyEnum(PrivacyLevelEnum, name="privacylevelenum", create_type=False), default=PrivacyLevelEnum.inherit)
     is_living = Column(Boolean, index=True)
     notes = Column(EncryptedString) 
+    biography = Column(EncryptedString)
     custom_attributes = Column(JSONB, default=dict)
     created_by = Column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
@@ -191,10 +194,12 @@ class Person(Base):
             "nickname": self.nickname, "gender": self.gender,
             "birth_date": self.birth_date.isoformat() if self.birth_date else None,
             "birth_date_approx": self.birth_date_approx, "birth_place": self.birth_place,
+            "place_of_birth": self.place_of_birth,
             "death_date": self.death_date.isoformat() if self.death_date else None,
             "death_date_approx": self.death_date_approx, "death_place": self.death_place,
+            "place_of_death": self.place_of_death,
             "burial_place": self.burial_place, "privacy_level": self.privacy_level.value,
-            "is_living": self.is_living, "notes": self.notes, "custom_attributes": self.custom_attributes,
+            "is_living": self.is_living, "notes": self.notes, "biography": self.biography, "custom_attributes": self.custom_attributes,
             "created_by": str(self.created_by),
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None}
