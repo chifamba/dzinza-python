@@ -23,7 +23,7 @@ This section focuses on enriching the existing data models and related API endpo
   Files to Update: `models.py`, `services/person_service.py`, `blueprints/people.py`.  
   Action: Include database migration.
 
-- **Task 1.4: Implement Custom Fields/Tags for Persons**  
+- **DONE - Task 1.4: Implement Custom Fields/Tags for Persons**  
   Description: Allow users to add custom key-value attributes to a person.  
   Design Choice: JSONB field in Person model or a separate PersonCustomField table.  
   Files to Update: `models.py`, `services/person_service.py`, `blueprints/people.py`.  
