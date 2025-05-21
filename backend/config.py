@@ -34,7 +34,7 @@ class Config:
     SQLALCHEMY_ECHO = os.getenv("SQLALCHEMY_ECHO", "False").lower() == "true"
 
     # Redis
-    REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
 
     # Session Configuration
     SESSION_TYPE = 'redis'

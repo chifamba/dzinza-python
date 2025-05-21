@@ -4,6 +4,11 @@
 # Run this script from the project root directory (dzinza-python/).
 clear
 echo "========================================================"
+echo "clearing Docker system..."
+docker builder prune -f && docker system prune -f
+echo "Docker system cleaned."
+
+echo "========================================================"
 echo "Starting Dzinza Family Tree using Docker Compose..."
 
 # Check if .env file exists, warn if not (optional but good practice)
