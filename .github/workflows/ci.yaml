@@ -60,7 +60,7 @@ jobs:
             ${{ runner.os }}-pip-
 
       # 4. Install Python Dependencies (including test/lint tools)
-      #    Ensure requirements.txt includes: flake8, pytest, psycopg2-binary (or psycopg)
+      #    Ensure requirements.txt includes: flake8, pytest, psycopg-binary (or psycopg)
       - name: Install backend dependencies
         run: pip install -r backend/requirements.txt
         working-directory: . # Run from root

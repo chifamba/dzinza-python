@@ -8,7 +8,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from flask import abort
 from werkzeug.exceptions import HTTPException
 from werkzeug.utils import secure_filename
-from botocore.exceptions import S3UploadFailedError, ClientError
+
 
 # Absolute imports from the app root
 from models import MediaItem, MediaTypeEnum, Person, Tree # Event (if/when Event model exists)

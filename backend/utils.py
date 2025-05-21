@@ -178,7 +178,7 @@ def _handle_sqlalchemy_error(e: SQLAlchemyError, context: str, db: DBSession):
     logger.error(f"SQLAlchemy Error: {context}", exc_info=True, error_type=type(e).__name__, orig_error=str(getattr(e, 'orig', None)))
     
     if isinstance(e, IntegrityError):
-        detail = getattr(e.orig, 'diag', None) # For psycopg2, might differ for other DBs
+        detail = getattr(e.orig, 'diag', None) # For psycopg, might differ for other DBs
         constraint_name = detail.constraint_name if detail else None
         error_message = str(e.orig).lower() if hasattr(e, 'orig') and e.orig is not None else str(e).lower()
 

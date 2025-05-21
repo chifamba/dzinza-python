@@ -5,7 +5,7 @@
   channel = "stable-24.11"; # or "unstable"
   # Use https://search.nixos.org/packages to find packages
   packages = [
-    pkgs.python3Packages.psycopg2-binary
+    pkgs.python3Packages.psycopg-binary
     pkgs.docker
     pkgs.docker-compose  # Added Docker Compose
     pkgs.python3Packages.transformers
