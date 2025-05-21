@@ -11,7 +11,7 @@ from werkzeug.exceptions import HTTPException
 
 import os # For path manipulation if needed for filename
 from werkzeug.utils import secure_filename # For sanitizing filenames
-from botocore.exceptions import S3UploadFailedError, ClientError # More specific Boto3 exceptions
+# from botocore.exceptions import S3UploadFailedError, ClientError # More specific Boto3 exceptions
 
 # Absolute imports from the app root
 from models import Person, PrivacyLevelEnum # MediaItem, MediaTypeEnum (Not needed for this task)

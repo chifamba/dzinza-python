@@ -8,7 +8,7 @@ from sqlalchemy import or_
 import os
 from flask import abort
 from werkzeug.utils import secure_filename
-from botocore.exceptions import S3UploadFailedError, ClientError
+# from botocore.exceptions import S3UploadFailedError, ClientError
 
 
 from models import Tree, TreeAccess, Person, Relationship, PrivacyLevelEnum, TreePrivacySettingEnum # Added TreePrivacySettingEnum
