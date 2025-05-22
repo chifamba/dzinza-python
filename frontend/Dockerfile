@@ -11,7 +11,7 @@ COPY frontend/ /app/
 
 # Install dependencies
 # Use --legacy-peer-deps if you encounter peer dependency issues, otherwise remove it
-RUN npm install # --legacy-peer-deps
+ RUN npm install # --legacy-peer-deps
 
 
 # Build the React application for production
@@ -27,7 +27,7 @@ COPY --from=build /app/dist /usr/share/nginx/html
 
 # *** ADDED LINE: Copy custom Nginx configuration ***
 # This replaces the default Nginx config with our SPA-friendly one
-COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/nginx.conf /etc/nginx/conf.d/default.conf
 
 # Expose port 80 (default Nginx port)
 EXPOSE 80
