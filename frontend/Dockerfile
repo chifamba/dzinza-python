@@ -7,7 +7,7 @@ FROM node:23-alpine AS build
 # Set the working directory
 WORKDIR /app
 
-COPY frontend/ /app/
+COPY . /app/
 
 # Install dependencies
 # Use --legacy-peer-deps if you encounter peer dependency issues, otherwise remove it
