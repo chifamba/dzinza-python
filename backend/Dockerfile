@@ -23,7 +23,7 @@ ENV FLASK_DEBUG=0
 
 # Copy requirements.txt first to leverage Docker's layer caching.
 # This assumes requirements.txt is in the same directory as the Dockerfile (the build context).
-COPY . /app/
+COPY backend/ /app/
 
 # Install Python dependencies
 # Using --no-cache-dir reduces image size.
