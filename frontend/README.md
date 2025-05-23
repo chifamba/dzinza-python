@@ -73,7 +73,7 @@ This section outlines the general steps and architectural considerations if you 
 *   **Setup Tailwind CSS Theme**: Configure `src/app/globals.css` with HSL color variables for light and dark modes, similar to the existing file. Update `tailwind.config.ts` to use these variables.
 
 
-### 4. AI Integration (Genkit)
+### 2. AI Integration (Genkit)
 
 *   **Configure Genkit (`src/ai/genkit.ts`)**:
     *   Initialize Genkit with the `googleAI` plugin.
@@ -85,7 +85,7 @@ This section outlines the general steps and architectural considerations if you 
     *   Define an `ai.defineFlow` that takes the input, calls the prompt, and returns the output. Handle potential null output from the prompt.
     *   Export a wrapper async function that calls the flow.
 
-### 5. UI Components - Core Display
+### 3. UI Components - Core Display
 
 *   **`PersonCard.tsx`**:
     *   Accepts `person`, `allPeople`, `position`, `onDrag`, `onEdit`, etc., as props.
@@ -126,7 +126,7 @@ This section outlines the general steps and architectural considerations if you 
     *   **Rendering**:
         *   Renders `AppHeader`, `FamilyDisplay`, and various modals.
 
-### 6. UI Components - Modals & Forms
+### 4. UI Components - Modals & Forms
 
 *   **`PersonForm.tsx`**:
     *   A reusable form component for adding/editing person details.
@@ -143,14 +143,14 @@ This section outlines the general steps and architectural considerations if you 
     *   Fetches suggestions using `getAISuggestionsAction`.
     *   Lists suggestions with buttons to add them (which would typically involve creating the person if they don't exist and then adding the relationship).
 
-### 7. Styling and Layout
+### 5. Styling and Layout
 
 *   **Global Styles (`globals.css`)**: Define base styles, Tailwind directives, and CSS variables for theming.
 *   **App Layout (`layout.tsx`)**: Basic HTML structure, include `Toaster`.
 *   **Header (`AppHeader.tsx`)**: Contains app title and "Add Person" / "Reset View" buttons.
 *   **Tailwind CSS**: Use utility classes extensively for styling components.
 
-### 8. Refinements & Error Handling
+### 6. Refinements & Error Handling
 
 *   **Loading States**: Show loaders during data fetching or AI processing.
 *   **Error Handling**: Use `try...catch` in server actions and AI flows. Display errors using Toasts.
