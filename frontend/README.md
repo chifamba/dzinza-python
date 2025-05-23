@@ -10,6 +10,7 @@ Dzinza is a web application designed to help users create, visualize, and manage
 *   **Interactive Visualization**:
     *   View family members as cards on a canvas.
     *   **Drag-and-Drop**: Rearrange individuals on the canvas to customize the layout.
+    *   **Drag-and-Drop connections**: Make connection and define relationships between individuals by simply dragging connector from one to the other.
     *   **Dynamic Connectors**: SVG lines dynamically connect related individuals, updating as cards are moved.
     *   **Generational Layout**: Initial card placement is organized by generation, with older generations at the top.
 *   **AI-Powered Relationship Suggestions**: Utilizes Genkit and Google's Gemini models to suggest potential siblings, spouses, or children based on existing family data.
