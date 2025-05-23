@@ -19,6 +19,7 @@ from utils import _get_or_404, _handle_sqlalchemy_error, paginate_query
 from config import config # Direct import of the config instance
 from storage_client import get_storage_client, create_bucket_if_not_exists
 # from services.media_service import create_media_item_record_db # Not using for direct profile pic update
+from services.activity_service import log_activity # For audit logging
 
 logger = structlog.get_logger(__name__)
 
@@ -116,10 +117,16 @@ def get_person_db(db: DBSession, person_id: uuid.UUID, tree_id: uuid.UUID) -> Di
     person = _get_or_404(db, Person, person_id, tree_id=tree_id)
     return person.to_dict()
 
-def create_person_db(db: DBSession, user_id: uuid.UUID, tree_id: uuid.UUID, person_data: Dict[str, Any]) -> Dict[str, Any]:
+def create_person_db(db: DBSession, 
+                     user_id: uuid.UUID, # This is the actor_user_id for creation
+                     tree_id: uuid.UUID, 
+                     person_data: Dict[str, Any],
+                     ip_address: Optional[str] = None,
+                     user_agent: Optional[str] = None
+                     ) -> Dict[str, Any]:
     """Creates a new person in the database for a given tree."""
     person_name_log = f"{person_data.get('first_name', '')} {person_data.get('last_name', '')}".strip()
-    logger.info("Attempting to create new person", user_id=user_id, tree_id=tree_id, person_name=person_name_log)
+    logger.info("Attempting to create new person", actor_user_id=user_id, tree_id=tree_id, person_name=person_name_log)
 
     if not person_data.get('first_name'):
         abort(400, description={"message": "Validation failed", "details": {"first_name": "First name is required."}})
@@ -187,8 +194,15 @@ def create_person_db(db: DBSession, user_id: uuid.UUID, tree_id: uuid.UUID, pers
         db.add(new_person)
         db.commit()
         db.refresh(new_person)
+        person_dict = new_person.to_dict()
         logger.info("Person created successfully", person_id=new_person.id, tree_id=tree_id, created_by=user_id)
-        return new_person.to_dict()
+        
+        # Audit Log
+        log_activity(db=db, actor_user_id=user_id, action_type="CREATE_PERSON",
+                     entity_type="PERSON", entity_id=new_person.id, tree_id=tree_id,
+                     new_state=person_dict, ip_address=ip_address, user_agent=user_agent)
+        
+        return person_dict
     except SQLAlchemyError as e:
         _handle_sqlalchemy_error(e, "creating person", db) # This will abort
     except HTTPException: # Re-raise aborts
@@ -200,10 +214,18 @@ def create_person_db(db: DBSession, user_id: uuid.UUID, tree_id: uuid.UUID, pers
     return {} # Should be unreachable
 
 
-def update_person_db(db: DBSession, person_id: uuid.UUID, tree_id: uuid.UUID, person_data: Dict[str, Any]) -> Dict[str, Any]:
+def update_person_db(db: DBSession, 
+                     person_id: uuid.UUID, 
+                     tree_id: uuid.UUID, 
+                     person_data: Dict[str, Any],
+                     actor_user_id: Optional[uuid.UUID] = None, # Added for audit logging
+                     ip_address: Optional[str] = None,      # Added for audit logging
+                     user_agent: Optional[str] = None       # Added for audit logging
+                     ) -> Dict[str, Any]:
     """Updates an existing person in the database."""
-    logger.info("Attempting to update person", person_id=person_id, tree_id=tree_id, data_keys=list(person_data.keys()))
+    logger.info("Attempting to update person", person_id=person_id, tree_id=tree_id, actor_user_id=actor_user_id, data_keys=list(person_data.keys()))
     person = _get_or_404(db, Person, person_id, tree_id=tree_id)
+    previous_state = person.to_dict() # Capture state before update
     
     validation_errors: Dict[str, str] = {}
     allowed_fields = [
@@ -266,8 +288,16 @@ def update_person_db(db: DBSession, person_id: uuid.UUID, tree_id: uuid.UUID, pe
     try:
         db.commit()
         db.refresh(person)
-        logger.info("Person updated successfully", person_id=person.id, tree_id=tree_id)
-        return person.to_dict()
+        updated_person_dict = person.to_dict()
+        logger.info("Person updated successfully", person_id=person.id, tree_id=tree_id, actor_user_id=actor_user_id)
+
+        # Audit Log
+        log_activity(db=db, actor_user_id=actor_user_id, action_type="UPDATE_PERSON",
+                     entity_type="PERSON", entity_id=person.id, tree_id=tree_id,
+                     previous_state=previous_state, new_state=updated_person_dict,
+                     ip_address=ip_address, user_agent=user_agent)
+        
+        return updated_person_dict
     except SQLAlchemyError as e:
         _handle_sqlalchemy_error(e, f"updating person ID {person_id}", db) # This will abort
     except HTTPException: # Re-raise aborts
@@ -278,16 +308,30 @@ def update_person_db(db: DBSession, person_id: uuid.UUID, tree_id: uuid.UUID, pe
         abort(500, description="An unexpected error occurred during person update.")
     return {} # Should be unreachable
 
-def delete_person_db(db: DBSession, person_id: uuid.UUID, tree_id: uuid.UUID) -> bool:
+def delete_person_db(db: DBSession, 
+                     person_id: uuid.UUID, 
+                     tree_id: uuid.UUID,
+                     actor_user_id: Optional[uuid.UUID] = None, # Added for audit logging
+                     ip_address: Optional[str] = None,      # Added for audit logging
+                     user_agent: Optional[str] = None       # Added for audit logging
+                     ) -> bool:
     """Deletes a person from the database."""
-    logger.info("Attempting to delete person", person_id=person_id, tree_id=tree_id)
+    logger.info("Attempting to delete person", person_id=person_id, tree_id=tree_id, actor_user_id=actor_user_id)
     person = _get_or_404(db, Person, person_id, tree_id=tree_id)
-    person_name_for_log = f"{person.first_name or ''} {person.last_name or ''}".strip()
+    previous_state = person.to_dict() # Capture state before delete
+    person_name_for_log = f"{previous_state.get('first_name', '')} {previous_state.get('last_name', '')}".strip()
+
 
     try:
         db.delete(person)
         db.commit()
-        logger.info("Person deleted successfully", person_id=person_id, person_name=person_name_for_log, tree_id=tree_id)
+        logger.info("Person deleted successfully", person_id=person_id, person_name=person_name_for_log, tree_id=tree_id, actor_user_id=actor_user_id)
+
+        # Audit Log
+        log_activity(db=db, actor_user_id=actor_user_id, action_type="DELETE_PERSON",
+                     entity_type="PERSON", entity_id=person_id, tree_id=tree_id,
+                     previous_state=previous_state, ip_address=ip_address, user_agent=user_agent)
+        
         return True
     except SQLAlchemyError as e: 
         _handle_sqlalchemy_error(e, f"deleting person ID {person_id}", db) # This will abort

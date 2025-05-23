@@ -43,4 +43,51 @@ def get_activity_log_db(db: DBSession,
     except Exception as e:
         logger.error("Unexpected error fetching activity logs.", exc_info=True)
         abort(500, description="An unexpected error occurred while fetching activity logs.")
-    return {} 
+    return {}
+
+
+def log_activity(db: DBSession,
+                 action_type: str,
+                 entity_type: str,
+                 entity_id: Optional[uuid.UUID],
+                 actor_user_id: Optional[uuid.UUID] = None, # Renamed from user_id to avoid confusion with entity's user_id
+                 tree_id: Optional[uuid.UUID] = None,
+                 previous_state: Optional[Dict[str, Any]] = None,
+                 new_state: Optional[Dict[str, Any]] = None,
+                 ip_address: Optional[str] = None,
+                 user_agent: Optional[str] = None,
+                 description: Optional[str] = None # Optional human-readable description
+                 ) -> None:
+    """
+    Logs an activity to the ActivityLog.
+    """
+    logger.debug("Logging activity", action=action_type, entity_type=entity_type, entity_id=entity_id, 
+                 actor_user_id=actor_user_id, tree_id=tree_id)
+    try:
+        log_entry = ActivityLog(
+            user_id=actor_user_id, # This is the user performing the action
+            action_type=action_type,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            tree_id=tree_id,
+            previous_state=previous_state,
+            new_state=new_state,
+            ip_address=ip_address,
+            user_agent=user_agent
+            # description field is not in ActivityLog model currently, so not setting it.
+        )
+        db.add(log_entry)
+        db.commit()
+        logger.info("Activity logged successfully", activity_id=log_entry.id, action=action_type, entity_type=entity_type)
+    except SQLAlchemyError as e:
+        # Log the error but don't abort the main operation typically
+        # Or, if logging is critical, this might need to re-raise or handle differently
+        db.rollback() # Rollback the log entry if commit fails
+        logger.error("Failed to log activity to database.",
+                     action=action_type, entity_type=entity_type, entity_id=entity_id,
+                     error=str(e), exc_info=False) # Set exc_info=False to avoid huge logs for common logging failures
+    except Exception as e:
+        db.rollback()
+        logger.error("Unexpected error while logging activity.",
+                     action=action_type, entity_type=entity_type, entity_id=entity_id,
+                     error=str(e), exc_info=True)

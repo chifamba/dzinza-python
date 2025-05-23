@@ -36,6 +36,10 @@ class Config:
     # Redis
     REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
 
+    # Celery Configuration
+    CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", REDIS_URL)
+    CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", REDIS_URL)
+
     # Session Configuration
     SESSION_TYPE = 'redis'
     SESSION_PERMANENT = False
@@ -73,11 +77,16 @@ class Config:
     
     # Email Configuration
     EMAIL_SERVER = os.getenv("EMAIL_SERVER")
-    EMAIL_PORT = os.getenv("EMAIL_PORT")
+    EMAIL_PORT = int(os.getenv("EMAIL_PORT", 587)) # Ensure int, provide default
     EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "true").lower() == "true"
-    EMAIL_USERNAME = os.getenv("EMAIL_USER")
+    EMAIL_USERNAME = os.getenv("EMAIL_USER") # Typically same as MAIL_SENDER_EMAIL for auth
     EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
-    MAIL_SENDER = os.getenv("MAIL_SENDER", EMAIL_USERNAME)
+    
+    # MAIL_SENDER in the original config.py was defaulting to EMAIL_USERNAME.
+    # The task asks for MAIL_SENDER_NAME and MAIL_SENDER_EMAIL explicitly.
+    MAIL_SENDER_NAME = os.getenv('MAIL_SENDER_NAME', 'Dzinza Support')
+    MAIL_SENDER_EMAIL = os.getenv('MAIL_SENDER_EMAIL', EMAIL_USERNAME) # Default to EMAIL_USERNAME if not set
+    # APP_URL is requested by the task, FRONTEND_APP_URL serves this purpose. Using FRONTEND_APP_URL.
 
     # Debug and Environment
     FLASK_ENV = os.getenv('FLASK_ENV', 'development')
