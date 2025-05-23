@@ -8,7 +8,7 @@ FROM node:23-alpine AS build
 WORKDIR /app
 
 COPY frontend/ /app/
-RUN ls -la && sleep 20
+
 
 # Install dependencies
 # Use --legacy-peer-deps if you encounter peer dependency issues, otherwise remove it
