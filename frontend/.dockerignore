@@ -1,0 +1,16 @@
+Dockerfile
+.dockerignore
+node_modules
+npm-debug.log
+README.md
+.env
+.env.local
+.env.*.local
+.next
+*.tgz
+# Add other files/folders that should not be included in the build context
+# For example, if you have a .git folder at this level by mistake
+.git
+# IDE specific folders
+.vscode
+.idea

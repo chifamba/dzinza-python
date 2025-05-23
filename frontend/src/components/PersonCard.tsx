@@ -17,8 +17,8 @@ export interface PersonCardProps {
   onEdit: () => void;
   onDelete: (personId: string) => void;
   onAddRelative: () => void;
-  onAiSuggest: (person: Person) => void; // Changed to accept Person
-  isLoadingAiSuggestions?: boolean; // Added loading state prop
+  onAiSuggest: (person: Person) => void;
+  isLoadingAiSuggestions?: boolean;
   onDrag: (personId: string, newPosition: { x: number; y: number }) => void;
 }
 
@@ -29,7 +29,7 @@ const PersonCard: React.FC<PersonCardProps> = ({
   onDelete,
   onAddRelative,
   onAiSuggest,
-  isLoadingAiSuggestions = false, // Default to false
+  isLoadingAiSuggestions = false,
   onDrag,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
@@ -74,14 +74,14 @@ const PersonCard: React.FC<PersonCardProps> = ({
 
   return (
     <Card
-      className={`shadow-lg w-80 ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+      className={`shadow-lg w-80 ${isDragging ? 'cursor-grabbing' : 'cursor-grab'} hover:shadow-xl transition-shadow duration-200 ease-in-out`} // Added hover effect
       style={{
         position: 'absolute',
         left: `${position.x}px`,
         top: `${position.y}px`,
       }}
     >
-      <CardHeader onMouseDown={handleMouseDown} className="select-none">
+      <CardHeader onMouseDown={handleMouseDown} className="select-none cursor-grab"> {/* Explicitly set cursor-grab on header */}
         <CardTitle>{person.name}</CardTitle>
         {(person.birthDate || person.deathDate) && (
           <CardDescription>
@@ -127,8 +127,8 @@ const PersonCard: React.FC<PersonCardProps> = ({
         <Button 
           variant="outline" 
           size="sm" 
-          onClick={() => onAiSuggest(person)} // Pass person object
-          disabled={isLoadingAiSuggestions} // Disable based on prop
+          onClick={() => onAiSuggest(person)}
+          disabled={isLoadingAiSuggestions}
           title="AI Suggest"
         >
           {isLoadingAiSuggestions ? (
