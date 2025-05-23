@@ -1,7 +1,7 @@
 
-# FamilyVerse - Interactive Family Tree Builder
+# Dzinza - Interactive Family Tree Builder
 
-FamilyVerse is a web application designed to help users create, visualize, and manage their family trees in an interactive and engaging way. It leverages modern web technologies to provide a dynamic user experience, including drag-and-drop functionality for arranging family members and AI-powered suggestions for potential relationships.
+Dzinza is a web application designed to help users create, visualize, and manage their family trees in an interactive and engaging way. It leverages modern web technologies to provide a dynamic user experience, including drag-and-drop functionality for arranging family members and AI-powered suggestions for potential relationships.
 
 ## Core Features
 
@@ -42,7 +42,6 @@ A brief overview of the key directories:
     *   `modals/`: Contains modal dialog components for adding/editing people (`AddEditPersonModal.tsx`), adding relationships (`AddRelationshipModal.tsx`), and displaying AI suggestions (`AISuggestionsModal.tsx`).
     *   `ui/`: ShadCN UI components (button, card, dialog, input, etc.).
 *   `src/lib/`: Core logic, type definitions, and utility functions.
-    *   `dummyData.ts`: In-memory data store for people and relationships. Provides functions for CRUD operations on this data. *For a production application, this would be replaced with a database.*
     *   `types.ts`: TypeScript type definitions for `Person`, `Gender`, etc.
     *   `utils.ts`: Utility functions (e.g., `cn` for class names).
 *   `src/ai/`: Genkit related files.
@@ -62,7 +61,7 @@ This section outlines the general steps and architectural considerations if you 
 
 *   **Initialize Next.js Project**:
     ```bash
-    npx create-next-app@latest familyverse --typescript --tailwind --eslint --app
+    npx create-next-app@latest Dzinza --typescript --tailwind --eslint --app
     ```
 *   **Install ShadCN UI**: Follow the ShadCN UI documentation to set up the CLI and add necessary base components (Button, Card, Dialog, Input, Label, Select, Toast, etc.).
 *   **Install Dependencies**:
@@ -73,28 +72,6 @@ This section outlines the general steps and architectural considerations if you 
     *   `genkit`, `@genkit-ai/googleai`, `@genkit-ai/next` for AI features.
 *   **Setup Tailwind CSS Theme**: Configure `src/app/globals.css` with HSL color variables for light and dark modes, similar to the existing file. Update `tailwind.config.ts` to use these variables.
 
-### 2. Core Data Structures and Management
-
-*   **Define Types (`src/lib/types.ts`)**:
-    *   `Person`: `id`, `name`, `birthDate`, `deathDate`, `gender`, `bio`, `profilePictureUrl`, `parents` (array of IDs), `children` (array of IDs), `spouses` (array of IDs).
-    *   `Gender`: Enum for 'Male', 'Female', 'Other', 'Unknown'.
-*   **Data Storage (`src/lib/dummyData.ts`)**:
-    *   Implement an in-memory store (e.g., a `Map`) for `Person` objects.
-    *   Create functions:
-        *   `getPeople(): Person[]`
-        *   `getPersonById(id: string): Person | undefined`
-        *   `addPerson(data: Omit<Person, ...>): Person` (generates ID, initializes empty relationships)
-        *   `updatePerson(id: string, updates: Partial<Person>): Person | undefined`
-        *   `removePerson(id: string): boolean`
-        *   `addRelationship(person1Id: string, person2Id: string, type: 'parent' | 'child' | 'spouse'): boolean` (updates relationships on both people).
-    *   Populate with initial sample data.
-
-### 3. Server Actions (`src/app/actions.ts`)
-
-*   Mark the file with `'use server'`.
-*   Create asynchronous functions that wrap the data management functions from `dummyData.ts`.
-*   Use Zod schemas to validate input data for `addPersonAction` and `updatePersonAction`.
-*   Implement `getAISuggestionsAction` which will call the Genkit flow.
 
 ### 4. AI Integration (Genkit)
 
@@ -179,6 +156,3 @@ This section outlines the general steps and architectural considerations if you 
 *   **Error Handling**: Use `try...catch` in server actions and AI flows. Display errors using Toasts.
 *   **Empty States**: Provide user-friendly messages when the tree is empty or no AI suggestions are found.
 *   **Accessibility**: Use ARIA attributes and semantic HTML where appropriate.
-
-This detailed plan provides a roadmap for building the FamilyVerse application, covering data, backend logic (server actions & AI), and frontend UI components. The key is to build iteratively, starting with core data and display, then adding interactivity and advanced features like AI.
-```
