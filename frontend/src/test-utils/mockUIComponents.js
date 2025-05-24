@@ -3,12 +3,27 @@ import React from 'react';
 
 // Mock UI components
 const mockUIComponents = {
-  Badge: ({ children, className }) => (
-    <span data-testid="mock-badge" className={className}>{children}</span>
+  Badge: ({ children, variant, className, ...props }) => (
+    <span data-testid="mock-badge" className={className} {...props}>{children}</span>
   ),
-  Button: ({ children, onClick, disabled }) => (
-    <button data-testid="mock-button" onClick={onClick} disabled={disabled}>{children}</button>
-  ),
+  Button: ({ children, onClick, disabled }) => {
+    // Create a more specific test ID based on button content
+    const textContent = typeof children === 'string' 
+      ? children 
+      : (children && React.isValidElement(children) && typeof children.props.children === 'string')
+        ? children.props.children
+        : 'button';
+    
+    return (
+      <button 
+        data-testid={`mock-button-${textContent.toString().replace(/\s+/g, '-').toLowerCase()}`} 
+        onClick={onClick} 
+        disabled={disabled}
+      >
+        {children}
+      </button>
+    );
+  },
   Calendar: ({ selected, onSelect }) => (
     <div data-testid="mock-calendar">
       <button onClick={() => onSelect(new Date())}>Select Date</button>
@@ -30,19 +45,36 @@ const mockUIComponents = {
   DialogHeader: ({ children }) => <div data-testid="mock-dialog-header">{children}</div>,
   DialogTitle: ({ children }) => <div data-testid="mock-dialog-title">{children}</div>,
   DialogTrigger: ({ children }) => <div data-testid="mock-dialog-trigger">{children}</div>,
-  Form: ({ children }) => <form data-testid="mock-form">{children}</form>,
-  FormControl: ({ children }) => <div data-testid="mock-form-control">{children}</div>,
-  FormDescription: ({ children }) => <div data-testid="mock-form-description">{children}</div>,
-  FormField: ({ control, name, render }) => {
+  Form: React.forwardRef(({ children, handleSubmit, formState, setValue, getValues, register, reset, watch, ...props }, ref) => (
+    <form ref={ref} {...props} data-testid="mock-form">{children}</form>
+  )),
+  FormProvider: ({ children }) => <div data-testid="mock-form-provider">{children}</div>,
+  FormControl: React.forwardRef(({ children, ...props }, ref) => (
+    <div ref={ref} data-testid="mock-form-control" {...props}>{children}</div>
+  )),
+  FormItem: React.forwardRef(({ children, className, ...props }, ref) => (
+    <div ref={ref} className={className} data-testid="mock-form-item" {...props}>{children}</div>
+  )),
+  FormField: ({ control, name, render, ...props }) => {
     const field = {
       value: '',
-      onChange: () => {},
+      name: name || '',
+      onChange: jest.fn(),
+      onBlur: jest.fn(),
+      ref: { current: null }
     };
-    return <div data-testid="mock-form-field">{render({ field })}</div>;
+    return (
+      <div {...props} data-testid="mock-form-field">
+        {typeof render === 'function' ? render({ field }) : null}
+      </div>
+    );
   },
-  FormItem: ({ children }) => <div data-testid="mock-form-item">{children}</div>,
-  FormLabel: ({ children }) => <label data-testid="mock-form-label">{children}</label>,
-  FormMessage: ({ children }) => <div data-testid="mock-form-message">{children}</div>,
+  FormLabel: React.forwardRef(({ children, htmlFor, id, ...props }, ref) => (
+    <label ref={ref} htmlFor={htmlFor || id} data-testid="mock-form-label" {...props}>{children}</label>
+  )),
+  FormMessage: React.forwardRef(({ children, ...props }, ref) => (
+    <span ref={ref} role="alert" aria-live="polite" data-testid="mock-form-message" {...props}>{children}</span>
+  )),
   Input: ({ type, value, onChange, placeholder }) => (
     <input
       data-testid="mock-input"

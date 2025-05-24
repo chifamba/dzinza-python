@@ -80,11 +80,11 @@ const PersonForm: React.FC<PersonFormProps> = ({
         <FormField
           control={form.control}
           name="name"
-          render={({ field }) => (
+          render={({ field, id, labelId }) => (
             <FormItem>
-              <FormLabel>Full Name</FormLabel>
+              <FormLabel htmlFor={id} id={labelId}>Full Name</FormLabel>
               <FormControl>
-                <Input placeholder="Enter full name" {...field} />
+                <Input id={id} aria-labelledby={labelId} placeholder="Enter full name" {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -94,12 +94,12 @@ const PersonForm: React.FC<PersonFormProps> = ({
         <FormField
           control={form.control}
           name="gender"
-          render={({ field }) => (
+          render={({ field, id, labelId }) => (
             <FormItem>
-              <FormLabel>Gender</FormLabel>
+              <FormLabel htmlFor={id} id={labelId}>Gender</FormLabel>
               <Select onValueChange={field.onChange} defaultValue={field.value}>
                 <FormControl>
-                  <SelectTrigger>
+                  <SelectTrigger id={id} aria-labelledby={labelId}>
                     <SelectValue placeholder="Select gender" />
                   </SelectTrigger>
                 </FormControl>
@@ -119,11 +119,11 @@ const PersonForm: React.FC<PersonFormProps> = ({
         <FormField
           control={form.control}
           name="imageUrl"
-          render={({ field }) => (
+          render={({ field, id, labelId }) => (
             <FormItem>
-              <FormLabel>Image URL</FormLabel>
+              <FormLabel htmlFor={id} id={labelId}>Image URL</FormLabel>
               <FormControl>
-                <Input placeholder="https://example.com/image.png" {...field} />
+                <Input id={id} aria-labelledby={labelId} placeholder="https://example.com/image.png" {...field} />
               </FormControl>
               <FormDescription>
                 URL of the person's profile picture.
@@ -136,13 +136,15 @@ const PersonForm: React.FC<PersonFormProps> = ({
         <FormField
           control={form.control}
           name="birthDate"
-          render={({ field }) => (
+          render={({ field, id, labelId }) => (
             <FormItem className="flex flex-col">
-              <FormLabel>Birth Date</FormLabel>
+              <FormLabel htmlFor={id} id={labelId}>Birth Date</FormLabel>
               <Popover open={isBirthDatePickerOpen} onOpenChange={setIsBirthDatePickerOpen}>
                 <PopoverTrigger asChild>
                   <FormControl>
                     <Button
+                      id={id}
+                      aria-labelledby={labelId}
                       variant={"outline"}
                       className={cn(
                         "w-full pl-3 text-left font-normal",
@@ -181,13 +183,15 @@ const PersonForm: React.FC<PersonFormProps> = ({
         <FormField
           control={form.control}
           name="deathDate"
-          render={({ field }) => (
+          render={({ field, id, labelId }) => (
             <FormItem className="flex flex-col">
-              <FormLabel>Death Date</FormLabel>
+              <FormLabel htmlFor={id} id={labelId}>Death Date</FormLabel>
               <Popover open={isDeathDatePickerOpen} onOpenChange={setIsDeathDatePickerOpen}>
                 <PopoverTrigger asChild>
                   <FormControl>
                     <Button
+                      id={id}
+                      aria-labelledby={labelId}
                       variant={"outline"}
                       className={cn(
                         "w-full pl-3 text-left font-normal",
@@ -227,11 +231,13 @@ const PersonForm: React.FC<PersonFormProps> = ({
         <FormField
           control={form.control}
           name="bio"
-          render={({ field }) => (
+          render={({ field, id, labelId }) => (
             <FormItem>
-              <FormLabel>Biography</FormLabel>
+              <FormLabel htmlFor={id} id={labelId}>Biography</FormLabel>
               <FormControl>
                 <Textarea
+                  id={id}
+                  aria-labelledby={labelId}
                   placeholder="Tell us a bit about this person..."
                   className="resize-none"
                   {...field}

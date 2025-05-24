@@ -26,6 +26,7 @@ Dzinza is a web application designed to help users create, visualize, and manage
 *   **UI Components**: ShadCN UI
 *   **Generative AI**: Genkit with Google Gemini
 *   **Icons**: Lucide React
+*   **Testing**: Jest, React Testing Library, and Axios Mock Adapter
 
 ## Project Structure
 
@@ -48,6 +49,11 @@ A brief overview of the key directories:
 *   `src/ai/`: Genkit related files.
     *   `genkit.ts`: Genkit configuration and initialization.
     *   `flows/suggest-relationships.ts`: The Genkit flow definition for suggesting relationships.
+*   `src/components/relationship/`: Relationship management components.
+    *   `RelationshipDetailsForm.tsx`: Form for editing relationship details with verification status.
+    *   `RelationshipTimeline.tsx`: Visual timeline of relationships.
+*   `src/test-utils/`: Testing utilities and mock data.
+*   `src/__tests__/`: Application-wide tests.
 *   `public/`: Static assets (if any).
 *   `package.json`: Project dependencies and scripts.
 *   `next.config.ts`: Next.js configuration.

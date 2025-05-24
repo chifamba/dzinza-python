@@ -17,6 +17,7 @@ The testing framework is organized into several categories:
 
 - `src/__tests__/`: Basic application tests
 - `src/components/*/__tests__/`: Component-specific tests
+- `src/contexts/__tests__/`: Tests for context providers (Auth, etc.)
 - `src/test-utils/`: Testing utilities and mock data
 
 ## Testing Technologies
@@ -143,19 +144,53 @@ test('RelationshipDetailsForm handles API errors', async () => {
 
 Tests for role-based access control to ensure proper permission handling:
 
+#### Testing Auth Context
+
+We test the AuthContext provider to ensure it correctly manages user sessions and permissions:
+
 ```javascript
-test('RelationshipTimeline shows edit/delete buttons only for users with permission', () => {
+test('hasRole correctly identifies user permissions', async () => {
+  // Mock session with admin role
+  mockAxios.onGet('/api/auth/session').reply(200, {
+    authenticated: true,
+    user: {
+      id: 'admin-123',
+      username: 'adminuser',
+      role: 'admin'
+    }
+  });
+  
   render(
-    <RelationshipTimeline
-      relationships={mockRelationships}
-      people={mockPeople}
-      permissions={{ canEdit: false, canDelete: false }}
-    />
+    <AuthProvider>
+      <AuthTestComponent />
+    </AuthProvider>
   );
   
-  // Verify edit/delete buttons aren't shown for read-only users
-  expect(screen.queryByLabelText(/Edit relationship/i)).not.toBeInTheDocument();
-  expect(screen.queryByLabelText(/Delete relationship/i)).not.toBeInTheDocument();
+  await waitFor(() => {
+    expect(screen.getByTestId('admin-role')).toHaveTextContent('true');
+  });
+});
+```
+
+#### Testing RBAC in Components
+
+We test that components correctly respect user roles and permissions:
+
+```javascript
+test('admin-only features are hidden from regular users', () => {
+  // Mock the useAuth hook to return a regular user
+  useAuth.mockReturnValue({
+    user: { id: 'user-123', username: 'testuser', role: 'user' },
+    hasRole: (role) => role === 'user'
+  });
+  
+  render(<AdminFeatureComponent />);
+  
+  // Admin panel should not be visible to regular users
+  expect(screen.queryByTestId('admin-panel')).not.toBeInTheDocument();
+  
+  // Regular user features should be visible
+  expect(screen.getByTestId('user-features')).toBeInTheDocument();
 });
 ```
 
@@ -167,9 +202,14 @@ We use predefined mock data for testing, defined in `src/test-utils/mock-data.js
 - `mockRelationships`: Sample relationship objects
 - `mockRelationshipFormData`: Sample form data for relationship creation/editing
 
+For auth testing, we use `src/test-utils/auth-utils.js` which provides:
+- `createMockAuthProvider`: Creates a mocked AuthProvider component
+- `mockUsers`: Sample user objects with different roles
+- `createAuthProviderWithRole`: Creates AuthProvider with specific user role
+
 ## Test Coverage
 
-We aim for high test coverage, especially for critical components like relationship management. Current coverage goals:
+We aim for high test coverage, especially for critical components like relationship management and authentication. Current coverage goals:
 
 - Statements: >80%
 - Branches: >75%
