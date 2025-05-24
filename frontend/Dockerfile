@@ -1,37 +1,46 @@
 # frontend/Dockerfile
 
-# --- Build Stage ---
-# Use an official Node runtime as the build environment
-FROM node:23-alpine AS build
-
-# Set the working directory
+# ---- Base Node image for subsequent stages ----
+FROM node:20-alpine AS base
 WORKDIR /app
+RUN chown -R node:node /app # Ensure app directory is owned by node user
 
-COPY frontend/ /app/
+# ---- Dependencies Stage ----
+FROM base AS deps
+COPY package.json package-lock.json* ./
+# If using yarn, copy yarn.lock instead of package-lock.json
+# COPY package.json yarn.lock ./
+RUN npm ci
+# If using yarn:
+# RUN yarn install --frozen-lockfile
 
-
-# Install dependencies
-# Use --legacy-peer-deps if you encounter peer dependency issues, otherwise remove it
- RUN npm install # --legacy-peer-deps
-
-
-# Build the React application for production
-# Ensure the build command succeeds
+# ---- Build Stage ----
+FROM base AS builder
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+# Make sure .env.local is NOT copied into the image for production builds.
+# The .dockerignore file should handle this.
 RUN npm run build
 
-# --- Production Stage ---
-# Use a lightweight Nginx image to serve the static files
-FROM nginx:stable-alpine
+# ---- Production Stage ----
+FROM base AS runner
+ENV NODE_ENV production
+# Set desired port, Next.js default is 3000
+ENV PORT 3000
+# Optionally, set NEXT_TELEMETRY_DISABLED to 1 to disable telemetry
+ENV NEXT_TELEMETRY_DISABLED 1
 
-# Copy the built assets from the build stage to Nginx's web root
-COPY --from=build /app/dist /usr/share/nginx/html
+# Automatically leverage output traces to reduce image size
+# https://nextjs.org/docs/advanced-features/output-file-tracing
+COPY --from=builder --chown=node:node /app/.next/standalone ./
+COPY --from=builder --chown=node:node /app/.next/static ./.next/static
+# If you have a `public` folder, copy it as well.
+# Check if public folder exists before attempting to copy
+COPY --from=builder --chown=node:node /app/public ./public
 
-# *** ADDED LINE: Copy custom Nginx configuration ***
-# This replaces the default Nginx config with our SPA-friendly one
-COPY --from=build /app/nginx.conf /etc/nginx/conf.d/default.conf
+USER node
+EXPOSE 3000
 
-# Expose port 80 (default Nginx port)
-EXPOSE 80
-
-# Default command to start Nginx
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["node", "server.js"]
+# For older Next.js versions or if not using output standalone:
+# CMD ["npm", "start"]
