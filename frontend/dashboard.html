@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <style>
+         #family-tree { width: 800px; height: 600px; }
+    </style>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 20px;
+        }
+        .container {
+            display: grid;
+            grid-template-columns: 3fr 1fr;
+            grid-gap: 20px;
+        }
+
+        .recent-activity,
+        .favorites,
+        .research-suggestions,
+        .tree-statistics,
+        .tree-health {
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+
+        .search-container {
+            margin-bottom: 20px;
+        }
+
+        .search-container input[type="text"] {
+            padding: 5px;
+            width: 300px;
+        }
+        .search-results {
+            border: 1px solid #ccc;
+            padding: 10px;
+        }
+
+        .search-results ul{
+            list-style: none;
+            padding: 0;
+        }
+
+        .search-results li {
+            margin-bottom: 5px;
+        }
+
+        .create-person{
+            margin-top: 10px;
+        }
+    </style>
+    <style>
+    .person {
+        border: 1px solid #000;
+        padding: 5px;
+        margin: 5px;
+        display: inline-block;
+    }
+    .level {
+        display: flex;
+        justify-content: center;
+    }
+    </style>
+</head>
+<body>
+    <h1>Dashboard</h1>
+    <div class="search-container">
+        <input type="text" id="search-people" placeholder="Search for people...">
+        <div class="search-results" id="search-results">
+            <ul></ul>
+            <div class="create-person" id="create-person-container" style="display: none">
+                <button id="create-person">Create Person</button>
+            </div>
+        </div>
+    </div>
+    <div class="container">
+        <div class="main-content">
+            <div class="recent-activity">
+                <h2>Recent Activity</h2>                
+                <ul>
+                    <li>Added John Doe to the family tree.</li>
+                    <li>Updated birthdate for Jane Smith.</li>
+                    <li>Added relationship between Peter Jones and Mary Williams.</li>
+                    <li>Uploaded photo for David Lee.</li>
+                </ul>
+            </div>
+            <div class="tree-statistics">
+                <h2>Tree Statistics</h2>
+                <ul>
+                    <li>Total People: 150</li>
+                    <li>Total Families: 45</li>
+                    <li>Oldest Person: Sarah Miller (b. 1890)</li>
+                    <li>Youngest Person: Emily Davis (b. 2020)</li>
+                </ul>
+            </div>
+             <div class="tree-health">
+                <h2>Tree Health</h2>
+                <ul>
+                    <li>People with Birth Dates: 85%</li>
+                    <li>People with Death Dates: 60%</li>
+                    <li>Missing Parents: 12</li>
+                </ul>
+            </div>
+        </div>
+        <div id="family-tree">
+            <div class="level">
+                <div class="person">Person 1</div>
+                <div class="person">Person 2</div>
+            </div>
+            <div class="level">
+                <div class="person">Person 3</div>
+            </div>
+        </div>
+
+         <div class="sidebar">
+            <div class="favorites">
+                <h2>Favorites</h2>
+                <ul>
+                    <li><a href="#">John Doe</a></li>
+                    <li><a href="#">Jane Smith</a></li>
+                    <li><a href="#">The Miller Family</a></li>
+                    <li><a href="#">Sarah Miller</a></li>
+                </ul>
+            </div>
+            <div class="research-suggestions">
+                <h2>Research Suggestions</h2>
+            </div>
+         </div>
+    </div>
+    
+    
+</body>
+</html>
