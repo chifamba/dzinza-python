@@ -1,7 +1,9 @@
-'use client';
+'uimport React, { createContext, useContext, useState, useEffect } from 'react';
+import api from '../api';
+import { EventTracker } from '../services/EventTracker';client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import api from '@/lib/api';
+import api from '@/api';
 import { EventTracker } from '@/services/EventTracker';
 
 interface User {
@@ -20,6 +22,8 @@ interface AuthContextType {
   logout: () => Promise<void>;
   selectActiveTree: (treeId: string | null) => Promise<void>;
   setError: (error: string | null) => void;
+  hasRole: (requiredRole: string | string[]) => boolean;
+  checkTreePermission: (treeId: string, requiredPermission: 'view' | 'edit' | 'admin') => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -129,6 +133,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }): JSX.E
     }
   };
 
+  const hasRole = (requiredRole: string | string[]) => {
+    if (!user || !user.role) return false;
+    const roles = Array.isArray(requiredRole) ? requiredRole : [requiredRole];
+    return roles.includes(user.role);
+  };
+
+  const checkTreePermission = async (treeId: string, requiredPermission: 'view' | 'edit' | 'admin') => {
+    if (!user || !user.id) return false;
+    try {
+      const permissions = await api.getUserTreePermissions(user.id, treeId);
+      return permissions && permissions.includes(requiredPermission);
+    } catch (error) {
+      console.error('Failed to check tree permissions:', error);
+      return false;
+    }
+  };
+
   return (
     <AuthContext.Provider value={{
       user,
@@ -138,7 +159,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }): JSX.E
       login,
       logout,
       selectActiveTree,
-      setError
+      setError,
+      hasRole,
+      checkTreePermission
     }}>
       {children}
     </AuthContext.Provider>

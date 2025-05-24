@@ -1,6 +1,6 @@
 "use client";
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { personSchema, PersonFormData } from '@/lib/schemas';
@@ -32,7 +32,7 @@ import {
 } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import { Calendar } from "@/components/ui/calendar";
-import { CalendarIcon, Loader2 } from 'lucide-react';
+import { CalendarIcon, Loader2, Plus, X } from 'lucide-react';
 import { format } from 'date-fns'; // For formatting date in PopoverTrigger
 
 export interface PersonFormProps {
@@ -50,20 +50,29 @@ const PersonForm: React.FC<PersonFormProps> = ({
 }) => {
   const form = useForm<PersonFormData>({
     resolver: zodResolver(personSchema),
-    defaultValues: initialData || {
-      name: '',
+    defaultValues: {
+      name: "",
       gender: undefined,
-      imageUrl: '',
+      imageUrl: "",
       birthDate: undefined,
       deathDate: undefined,
-      bio: '',
+      bio: "",
+      birthPlace: "",
+      isLiving: true,
+      customAttributes: {},
+      ...initialData,
     },
   });
 
-  // Watch for date changes to close popover
-  const [isBirthDatePickerOpen, setIsBirthDatePickerOpen] = React.useState(false);
-  const [isDeathDatePickerOpen, setIsDeathDatePickerOpen] = React.useState(false);
-
+  const [isBirthDatePickerOpen, setIsBirthDatePickerOpen] = useState(false);
+  const [isDeathDatePickerOpen, setIsDeathDatePickerOpen] = useState(false);
+  
+  // Custom attributes state
+  const [customAttributeKey, setCustomAttributeKey] = useState("");
+  const [customAttributeValue, setCustomAttributeValue] = useState("");
+  
+  // Get custom attributes from form
+  const customAttributes = form.watch("customAttributes") || {};
 
   return (
     <Form {...form}>
@@ -235,6 +244,93 @@ const PersonForm: React.FC<PersonFormProps> = ({
             </FormItem>
           )}
         />
+
+        {/* Custom Attributes Section */}
+        <div className="space-y-4">
+          <div className="flex justify-between items-center">
+            <h3 className="text-lg font-medium">Custom Attributes</h3>
+          </div>
+          
+          <div className="space-y-4">
+            {Object.entries(form.getValues("customAttributes") || {}).map(([key, value]) => (
+              <div key={key} className="flex space-x-2">
+                <Input 
+                  value={key}
+                  onChange={(e) => {
+                    const newKey = e.target.value;
+                    if (newKey && newKey !== key) {
+                      const customAttributes = form.getValues("customAttributes") || {};
+                      const newAttributes = { ...customAttributes };
+                      newAttributes[newKey] = newAttributes[key];
+                      delete newAttributes[key];
+                      form.setValue("customAttributes", newAttributes);
+                    }
+                  }}
+                  className="w-1/3"
+                  placeholder="Attribute name"
+                />
+                <Input 
+                  value={value}
+                  onChange={(e) => {
+                    const customAttributes = form.getValues("customAttributes") || {};
+                    form.setValue("customAttributes", { 
+                      ...customAttributes, 
+                      [key]: e.target.value 
+                    });
+                  }}
+                  className="w-2/3"
+                  placeholder="Attribute value"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => {
+                    const customAttributes = form.getValues("customAttributes") || {};
+                    const newAttributes = { ...customAttributes };
+                    delete newAttributes[key];
+                    form.setValue("customAttributes", newAttributes);
+                  }}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+          
+          <div className="flex space-x-2">
+            <Input 
+              value={customAttributeKey}
+              onChange={(e) => setCustomAttributeKey(e.target.value)}
+              className="w-1/3"
+              placeholder="New attribute name"
+            />
+            <Input 
+              value={customAttributeValue}
+              onChange={(e) => setCustomAttributeValue(e.target.value)}
+              className="w-2/3"
+              placeholder="New attribute value"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              onClick={() => {
+                if (customAttributeKey) {
+                  const customAttributes = form.getValues("customAttributes") || {};
+                  form.setValue("customAttributes", {
+                    ...customAttributes,
+                    [customAttributeKey]: customAttributeValue
+                  });
+                  setCustomAttributeKey("");
+                  setCustomAttributeValue("");
+                }
+              }}
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
 
         <Button type="submit" disabled={isLoading}>
           {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

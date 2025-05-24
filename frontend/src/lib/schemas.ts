@@ -10,6 +10,9 @@ export const personSchema = z.object({
   birthDate: z.date().optional(),
   deathDate: z.date().optional(),
   bio: z.string().optional(),
+  birthPlace: z.string().optional(),
+  isLiving: z.boolean().optional(),
+  customAttributes: z.record(z.string(), z.string()).optional(),
 }).refine(data => {
   if (data.birthDate && data.deathDate) {
     return data.deathDate > data.birthDate;
