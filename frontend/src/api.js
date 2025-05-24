@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { ActivityEvent } from '@/lib/types';
 
 const BASE_URL = 'http://localhost:8090/api';
 
@@ -80,6 +81,21 @@ const api = {
       withCredentials: true,
     });
     return { message: 'Tree cover image deleted successfully' };
+  },
+
+  // --- Activity Endpoints ---
+  getTreeActivities: async (treeId) => {
+    const response = await axios.get(`${BASE_URL}/trees/${treeId}/activities`, {
+      withCredentials: true,
+    });
+    return response.data;
+  },
+
+  addActivity: async (treeId, activityData) => {
+    const response = await axios.post(`${BASE_URL}/trees/${treeId}/activities`, activityData, {
+      withCredentials: true,
+    });
+    return response.data;
   },
 }
 
