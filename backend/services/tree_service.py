@@ -8,10 +8,11 @@ from sqlalchemy import or_
 import os
 from flask import abort
 from werkzeug.utils import secure_filename
+from flask import abort # Ensure abort is imported if used in user fetching
 # from botocore.exceptions import S3UploadFailedError, ClientError
 
 
-from models import Tree, TreeAccess, Person, Relationship, PrivacyLevelEnum, TreePrivacySettingEnum # Added TreePrivacySettingEnum
+from models import Tree, TreeAccess, Person, Relationship, PrivacyLevelEnum, TreePrivacySettingEnum, User, UserRole # Added User, UserRole
 from utils import _get_or_404, _handle_sqlalchemy_error, paginate_query
 from config import config # Direct import of the config instance
 # import config as app_config_module # Keep this if used by get_user_trees_db's cfg_pagination
@@ -63,11 +64,31 @@ def get_user_trees_db(db: DBSession, user_id: uuid.UUID, page: int = -1, per_pag
     current_page = page if page != -1 else config.PAGINATION_DEFAULTS["page"]
     current_per_page = per_page if per_page != -1 else config.PAGINATION_DEFAULTS["per_page"]
     logger.info("Fetching trees for user", user_id=user_id, page=current_page, per_page=current_per_page)
+
     try:
-        owned_trees_sq = db.query(Tree.id.label("tree_id")).filter(Tree.created_by == user_id)
-        shared_trees_sq = db.query(TreeAccess.tree_id.label("tree_id")).filter(TreeAccess.user_id == user_id)
-        accessible_tree_ids_sq = owned_trees_sq.union(shared_trees_sq).distinct().subquery('accessible_tree_ids')
-        query = db.query(Tree).join(accessible_tree_ids_sq, Tree.id == accessible_tree_ids_sq.c.tree_id)
+        user = db.query(User).filter(User.id == user_id).one_or_none()
+        if not user:
+            # This case should ideally not be reached if user_id is from a validated session.
+            # If it can happen, aborting might be safer. For now, log and proceed (will likely return empty).
+            logger.error("User not found when trying to fetch trees. Service layer error.", user_id=user_id)
+            # Consider abort(404, "User not found") if this indicates a severe issue.
+            # For now, let it result in an empty list for non-admins or all trees for a non-existent admin (which is unlikely).
+            # This path implies an issue upstream or data integrity problem.
+            # Depending on strictness, could raise an exception or abort.
+            # For this exercise, if user is None, the 'else' block for non-admin will be hit.
+            # If UserRole.admin comparison is done, it would be `None.role` -> AttributeError.
+            # So, explicit check for user is important.
+
+        if user and user.role == UserRole.admin:
+            logger.info("Admin user detected. Fetching all trees.", admin_user_id=user_id)
+            query = db.query(Tree)
+        else:
+            logger.info("Non-admin user or user not found. Fetching owned and shared trees.", user_id=user_id)
+            owned_trees_sq = db.query(Tree.id.label("tree_id")).filter(Tree.created_by == user_id)
+            shared_trees_sq = db.query(TreeAccess.tree_id.label("tree_id")).filter(TreeAccess.user_id == user_id)
+            accessible_tree_ids_sq = owned_trees_sq.union(shared_trees_sq).distinct().subquery('accessible_tree_ids')
+            query = db.query(Tree).join(accessible_tree_ids_sq, Tree.id == accessible_tree_ids_sq.c.tree_id)
+
         if not hasattr(Tree, sort_by or ""): # Ensure sort_by is not None before hasattr
             logger.warning(f"Invalid or missing sort_by column '{sort_by}' for Tree. Defaulting to 'name'.")
             sort_by = "name"
