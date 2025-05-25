@@ -31,10 +31,11 @@ def _to_uuid(s_uuid: str, field_name: str) -> uuid.UUID:
 @require_tree_access('view') # Requires tree_id context, ensure decorator handles it or it's set in g
 def get_media_item_endpoint(media_id_param: uuid.UUID):
     db_session = g.db
-    active_tree_id = g.active_tree_id # Assuming require_tree_access sets this
-    logger.info("Get media item endpoint", media_id=media_id_param, tree_id=active_tree_id)
+    active_tree_id = g.active_tree_id # Context for auth via decorator
+    logger.info("Get media item endpoint", media_id=media_id_param, active_tree_id_context=active_tree_id)
+    # Service get_media_item_db fetches globally. active_tree_id is for auth context if needed by decorator.
     try:
-        media_item_dict = get_media_item_db(db_session, media_id_param, active_tree_id)
+        media_item_dict = get_media_item_db(db_session, media_id_param) # Removed active_tree_id
         return jsonify(media_item_dict), 200
     except HTTPException as e: # Propagate HTTP exceptions (like 404 from _get_or_404)
         raise
@@ -78,14 +79,14 @@ def upload_media_item_endpoint():
     active_tree_id = _to_uuid(g.active_tree_id, "active_tree_id in g")
 
 
-    logger.info("Upload media item endpoint", user_id=uploader_user_id, tree_id=active_tree_id, 
+    logger.info("Upload media item endpoint", user_id=uploader_user_id, tree_id_context=active_tree_id, 
                 linked_entity_type=linked_entity_type, linked_entity_id=linked_entity_id, filename=file.filename)
     
     try:
         media_item_dict = upload_media_item_db(
             db=db_session,
             user_id=uploader_user_id,
-            tree_id=active_tree_id,
+            tree_id_context=active_tree_id, # Pass active_tree_id as tree_id_context
             linked_entity_type=linked_entity_type,
             linked_entity_id=linked_entity_id,
             file_stream=file.stream,
@@ -109,11 +110,12 @@ def upload_media_item_endpoint():
 def delete_media_item_endpoint(media_id_param: uuid.UUID):
     db_session = g.db
     current_user_id = _to_uuid(session['user_id'], "user_id in session")
-    active_tree_id = _to_uuid(g.active_tree_id, "active_tree_id in g") # For consistency, service uses it
+    active_tree_id = _to_uuid(g.active_tree_id, "active_tree_id in g") # Context for auth
 
-    logger.info("Delete media item endpoint", media_id=media_id_param, user_id=current_user_id, tree_id=active_tree_id)
+    logger.info("Delete media item endpoint", media_id=media_id_param, user_id=current_user_id, active_tree_id_context=active_tree_id)
+    # Service delete_media_item_db is global. active_tree_id is for auth context.
     try:
-        success = delete_media_item_db(db_session, media_id_param, current_user_id, active_tree_id)
+        success = delete_media_item_db(db_session, media_id_param, current_user_id) # Removed active_tree_id
         if success:
             return '', 204
         else:
@@ -133,19 +135,23 @@ def delete_media_item_endpoint(media_id_param: uuid.UUID):
 @require_tree_access('view')
 def get_media_for_entity_endpoint(entity_type: str, entity_id_param: uuid.UUID):
     db_session = g.db
-    active_tree_id = g.active_tree_id
+    active_tree_id = g.active_tree_id # Context for auth, passed as tree_id_context
     
     page, per_page, sort_by, sort_order = get_pagination_params()
     # Default sort_by for media, could be 'created_at' or 'file_name'
     sort_by = sort_by if sort_by else "created_at" 
     sort_order = sort_order if sort_order else "desc"
 
-    logger.info("Get media for entity endpoint", tree_id=active_tree_id, entity_type=entity_type, entity_id=entity_id_param,
+    logger.info("Get media for entity endpoint", tree_id_context=active_tree_id, entity_type=entity_type, entity_id=entity_id_param,
                 page=page, per_page=per_page, sort_by=sort_by, sort_order=sort_order)
     try:
         media_list_dict = get_media_for_entity_db(
-            db_session, active_tree_id, entity_type, entity_id_param,
-            page, per_page, sort_by, sort_order
+            db=db_session, 
+            entity_type=entity_type, 
+            entity_id=entity_id_param,
+            page=page, per_page=per_page, 
+            sort_by=sort_by, sort_order=sort_order,
+            tree_id_context=active_tree_id
         )
         return jsonify(media_list_dict), 200
     except HTTPException as e:

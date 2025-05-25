@@ -7,9 +7,9 @@ from werkzeug.exceptions import HTTPException
 from decorators import require_auth, require_tree_access
 from services.event_service import (
     create_event_db, get_event_db, update_event_db, delete_event_db,
-    # get_events_for_person_db, get_events_for_tree_db # These are used in other blueprints
+    get_events_for_person_db, get_events_for_tree_db # Ensure these are available if routes are added
 )
-from utils import get_pagination_params # For potential future use in this blueprint if listing all events
+from utils import get_pagination_params
 
 logger = structlog.get_logger(__name__)
 events_bp = Blueprint('events_api', __name__, url_prefix='/api/events')
@@ -35,10 +35,15 @@ def create_event_endpoint():
     user_id = _to_uuid_or_abort(session['user_id'], "user_id in session")
     active_tree_id = _to_uuid_or_abort(g.active_tree_id, "active_tree_id in g")
 
-    logger.info("Create event endpoint", user_id=user_id, tree_id=active_tree_id, data_keys=list(data.keys()))
+    logger.info("Create event endpoint", user_id=user_id, active_tree_id_context=active_tree_id, data_keys=list(data.keys()))
+    # active_tree_id is available from @require_tree_access for context if needed (e.g. validating person_id in data belongs to this tree)
+    # However, create_event_db service function no longer takes tree_id as Event is global.
+    # Authorization to create an event for a person might depend on user's access to that person (via any tree).
     
     try:
-        event_dict = create_event_db(db_session, user_id, active_tree_id, data)
+        # Ensure person_id in data is valid and user has rights to create event for them (complex auth for Phase 4)
+        # For now, service create_event_db takes (db, user_id, event_data)
+        event_dict = create_event_db(db_session, user_id, data)
         return jsonify(event_dict), 201
     except HTTPException as e:
         raise
@@ -52,11 +57,14 @@ def create_event_endpoint():
 @require_tree_access('view')
 def get_event_endpoint(event_id_param: uuid.UUID):
     db_session = g.db
-    active_tree_id = _to_uuid_or_abort(g.active_tree_id, "active_tree_id in g")
+    active_tree_id = _to_uuid_or_abort(g.active_tree_id, "active_tree_id in g") # Context for auth
     
-    logger.info("Get event endpoint", event_id=event_id_param, tree_id=active_tree_id)
+    logger.info("Get event endpoint", event_id=event_id_param, active_tree_id_context=active_tree_id)
+    # Event is global, but @require_tree_access ensures user has some tree context.
+    # Actual authorization: can user view this specific event? (Phase 4)
+    # For now, service get_event_db fetches globally.
     try:
-        event_dict = get_event_db(db_session, event_id_param, active_tree_id)
+        event_dict = get_event_db(db_session, event_id_param)
         return jsonify(event_dict), 200
     except HTTPException as e:
         raise
@@ -74,12 +82,17 @@ def update_event_endpoint(event_id_param: uuid.UUID):
         abort(400, description="Request body cannot be empty.")
 
     db_session = g.db
-    active_tree_id = _to_uuid_or_abort(g.active_tree_id, "active_tree_id in g")
-    # user_id from session could be used for auditing if needed in service layer for update
+    active_tree_id = _to_uuid_or_abort(g.active_tree_id, "active_tree_id in g") # Context for auth
+    # user_id from session could be used for auditing if needed in service layer for update (service should take it)
+    # current_user_id = _to_uuid_or_abort(session['user_id'], "user_id in session")
 
-    logger.info("Update event endpoint", event_id=event_id_param, tree_id=active_tree_id, data_keys=list(data.keys()))
+    logger.info("Update event endpoint", event_id=event_id_param, active_tree_id_context=active_tree_id, data_keys=list(data.keys()))
+    # Event is global. @require_tree_access provides a tree context for authorization.
+    # Authorization: Can user edit this event? (Phase 4)
+    # Service update_event_db takes (db, event_id, event_data)
     try:
-        event_dict = update_event_db(db_session, event_id_param, active_tree_id, data)
+        # Pass actor_user_id to service if service supports it for auditing
+        event_dict = update_event_db(db_session, event_id_param, data) # Removed active_tree_id
         return jsonify(event_dict), 200
     except HTTPException as e:
         raise
@@ -93,12 +106,17 @@ def update_event_endpoint(event_id_param: uuid.UUID):
 @require_tree_access('edit')
 def delete_event_endpoint(event_id_param: uuid.UUID):
     db_session = g.db
-    active_tree_id = _to_uuid_or_abort(g.active_tree_id, "active_tree_id in g")
+    active_tree_id = _to_uuid_or_abort(g.active_tree_id, "active_tree_id in g") # Context for auth
     # user_id from session could be used for auditing if needed in service layer for delete
+    # current_user_id = _to_uuid_or_abort(session['user_id'], "user_id in session")
 
-    logger.info("Delete event endpoint", event_id=event_id_param, tree_id=active_tree_id)
+    logger.info("Delete event endpoint", event_id=event_id_param, active_tree_id_context=active_tree_id)
+    # Event is global. @require_tree_access provides a tree context for authorization.
+    # Authorization: Can user delete this event? (Phase 4)
+    # Service delete_event_db takes (db, event_id)
     try:
-        success = delete_event_db(db_session, event_id_param, active_tree_id)
+        # Pass actor_user_id to service if service supports it for auditing
+        success = delete_event_db(db_session, event_id_param) # Removed active_tree_id
         if success:
             return '', 204
         else:

@@ -176,12 +176,15 @@ def get_person_media_endpoint(person_id_param: uuid.UUID):
     sort_by = sort_by if sort_by else "created_at"
     sort_order = sort_order if sort_order else "desc"
 
-    logger.info("Get media for person endpoint", tree_id=active_tree_id, person_id=person_id_param,
+    logger.info("Get media for person endpoint", tree_id_context=active_tree_id, person_id=person_id_param,
                 page=page, per_page=per_page, sort_by=sort_by, sort_order=sort_order)
     try:
+        # active_tree_id is passed as tree_id_context for potential authorization,
+        # but the service knows Person media is global (tree_id IS NULL on MediaItem)
         media_list_dict = get_media_for_entity_db(
-            db_session, active_tree_id, "Person", person_id_param,
-            page, per_page, sort_by, sort_order
+            db=db_session, entity_type="Person", entity_id=person_id_param,
+            page=page, per_page=per_page, sort_by=sort_by, sort_order=sort_order,
+            tree_id_context=active_tree_id 
         )
         return jsonify(media_list_dict), 200
     except HTTPException as e:
@@ -203,12 +206,14 @@ def get_person_events_endpoint(person_id_param: uuid.UUID):
     sort_by = sort_by if sort_by else "date" 
     sort_order = sort_order if sort_order else "asc" # Events typically chronological
 
-    logger.info("Get events for person endpoint", tree_id=active_tree_id, person_id=person_id_param,
+    logger.info("Get events for person endpoint", person_id=person_id_param, tree_id_context=active_tree_id,
                 page=page, per_page=per_page, sort_by=sort_by, sort_order=sort_order)
+    # active_tree_id from @require_tree_access provides context but service get_events_for_person_db is global for person.
     try:
         events_list_dict = get_events_for_person_db(
-            db_session, active_tree_id, person_id_param,
-            page, per_page, sort_by, sort_order
+            db=db_session, person_id=person_id_param,
+            page=page, per_page=per_page, sort_by=sort_by, sort_order=sort_order
+            # tree_id_context=active_tree_id if needed by service for auth, but not for query logic
         )
         return jsonify(events_list_dict), 200
     except HTTPException as e:

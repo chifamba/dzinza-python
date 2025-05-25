@@ -9,14 +9,17 @@ from sqlalchemy import or_ # For querying related_person_ids
 from flask import abort
 from werkzeug.exceptions import HTTPException
 
-from models import Event, Person, PrivacyLevelEnum # Assuming Event model is updated
+from models import Event, Person, PrivacyLevelEnum, PersonTreeAssociation # Assuming Event model is updated
 from utils import _get_or_404, _handle_sqlalchemy_error, paginate_query
 from config import config # For pagination defaults
+# Import for get_events_for_tree_db
+from services.person_service import get_all_people_db as get_persons_in_tree_db 
+
 
 logger = structlog.get_logger(__name__)
 
-def _validate_person_ids(db: DBSession, tree_id: uuid.UUID, person_ids: List[str], field_name: str) -> List[uuid.UUID]:
-    """Helper to validate a list of person ID strings and ensure they belong to the tree."""
+def _validate_person_ids(db: DBSession, person_ids: List[str], field_name: str) -> List[uuid.UUID]:
+    """Helper to validate a list of person ID strings and ensure they exist globally."""
     if not isinstance(person_ids, list):
         abort(400, description={"message": "Validation failed", "details": {field_name: "Must be a list of person IDs."}})
     
@@ -25,10 +28,10 @@ def _validate_person_ids(db: DBSession, tree_id: uuid.UUID, person_ids: List[str
     for pid_str in person_ids:
         try:
             person_uuid = uuid.UUID(pid_str)
-            # Check if person exists and belongs to the tree
-            person = db.query(Person.id).filter(Person.id == person_uuid, Person.tree_id == tree_id).one_or_none()
+            # Check if person exists globally
+            person = db.query(Person.id).filter(Person.id == person_uuid).one_or_none()
             if not person:
-                errors.append(f"Person with ID {pid_str} not found in tree {tree_id}.")
+                errors.append(f"Person with ID {pid_str} not found.")
             else:
                 valid_uuids.append(person_uuid)
         except ValueError:
@@ -39,8 +42,9 @@ def _validate_person_ids(db: DBSession, tree_id: uuid.UUID, person_ids: List[str
     return valid_uuids
 
 
-def create_event_db(db: DBSession, user_id: uuid.UUID, tree_id: uuid.UUID, event_data: Dict[str, Any]) -> Dict[str, Any]:
-    logger.info("Creating event", user_id=user_id, tree_id=tree_id, data_keys=list(event_data.keys()))
+def create_event_db(db: DBSession, user_id: uuid.UUID, event_data: Dict[str, Any]) -> Dict[str, Any]:
+    # Removed tree_id from parameters
+    logger.info("Creating event", user_id=user_id, data_keys=list(event_data.keys()))
     
     errors: Dict[str, Any] = {}
     if not event_data.get('event_type'):
@@ -52,7 +56,7 @@ def create_event_db(db: DBSession, user_id: uuid.UUID, tree_id: uuid.UUID, event
     if person_id_str:
         try:
             person_id = uuid.UUID(person_id_str)
-            _get_or_404(db, Person, person_id, tree_id=tree_id) # Validates existence in tree
+            _get_or_404(db, Person, person_id) # Validates global existence
         except ValueError:
             errors['person_id'] = f"Invalid UUID format: {person_id_str}"
         except HTTPException as e: # Catch 404 from _get_or_404
@@ -65,7 +69,8 @@ def create_event_db(db: DBSession, user_id: uuid.UUID, tree_id: uuid.UUID, event
     if related_person_ids_str_list: # Only validate if list is not empty
         try:
             # This helper will abort on failure, so we catch it to aggregate errors
-            validated_related_person_ids = _validate_person_ids(db, tree_id, related_person_ids_str_list, "related_person_ids")
+            # Pass db, list, and field_name to the updated helper
+            validated_related_person_ids = _validate_person_ids(db, related_person_ids_str_list, "related_person_ids")
         except HTTPException as e: # Catch abort from _validate_person_ids
             errors['related_person_ids'] = e.description.get("details", {}).get("related_person_ids", "Validation failed.")
 
@@ -100,12 +105,12 @@ def create_event_db(db: DBSession, user_id: uuid.UUID, tree_id: uuid.UUID, event
         errors['privacy_level'] = f"Invalid privacy level: {privacy_level_str}. Valid: {[p.value for p in PrivacyLevelEnum]}"
 
     if errors:
-        logger.warning("Event creation failed due to validation errors.", errors=errors, tree_id=tree_id)
+        logger.warning("Event creation failed due to validation errors.", errors=errors) # Removed tree_id from log
         abort(400, description={"message": "Validation failed", "details": errors})
 
     try:
         new_event = Event(
-            tree_id=tree_id,
+            # tree_id is removed
             created_by=user_id,
             person_id=person_id, # Validated UUID or None
             event_type=event_data['event_type'],
@@ -122,10 +127,10 @@ def create_event_db(db: DBSession, user_id: uuid.UUID, tree_id: uuid.UUID, event
         db.add(new_event)
         db.commit()
         db.refresh(new_event)
-        logger.info("Event created successfully", event_id=new_event.id, tree_id=tree_id)
+        logger.info("Event created successfully", event_id=new_event.id, person_id=new_event.person_id) # Log person_id
         return new_event.to_dict()
     except SQLAlchemyError as e:
-        _handle_sqlalchemy_error(e, "creating event", db)
+        _handle_sqlalchemy_error(e, "creating event", db) # tree_id context removed
     except Exception as e: # Catch any other unexpected error
         db.rollback()
         logger.error("Unexpected error during event creation.", exc_info=True, details=str(e))
@@ -133,16 +138,21 @@ def create_event_db(db: DBSession, user_id: uuid.UUID, tree_id: uuid.UUID, event
     return {}
 
 
-def get_event_db(db: DBSession, event_id: uuid.UUID, tree_id: uuid.UUID) -> Dict[str, Any]:
-    logger.info("Fetching event", event_id=event_id, tree_id=tree_id)
-    event = _get_or_404(db, Event, event_id, tree_id=tree_id)
+def get_event_db(db: DBSession, event_id: uuid.UUID) -> Dict[str, Any]:
+    # Removed tree_id from parameters
+    logger.info("Fetching event", event_id=event_id)
+    event = _get_or_404(db, Event, event_id) # Fetch globally
     return event.to_dict()
 
 
-def update_event_db(db: DBSession, event_id: uuid.UUID, tree_id: uuid.UUID, event_data: Dict[str, Any]) -> Dict[str, Any]:
-    logger.info("Updating event", event_id=event_id, tree_id=tree_id, data_keys=list(event_data.keys()))
-    event = _get_or_404(db, Event, event_id, tree_id=tree_id) # Ensure event belongs to tree
+def update_event_db(db: DBSession, event_id: uuid.UUID, event_data: Dict[str, Any]) -> Dict[str, Any]:
+    # Removed tree_id from parameters
+    logger.info("Updating event", event_id=event_id, data_keys=list(event_data.keys()))
+    event = _get_or_404(db, Event, event_id) # Fetch globally
     
+    # tree_id is no longer part of this function's direct context for fetching the event itself.
+    # Authorization, if needed, would be based on user's rights to edit this event or person's events.
+
     validation_errors: Dict[str, Any] = {}
     allowed_fields = [
         'person_id', 'event_type', 'date', 'date_approx', 'date_range_start', 
@@ -161,16 +171,16 @@ def update_event_db(db: DBSession, event_id: uuid.UUID, tree_id: uuid.UUID, even
                     setattr(event, field, None)
                 else:
                     pid = uuid.UUID(str(value))
-                    _get_or_404(db, Person, pid, tree_id=tree_id) # Validate person exists in tree
+                    _get_or_404(db, Person, pid) # Validate person exists globally
                     setattr(event, field, pid)
             elif field == 'related_person_ids':
                 if value is None: # Allowing to clear related_person_ids
                     setattr(event, field, [])
                 else:
                     # This helper will abort on failure, so we catch it to aggregate errors
-                    # We need to handle the HTTPException if _validate_person_ids aborts
                     try:
-                        validated_ids = _validate_person_ids(db, tree_id, value, "related_person_ids")
+                        # _validate_person_ids no longer takes tree_id
+                        validated_ids = _validate_person_ids(db, value, "related_person_ids")
                         setattr(event, field, [str(pid) for pid in validated_ids])
                     except HTTPException as e_val:
                          validation_errors[field] = e_val.description.get("details", {}).get("related_person_ids", "Invalid person IDs.")
@@ -212,9 +222,10 @@ def update_event_db(db: DBSession, event_id: uuid.UUID, tree_id: uuid.UUID, even
     return {}
 
 
-def delete_event_db(db: DBSession, event_id: uuid.UUID, tree_id: uuid.UUID) -> bool:
-    logger.info("Deleting event", event_id=event_id, tree_id=tree_id)
-    event = _get_or_404(db, Event, event_id, tree_id=tree_id)
+def delete_event_db(db: DBSession, event_id: uuid.UUID) -> bool:
+    # Removed tree_id from parameters
+    logger.info("Deleting event", event_id=event_id)
+    event = _get_or_404(db, Event, event_id) # Fetch globally
     try:
         db.delete(event)
         db.commit()
@@ -229,24 +240,22 @@ def delete_event_db(db: DBSession, event_id: uuid.UUID, tree_id: uuid.UUID) -> b
     return False
 
 
-def get_events_for_person_db(db: DBSession, tree_id: uuid.UUID, person_id: uuid.UUID, 
+def get_events_for_person_db(db: DBSession, person_id: uuid.UUID, 
                                page: int, per_page: int, 
                                sort_by: Optional[str], sort_order: Optional[str]) -> Dict[str, Any]:
-    logger.info("Fetching events for person", tree_id=tree_id, person_id=person_id, page=page, per_page=per_page)
-    # Ensure person exists in the tree
-    _get_or_404(db, Person, person_id, tree_id=tree_id)
+    # Removed tree_id from parameters
+    logger.info("Fetching events for person", person_id=person_id, page=page, per_page=per_page)
+    # Ensure person exists globally
+    _get_or_404(db, Person, person_id) 
     
     try:
         # Query for events where person_id matches OR person_id is in related_person_ids
-        # Note: JSONB array operations can be tricky with SQLAlchemy across DBs.
-        # For PostgreSQL, `array_to_string` and `LIKE` or `@>` operator can be used.
-        # Using stringified UUIDs in the JSONB array for simpler querying.
+        # Event.tree_id filter is removed as Event is now global.
         person_id_str = str(person_id)
         query = db.query(Event).filter(
-            Event.tree_id == tree_id,
             or_(
                 Event.person_id == person_id,
-                Event.related_person_ids.cast(sa.Text).like(f'%"{person_id_str}"%') # Assumes UUIDs are stored as strings in JSON list
+                Event.related_person_ids.cast(sa.Text).like(f'%"{person_id_str}"%') 
             )
         )
         
@@ -268,7 +277,40 @@ def get_events_for_tree_db(db: DBSession, tree_id: uuid.UUID,
                              filters: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     logger.info("Fetching events for tree", tree_id=tree_id, page=page, per_page=per_page, filters=filters)
     try:
-        query = db.query(Event).filter(Event.tree_id == tree_id)
+        # 1. Get all person IDs associated with the tree_id
+        # We use the imported get_persons_in_tree_db. This function returns a dict with an 'items' list.
+        # We need to extract person IDs from these items.
+        # Assuming get_persons_in_tree_db can fetch all persons in a tree if pagination is not strictly needed here,
+        # or we fetch all pages. For simplicity, let's assume it returns all persons for the tree.
+        # The function get_persons_in_tree_db (aliased from get_all_people_db) is already refactored.
+        
+        # Fetch all Person objects associated with the tree_id directly for clarity
+        persons_in_tree = db.query(Person.id).join(PersonTreeAssociation).filter(PersonTreeAssociation.tree_id == tree_id).all()
+        person_ids_in_tree = {person.id for person in persons_in_tree}
+
+        if not person_ids_in_tree:
+            logger.info("No persons in tree, so no events to fetch for tree.", tree_id=tree_id)
+            return {"items": [], "total_items": 0, "total_pages": 0, "current_page": page, "per_page": per_page}
+
+        # 2. Query events where Event.person_id is one of the tree's persons OR
+        #    any person_id in Event.related_person_ids is one of the tree's persons.
+        
+        # Create a list of conditions for related_person_ids
+        # This checks if any of the UUIDs in the JSONB array `related_person_ids` exist in `person_ids_in_tree`
+        # This is a bit complex due to JSONB querying. A common way is to check for overlap or containment if possible,
+        # or iterate if the set of person_ids_in_tree is small.
+        # For a scalable solution, if related_person_ids can be large, a different approach might be needed
+        # (e.g., a subquery or a specific database function if available).
+        # Here, we'll use a series of LIKE clauses for each person_id_in_tree, which might not be the most performant for large sets.
+        
+        related_conditions = [Event.related_person_ids.cast(sa.Text).like(f'%"{str(pid)}"%') for pid in person_ids_in_tree]
+
+        query = db.query(Event).filter(
+            or_(
+                Event.person_id.in_(person_ids_in_tree),
+                *related_conditions # Unpack the list of OR conditions for related_person_ids
+            )
+        )
         
         if filters:
             if 'event_type' in filters and filters['event_type']:
