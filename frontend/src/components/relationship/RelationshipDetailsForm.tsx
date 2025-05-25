@@ -183,13 +183,15 @@ export function RelationshipDetailsForm({
             <FormField
               control={form.control}
               name="person1Id"
-              render={({ field, id, labelId }) => (
+              render={({ field, id, labelId }) => { // Destructure labelId here
+                const { labelId: _labelId, ...fieldProps } = field; // Remove labelId from fieldProps if it exists
+                return (
                 <FormItem>
                   <FormLabel htmlFor={id} id={labelId}>First Person</FormLabel>
                   <Select
                     disabled={!!person1}
-                    onValueChange={field.onChange}
-                    defaultValue={field.value}
+                    onValueChange={fieldProps.onChange}
+                    defaultValue={fieldProps.value}
                   >
                     <FormControl>
                       <SelectTrigger id={id} aria-labelledby={labelId}>
@@ -206,19 +208,21 @@ export function RelationshipDetailsForm({
                   </Select>
                   <FormMessage>{null}</FormMessage>
                 </FormItem>
-              )}
+              )}}
             />
 
             <FormField
               control={form.control}
               name="person2Id"
-              render={({ field, id, labelId }) => (
+              render={({ field, id, labelId }) => { // Destructure labelId here
+                const { labelId: _labelId, ...fieldProps } = field; // Remove labelId from fieldProps if it exists
+                return (
                 <FormItem>
                   <FormLabel htmlFor={id} id={labelId}>Second Person</FormLabel>
                   <Select
                     disabled={!!person2}
-                    onValueChange={field.onChange}
-                    defaultValue={field.value}
+                    onValueChange={fieldProps.onChange}
+                    defaultValue={fieldProps.value}
                   >
                     <FormControl>
                       <SelectTrigger id={id} aria-labelledby={labelId}>
@@ -237,19 +241,18 @@ export function RelationshipDetailsForm({
                   </Select>
                   <FormMessage>{null}</FormMessage>
                 </FormItem>
-              )}
+              )}}
             />
 
             <FormField
               control={form.control}
               name="type"
-              render={({ field, id, labelId }) => (
+              render={({ field, id, labelId }) => { // Destructure labelId here
+                const { labelId: _labelId, ...fieldProps } = field; // Remove labelId from fieldProps if it exists
+                return (
                 <FormItem>
                   <FormLabel htmlFor={id} id={labelId}>Relationship Type</FormLabel>
-                  <Select
-                    onValueChange={field.onChange}
-                    defaultValue={field.value}
-                  >
+                  <Select onValueChange={fieldProps.onChange} defaultValue={fieldProps.value}>
                     <FormControl>
                       <SelectTrigger id={id} aria-labelledby={labelId}>
                         <SelectValue placeholder="Select relationship type" />
@@ -265,7 +268,7 @@ export function RelationshipDetailsForm({
                   </Select>
                   <FormMessage>{null}</FormMessage>
                 </FormItem>
-              )}
+              )}}
             />
 
             <FormItem>
@@ -304,25 +307,27 @@ export function RelationshipDetailsForm({
             <FormField
               control={form.control}
               name="startDate"
-              render={({ field }) => (
+              render={({ field, id, labelId }) => { // Destructure labelId here
+                const { labelId: _labelId, ...fieldProps } = field; // Remove labelId from fieldProps if it exists
+                return (
                 <FormItem className="flex flex-col">
-                  <FormLabel htmlFor="start-date-btn">Start Date</FormLabel>
+                  <FormLabel htmlFor={id} id={labelId}>Start Date</FormLabel>
                   <Popover open={isStartDatePickerOpen} onOpenChange={setIsStartDatePickerOpen}>
                     <PopoverTrigger asChild>
                       <FormControl>
                         <Button
-                          id="start-date-btn"
                           variant={"outline"}
+                          id={id} // Use id for the button if it's the main interactive element
+                          aria-labelledby={labelId} // Associate with the label
                           className={cn(
-                            "w-full pl-3 text-left font-normal",
-                            !field.value && "text-muted-foreground"
+                            "w-[240px] pl-3 text-left font-normal",
+                            !fieldProps.value && "text-muted-foreground"
                           )}
-                          aria-labelledby="start-date-label"
                         >
-                          {field.value ? (
-                            format(new Date(field.value), "PPP")
+                          {fieldProps.value ? (
+                            format(new Date(fieldProps.value), "PPP")
                           ) : (
-                            <span>Select a date</span>
+                            <span>Pick a date</span>
                           )}
                           <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
                         </Button>
@@ -331,9 +336,9 @@ export function RelationshipDetailsForm({
                     <PopoverContent className="w-auto p-0">
                       <Calendar
                         mode="single"
-                        selected={field.value ? new Date(field.value) : undefined}
+                        selected={fieldProps.value ? new Date(fieldProps.value) : undefined}
                         onSelect={(date) => {
-                          field.onChange(date);
+                          fieldProps.onChange(date);
                           setIsStartDatePickerOpen(false);
                         }}
                         initialFocus
@@ -345,31 +350,33 @@ export function RelationshipDetailsForm({
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
-              )}
+              )}}
             />
 
             <FormField
               control={form.control}
               name="endDate"
-              render={({ field }) => (
+              render={({ field, id, labelId }) => { // Destructure labelId here
+                const { labelId: _labelId, ...fieldProps } = field; // Remove labelId from fieldProps if it exists
+                return (
                 <FormItem className="flex flex-col">
-                  <FormLabel htmlFor="end-date-btn">End Date</FormLabel>
+                  <FormLabel htmlFor={id} id={labelId}>End Date</FormLabel>
                   <Popover open={isEndDatePickerOpen} onOpenChange={setIsEndDatePickerOpen}>
                     <PopoverTrigger asChild>
                       <FormControl>
                         <Button
-                          id="end-date-btn"
                           variant={"outline"}
+                          id={id} // Use id for the button
+                          aria-labelledby={labelId} // Associate with the label
                           className={cn(
-                            "w-full pl-3 text-left font-normal",
-                            !field.value && "text-muted-foreground"
+                            "w-[240px] pl-3 text-left font-normal",
+                            !fieldProps.value && "text-muted-foreground"
                           )}
-                          aria-labelledby="end-date-label"
                         >
-                          {field.value ? (
-                            format(new Date(field.value), "PPP")
+                          {fieldProps.value ? (
+                            format(new Date(fieldProps.value), "PPP")
                           ) : (
-                            <span>Select a date</span>
+                            <span>Pick a date</span>
                           )}
                           <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
                         </Button>
@@ -378,9 +385,9 @@ export function RelationshipDetailsForm({
                     <PopoverContent className="w-auto p-0">
                       <Calendar
                         mode="single"
-                        selected={field.value ? new Date(field.value) : undefined}
+                        selected={fieldProps.value ? new Date(fieldProps.value) : undefined}
                         onSelect={(date) => {
-                          field.onChange(date);
+                          fieldProps.onChange(date);
                           setIsEndDatePickerOpen(false);
                         }}
                         disabled={(date) => {
@@ -397,43 +404,72 @@ export function RelationshipDetailsForm({
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
-              )}
+              )}}
             />
 
             <FormField
               control={form.control}
               name="location"
-              render={({ field }) => (
+              render={({ field, id, labelId }) => { // Destructure labelId here
+                const { labelId: _labelId, ...fieldProps } = field; // Remove labelId from fieldProps if it exists
+                return (
                 <FormItem>
-                  <FormLabel htmlFor="relationship-location">Location</FormLabel>
+                  <FormLabel htmlFor={id} id={labelId}>Location</FormLabel>
                   <FormControl>
-                    <Input id="relationship-location" placeholder="e.g. New York, USA" {...field} />
+                    <Input 
+                      placeholder="e.g. New York, USA" 
+                      {...fieldProps} // Spread the rest of field props here
+                      id={id} // Ensure id is passed to Input
+                      aria-labelledby={labelId} // Associate with the label
+                    />
                   </FormControl>
                   <FormDescription>
                     Where did this relationship take place?
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
-              )}
+              )}}
             />
 
             <FormField
               control={form.control}
               name="description"
-              render={({ field }) => (
+              render={({ field, id, labelId }) => { // Destructure labelId here
+                const { labelId: _labelId, ...fieldProps } = field; // Remove labelId from fieldProps if it exists
+                return (
                 <FormItem>
-                  <FormLabel htmlFor="relationship-description">Description</FormLabel>
+                  <FormLabel htmlFor={id} id={labelId}>Description</FormLabel>
                   <FormControl>
-                    <Textarea 
-                      id="relationship-description"
-                      placeholder="Add notes about this relationship" 
-                      className="resize-none" 
-                      {...field} 
+                    <Textarea
+                      placeholder="Describe the relationship..."
+                      {...fieldProps} // Spread the rest of field props here
+                      id={id} // Ensure id is passed to Textarea
+                      aria-labelledby={labelId} // Associate with the label
                     />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
-              )}
+              )}}
+            />
+            <FormField
+              control={form.control}
+              name="location"
+              render={({ field, id, labelId }) => { // Destructure labelId here
+                const { labelId: _labelId, ...fieldProps } = field; // Remove labelId from fieldProps if it exists
+                return (
+                <FormItem>
+                  <FormLabel htmlFor={id} id={labelId}>Location</FormLabel>
+                  <FormControl>
+                    <Input 
+                      placeholder="e.g., City, State, Country" 
+                      {...fieldProps} // Spread the rest of field props here
+                      id={id} // Ensure id is passed to Input
+                      aria-labelledby={labelId} // Associate with the label
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}}
             />
           </TabsContent>
 

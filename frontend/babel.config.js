@@ -1,8 +1,4 @@
-// babel.config.js
+// frontend/babel.config.js
 module.exports = {
-  presets: [
-    ['@babel/preset-env', { targets: { node: 'current' } }],
-    '@babel/preset-react',
-    'next/babel'
-  ],
+  presets: ['next/babel'],
 };

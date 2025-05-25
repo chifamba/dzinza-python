@@ -10,13 +10,17 @@ function generateFieldId(name?: string) {
 // Enhanced Form component with proper props, filtering out non-DOM props
 export const Form = ({ 
   children, 
-  handleSubmit, // filter out
-  formState, // filter out
-  setValue, // filter out
-  getValues, // filter out
-  register, // filter out
-  reset, // filter out
-  watch, // filter out
+  // react-hook-form props to filter out
+  handleSubmit: _handleSubmit, 
+  formState: _formState, 
+  setValue: _setValue, 
+  getValues: _getValues, 
+  register: _register, 
+  reset: _reset, 
+  watch: _watch, 
+  control: _control, // Also filter out control if passed directly to Form
+  // shadcn/ui specific or custom props that might be passed
+  // Add any other non-DOM props here if they appear in warnings
   ...props 
 }: { 
   children: React.ReactNode; 
@@ -28,6 +32,16 @@ export const Form = ({
 // FormProvider component for react-hook-form contexts without creating a form element
 export const FormProvider = ({ 
   children, 
+  // react-hook-form props to filter out
+  handleSubmit: _handleSubmit, 
+  formState: _formState, 
+  setValue: _setValue, 
+  getValues: _getValues, 
+  register: _register, 
+  reset: _reset, 
+  watch: _watch,
+  control: _control, // Also filter out control
+  // Add any other non-DOM props here
   ...props 
 }: { 
   children: React.ReactNode; 
@@ -55,9 +69,10 @@ FormControl.displayName = 'FormControl';
 // FormField filters out non-DOM props and provides field object to render
 export const FormField = ({ 
   children,
-  control,
+  control, // react-hook-form prop
   name,
   render,
+  // Filter out any other potential non-DOM props if necessary
   ...props 
 }: { 
   children?: React.ReactNode;
@@ -69,6 +84,20 @@ export const FormField = ({
   // Generate a unique id for this field instance
   const id = React.useMemo(() => generateFieldId(name), [name]);
   const labelId = `${id}-label`;
+
+  // Filter out props that are not valid for a div
+  const { 
+    handleSubmit: _h, 
+    formState: _fs, 
+    setValue: _sv, 
+    getValues: _gv, 
+    register: _r, 
+    reset: _re, 
+    watch: _w,
+    // Add other non-DOM props that might be passed to FormField directly
+    ...domProps 
+  } = props;
+
   if (render) {
     let value = '';
     if (control && typeof control.getValues === 'function' && name) {
@@ -81,14 +110,10 @@ export const FormField = ({
       onBlur: () => {},
       ref: { current: null },
       id,
-      labelId,
+      labelId, // Pass labelId to render prop
     };
-    // Only pass DOM-safe props
-    const domProps = Object.fromEntries(Object.entries(props).filter(([k]) => !['handleSubmit','formState','setValue','getValues','register','reset','watch'].includes(k)));
     return <div {...domProps}>{render({ field, id, labelId })}</div>;
   }
-  // Only pass DOM-safe props
-  const domProps = Object.fromEntries(Object.entries(props).filter(([k]) => !['handleSubmit','formState','setValue','getValues','register','reset','watch'].includes(k)));
   return <div {...domProps}>{children}</div>;
 };
 

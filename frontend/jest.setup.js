@@ -14,6 +14,23 @@ console.error = (...args) => {
   originalConsoleError(...args);
 };
 
+// Polyfill for PointerEvent.hasPointerCapture
+if (global.Element && !global.Element.prototype.hasPointerCapture) {
+  global.Element.prototype.hasPointerCapture = function(pointerId) {
+    // Mock implementation: always return false or manage a mock state if needed
+    return false;
+  };
+}
+
+// Polyfill for scrollIntoView
+if (global.Element && !global.Element.prototype.scrollIntoView) {
+  global.Element.prototype.scrollIntoView = jest.fn();
+}
+
+// Mock window.confirm for all tests
+global.confirm = jest.fn(() => true);
+
+// Suppress console.error for specific known issues if necessary
 // Mock date-fns
 jest.mock('date-fns', () => ({
   format: jest.fn((date) => '2024-01-01'),

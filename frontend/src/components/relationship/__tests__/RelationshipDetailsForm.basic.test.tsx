@@ -4,11 +4,36 @@ import { render, screen } from '@testing-library/react';
 import { RelationshipDetailsForm } from '../RelationshipDetailsForm';
 import { Person, RelationshipType } from '@/lib/types';
 
+// Mock lucide-react icons
+jest.mock('lucide-react', () => {
+  const original = jest.requireActual('lucide-react');
+  return {
+    ...original,
+    Loader2: () => <span data-testid="mock-loader-icon"></span>,
+    CalendarIcon: () => <span data-testid="mock-calendar-icon"></span>,
+    Plus: () => <span data-testid="mock-plus-icon"></span>,
+    X: () => <span data-testid="mock-x-icon"></span>,
+  };
+});
+
 // Mock UI components to avoid nested form issues
 jest.mock('@/components/ui/form', () => ({
-  FormProvider: ({ children, ...props }: { children: React.ReactNode, [key: string]: any }) => (
-    <div data-testid="form-provider" {...props}>{children}</div>
-  ),
+  FormProvider: ({ children, ...props }: { children: React.ReactNode, [key: string]: any }) => {
+    // Filter out react-hook-form specific props before spreading onto the div
+    const { 
+      handleSubmit,
+      formState,
+      setValue,
+      getValues,
+      register,
+      reset,
+      watch,
+      control,
+      // Add any other RHF props that might be passed here
+      ...restProps 
+    } = props;
+    return <div data-testid="form-provider" {...restProps}>{children}</div>;
+  },
   FormField: ({ name, control, render }: { name: string, control: any, render: Function }) => {
     const field = {
       value: '',
@@ -17,10 +42,15 @@ jest.mock('@/components/ui/form', () => ({
       name,
       ref: { current: null },
     };
-    return <div data-testid={`form-field-${name}`}>{render({ field })}</div>;
+    // Provide id and labelId for accessibility in tests
+    const id = `mock-${name}-input`;
+    const labelId = `mock-${name}-label`;
+    return <div data-testid={`form-field-${name}`}>{render({ field, id, labelId })}</div>;
   },
   FormItem: ({ children }: { children: React.ReactNode }) => <div data-testid="form-item">{children}</div>,
-  FormLabel: ({ children }: { children: React.ReactNode }) => <div data-testid="form-label">{children}</div>,
+  FormLabel: ({ children, htmlFor, id }: { children: React.ReactNode, htmlFor?: string, id?: string }) => (
+    <label data-testid="form-label" htmlFor={htmlFor} id={id}>{children}</label>
+  ),
   FormControl: ({ children }: { children: React.ReactNode }) => <div data-testid="form-control">{children}</div>,
   FormDescription: ({ children }: { children: React.ReactNode }) => <div data-testid="form-description">{children}</div>,
   FormMessage: () => <div data-testid="form-message"></div>,
@@ -43,11 +73,22 @@ jest.mock('@/components/ui/tabs', () => ({
 }));
 
 jest.mock('@/components/ui/button', () => ({
-  Button: ({ children, onClick, type }: { children: React.ReactNode, onClick?: any, type?: string }) => {
-    // Create a more unique testId based on the button's text content
-    const textContent = typeof children === 'string' ? children : 'button';
+  Button: ({ children, ...rest }: { children: React.ReactNode, [key: string]: any }) => {
+    let textContentForTestId = 'button'; // Default fallback
+    if (typeof children === 'string') {
+      textContentForTestId = children;
+    } else if (Array.isArray(children)) {
+      const stringChild = children.find(child => typeof child === 'string');
+      if (stringChild) {
+        textContentForTestId = stringChild;
+      }
+    }
+    // Sanitize for data-testid
+    const sanitizedText = textContentForTestId.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-]/g, '').toLowerCase();
     return (
-      <button data-testid={`button-${textContent.replace(/\s+/g, '-').toLowerCase()}`} onClick={onClick}>{children}</button>
+      <button data-testid={`button-${sanitizedText || 'button'}`} {...rest}>
+        {children}
+      </button>
     );
   },
 }));
@@ -66,13 +107,21 @@ jest.mock('@/components/ui/calendar', () => ({
   Calendar: () => <div data-testid="calendar"></div>,
 }));
 
-jest.mock('@/components/ui/input', () => ({
-  Input: (props: any) => <input data-testid="input" {...props} />,
-}));
+jest.mock('@/components/ui/input', () => {
+  const Input = React.forwardRef((props: any, ref: any) => <input data-testid="input" {...props} ref={ref} />);
+  Input.displayName = 'Input'; // Adding displayName for better debugging
+  return {
+    Input,
+  };
+});
 
-jest.mock('@/components/ui/textarea', () => ({
-  Textarea: (props: any) => <textarea data-testid="textarea" {...props} />,
-}));
+jest.mock('@/components/ui/textarea', () => {
+  const Textarea = React.forwardRef((props: any, ref: any) => <textarea data-testid="textarea" {...props} ref={ref} />);
+  Textarea.displayName = 'Textarea'; // Adding displayName for better debugging
+  return {
+    Textarea,
+  };
+});
 
 jest.mock('react-hook-form', () => ({
   useForm: () => ({
@@ -135,6 +184,7 @@ describe('RelationshipDetailsForm Basic Tests', () => {
     // Verify that some key elements are rendered
     expect(screen.getByTestId('form-provider')).toBeInTheDocument();
     expect(screen.getByTestId('tabs')).toBeInTheDocument();
+    // This assertion should now pass with the updated button mock
     expect(screen.getByTestId('button-save-relationship')).toBeInTheDocument();
   });
 });

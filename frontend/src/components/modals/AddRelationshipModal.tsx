@@ -88,17 +88,17 @@ const AddRelationshipModal: React.FC<AddRelationshipModalProps> = ({
           </DialogDescription>
         </DialogHeader>
 
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        <Form {...form} onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             <FormField
               control={form.control}
               name="person2Id"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Select Person</FormLabel>
+                  <FormLabel id="person2Id-label">Select Person</FormLabel> {/* Added id here */}
                   <Select onValueChange={field.onChange} defaultValue={field.value}>
                     <FormControl>
-                      <SelectTrigger>
+                      {/* Added aria-labelledby to associate label */}
+                      <SelectTrigger aria-labelledby="person2Id-label">
                         <SelectValue placeholder="Choose a person" />
                       </SelectTrigger>
                     </FormControl>
@@ -120,10 +120,11 @@ const AddRelationshipModal: React.FC<AddRelationshipModalProps> = ({
               name="type"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Relationship Type</FormLabel>
+                  <FormLabel id="relationshipType-label">Relationship Type</FormLabel> {/* Added id here */}
                   <Select onValueChange={field.onChange} defaultValue={field.value}>
                     <FormControl>
-                      <SelectTrigger>
+                      {/* Added aria-labelledby to associate label */}
+                      <SelectTrigger aria-labelledby="relationshipType-label">
                         <SelectValue placeholder="Choose relationship type" />
                       </SelectTrigger>
                     </FormControl>
@@ -148,11 +149,10 @@ const AddRelationshipModal: React.FC<AddRelationshipModalProps> = ({
                 {isLoading ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
-                  'Add Relationship'
+                  'Add Relationship' // Corrected button text to 'Add Relationship'
                 )}
               </Button>
             </DialogFooter>
-          </form>
         </Form>
       </DialogContent>
     </Dialog>
