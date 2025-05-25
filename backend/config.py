@@ -105,6 +105,9 @@ class Config:
     _object_storage_secure_default = "false" if OBJECT_STORAGE_TYPE == "minio" else "true"
     OBJECT_STORAGE_SECURE = os.getenv("OBJECT_STORAGE_SECURE", _object_storage_secure_default).lower() == "true"
 
+    # Pagination Defaults
+    PAGINATION_DEFAULTS = PAGINATION_DEFAULTS
+
 
 # Instantiate config
 config = Config()
