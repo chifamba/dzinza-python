@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Relationship, RelationshipType, Person } from '@/lib/types';
-import { CalendarRange, ArrowRight, Clock, MapPin, FileText } from 'lucide-react';
+import { CalendarRange, ArrowRight, Clock, MapPin, FileText, ChevronDown, ChevronUp, Filter } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import {
   Card,
@@ -13,6 +13,15 @@ import {
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 // Helper to display human-readable relationship types
 const relationshipLabels: Record<string, string> = {
@@ -50,6 +59,19 @@ export function RelationshipTimeline({
   onEditRelationship,
   onDeleteRelationship
 }: RelationshipTimelineProps) {
+  // State for managing expanded items
+  const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
+  // State for relationship type filter
+  const [selectedType, setSelectedType] = useState<string>('');
+
+  // Toggle expanded state for an item
+  const toggleExpanded = (id: string) => {
+    setExpandedItems(prev => ({
+      ...prev,
+      [id]: !prev[id]
+    }));
+  };
+  
   // Helper to sort relationships chronologically
   const sortedRelationships = [...relationships].sort((a, b) => {
     // Sort by start date if available
@@ -63,11 +85,16 @@ export function RelationshipTimeline({
     return a.type.localeCompare(b.type);
   });
 
+  // Filter relationships by type if a type is selected
+  const filteredRelationships = selectedType 
+    ? sortedRelationships.filter(rel => rel.type.includes(selectedType.toLowerCase()))
+    : sortedRelationships;
+
   // Group relationships by person from the perspective of the focus person
   const groupedByPerson: Record<string, Relationship[]> = {};
   
   if (focusPersonId) {
-    sortedRelationships.forEach(rel => {
+    filteredRelationships.forEach(rel => {
       const otherPersonId = rel.person1Id === focusPersonId ? rel.person2Id : rel.person1Id;
       if (!groupedByPerson[otherPersonId]) {
         groupedByPerson[otherPersonId] = [];
@@ -112,7 +139,39 @@ export function RelationshipTimeline({
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold">Relationship Timeline</h2>
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold">
+          {focusPersonId && people[focusPersonId] ? 
+            `${people[focusPersonId].name}'s Relationships` : 
+            'Relationship Timeline'
+          }
+        </h2>
+
+        {/* Filter dropdown */}
+        <div className="flex items-center gap-2">
+          <Filter className="h-4 w-4" />
+          <Select value={selectedType} onValueChange={setSelectedType}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Filter by type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">All types</SelectItem>
+              <SelectGroup>
+                <SelectLabel>Family</SelectLabel>
+                <SelectItem value="parent">Parents</SelectItem>
+                <SelectItem value="child">Children</SelectItem>
+                <SelectItem value="sibling">Siblings</SelectItem>
+              </SelectGroup>
+              <SelectGroup>
+                <SelectLabel>Partners</SelectLabel>
+                <SelectItem value="spouse">Spouses</SelectItem>
+                <SelectItem value="partner">Partners</SelectItem>
+              </SelectGroup>
+              <SelectItem value="other">Other</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
       
       {focusPersonId ? (
         <div className="space-y-6">
@@ -132,6 +191,7 @@ export function RelationshipTimeline({
                 <div className="pl-6 ml-3 border-l-2 border-gray-200 py-2 space-y-4">
                   {relationships.map((relationship, index) => {
                     const status = getVerificationStatus(relationship);
+                    const isExpanded = expandedItems[relationship.id] || false;
                     
                     return (
                       <div key={relationship.id} className="relative">
@@ -196,18 +256,42 @@ export function RelationshipTimeline({
                              .filter(([key]) => key !== 'verificationStatus')
                              .length > 0 && (
                             <div className="mt-2">
-                              <h4 className="text-sm font-medium">Additional Information</h4>
-                              <div className="grid grid-cols-2 gap-1 mt-1">
-                                {Object.entries(relationship.customAttributes)
-                                  .filter(([key]) => key !== 'verificationStatus')
-                                  .map(([key, value]) => (
-                                    <div key={key} className="text-sm">
-                                      <span className="font-medium capitalize">{key}: </span>
-                                      <span className="text-gray-600">{value}</span>
-                                    </div>
-                                  ))
-                                }
+                              <div className="flex items-center justify-between">
+                                <h4 className="text-sm font-medium">Additional Information</h4>
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm" 
+                                  onClick={() => toggleExpanded(relationship.id)}
+                                  className="h-6 px-2"
+                                  aria-label={isExpanded ? "Hide details" : "Show details"}
+                                >
+                                  {isExpanded ? (
+                                    <>
+                                      <ChevronUp className="h-4 w-4 mr-1" />
+                                      <span className="text-xs">Hide details</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <ChevronDown className="h-4 w-4 mr-1" />
+                                      <span className="text-xs">Show details</span>
+                                    </>
+                                  )}
+                                </Button>
                               </div>
+                              
+                              {isExpanded && (
+                                <div className="grid grid-cols-2 gap-1 mt-1">
+                                  {Object.entries(relationship.customAttributes)
+                                    .filter(([key]) => key !== 'verificationStatus')
+                                    .map(([key, value]) => (
+                                      <div key={key} className="text-sm">
+                                        <span className="font-medium capitalize">{key}: </span>
+                                        <span className="text-gray-600">{value}</span>
+                                      </div>
+                                    ))
+                                  }
+                                </div>
+                              )}
                             </div>
                           )}
                           
@@ -219,6 +303,7 @@ export function RelationshipTimeline({
                                   variant="outline" 
                                   size="sm"
                                   onClick={() => onEditRelationship(relationship)}
+                                  aria-label="Edit relationship"
                                 >
                                   Edit
                                 </Button>
@@ -233,6 +318,7 @@ export function RelationshipTimeline({
                                       onDeleteRelationship(relationship.id);
                                     }
                                   }}
+                                  aria-label="Delete relationship"
                                 >
                                   Delete
                                 </Button>
@@ -256,16 +342,17 @@ export function RelationshipTimeline({
       ) : (
         // View for all relationships regardless of focus person
         <div className="space-y-4">
-          {sortedRelationships.length === 0 ? (
+          {filteredRelationships.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               No relationships to display
             </div>
           ) : (
             <div className="pl-6 ml-3 border-l-2 border-gray-200 py-2 space-y-8">
-              {sortedRelationships.map((relationship, index) => {
+              {filteredRelationships.map((relationship, index) => {
                 const person1 = people[relationship.person1Id];
                 const person2 = people[relationship.person2Id];
                 const status = getVerificationStatus(relationship);
+                const isExpanded = expandedItems[relationship.id] || false;
                 
                 if (!person1 || !person2) return null;
                 
@@ -338,18 +425,42 @@ export function RelationshipTimeline({
                          .filter(([key]) => key !== 'verificationStatus')
                          .length > 0 && (
                         <div className="mt-2">
-                          <h4 className="text-sm font-medium">Additional Information</h4>
-                          <div className="grid grid-cols-2 gap-1 mt-1">
-                            {Object.entries(relationship.customAttributes)
-                              .filter(([key]) => key !== 'verificationStatus')
-                              .map(([key, value]) => (
-                                <div key={key} className="text-sm">
-                                  <span className="font-medium capitalize">{key}: </span>
-                                  <span className="text-gray-600">{value}</span>
-                                </div>
-                              ))
-                            }
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-sm font-medium">Additional Information</h4>
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              onClick={() => toggleExpanded(relationship.id)}
+                              className="h-6 px-2"
+                              aria-label={isExpanded ? "Hide details" : "Show details"}
+                            >
+                              {isExpanded ? (
+                                <>
+                                  <ChevronUp className="h-4 w-4 mr-1" />
+                                  <span className="text-xs">Hide details</span>
+                                </>
+                              ) : (
+                                <>
+                                  <ChevronDown className="h-4 w-4 mr-1" />
+                                  <span className="text-xs">Show details</span>
+                                </>
+                              )}
+                            </Button>
                           </div>
+                          
+                          {isExpanded && (
+                            <div className="grid grid-cols-2 gap-1 mt-1">
+                              {Object.entries(relationship.customAttributes)
+                                .filter(([key]) => key !== 'verificationStatus')
+                                .map(([key, value]) => (
+                                  <div key={key} className="text-sm">
+                                    <span className="font-medium capitalize">{key}: </span>
+                                    <span className="text-gray-600">{value}</span>
+                                  </div>
+                                ))
+                              }
+                            </div>
+                          )}
                         </div>
                       )}
                       
@@ -361,6 +472,7 @@ export function RelationshipTimeline({
                               variant="outline" 
                               size="sm"
                               onClick={() => onEditRelationship(relationship)}
+                              aria-label="Edit relationship"
                             >
                               Edit
                             </Button>
@@ -375,6 +487,7 @@ export function RelationshipTimeline({
                                   onDeleteRelationship(relationship.id);
                                 }
                               }}
+                              aria-label="Delete relationship"
                             >
                               Delete
                             </Button>
