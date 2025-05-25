@@ -217,7 +217,7 @@ class Person(Base):
     custom_fields = Column(JSONB, nullable=True, default=dict)  # Added custom_fields
 
     def to_dict(self):
-        return {"id": str(self.id), "tree_id": str(self.tree_id), "first_name": self.first_name,
+        return {"id": str(self.id), "first_name": self.first_name,
             "middle_names": self.middle_names, "last_name": self.last_name, "maiden_name": self.maiden_name,
             "nickname": self.nickname, "gender": self.gender,
             "birth_date": self.birth_date.isoformat() if self.birth_date else None,
