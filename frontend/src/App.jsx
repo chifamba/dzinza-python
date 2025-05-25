@@ -7,6 +7,7 @@ import DashboardPage from './components/DashboardPage';
 import EditPersonPage from './components/EditPersonPage';
 import EditRelationshipPage from './components/EditRelationshipPage';
 import AddPersonPage from './components/AddPersonPage';
+import AddExistingPersonToTreePage from './components/AddExistingPersonToTreePage';
 import AddRelationshipPage from './components/AddRelationshipPage';
 import PrivateRoute from './components/PrivateRoute';
 import AdminPage from './components/AdminPage';
@@ -78,6 +79,7 @@ function App() {
                         <Route path="/edit-person/:id" element={<PrivateRoute><EditPersonPage /></PrivateRoute>} />
                         <Route path="/edit-relationship/:id" element={<PrivateRoute><EditRelationshipPage /></PrivateRoute>} />
                         <Route path="/add-person" element={<PrivateRoute><AddPersonPage /></PrivateRoute>} />
+                        <Route path="/add-existing-person" element={<PrivateRoute><AddExistingPersonToTreePage /></PrivateRoute>} />
                         <Route path="/add-relationship" element={<PrivateRoute><AddRelationshipPage /></PrivateRoute>} />
 
                          {/* Admin Only Route */}

@@ -125,23 +125,24 @@ function DashboardPage() {
           {newTreeError && <div className="text-red-500 mt-2">{newTreeError}</div>}
         </div>
 
-        <div className="flex gap-4 mt-6 border-t pt-4">
+        <div className="button-container" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '1rem' }}>
           <Link to="/add-person" className="button">Add Person</Link>
+          <Link to="/add-existing-person" className="button">Add Existing Person</Link>
           <Link to="/add-relationship" className="button">Add Relationship</Link>
         </div>
       </div>
 
-      {activeTreeId ? (
-        <div className="dashboard-viz-container">
+      <div className="visualization-container card" style={{ flexGrow: 1, minHeight: '500px', position: 'relative' }}>
+        {activeTreeId ? (
           <ReactFlowProvider>
             <FamilyTreeVisualization activeTreeId={activeTreeId} />
           </ReactFlowProvider>
-        </div>
-      ) : (
-        <div className="dashboard-viz-container card">
-          <p>Please select or create a family tree to view the visualization.</p>
-        </div>
-      )}
+        ) : (
+          <div className="dashboard-viz-container card">
+            <p>Please select or create a family tree to view the visualization.</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

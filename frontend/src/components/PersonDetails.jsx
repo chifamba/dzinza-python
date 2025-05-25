@@ -3,12 +3,14 @@ import api from '../api';
 import { Link } from 'react-router-dom'; // Import Link for the edit button
 
 // Receive selectedPerson (node data), allNodesData, and activeTreeId as props
-const PersonDetails = ({ selectedPerson, allNodesData, activeTreeId }) => {
+const PersonDetails = ({ selectedPerson, allNodesData, activeTreeId, onPersonRemoved }) => {
   // No need for separate personDetails state if selectedPerson has all info
   // const [personDetails, setPersonDetails] = useState(null);
   const [relatedInfo, setRelatedInfo] = useState([]);
   const [loadingRelationships, setLoadingRelationships] = useState(false);
   const [error, setError] = useState(null);
+  const [isRemoving, setIsRemoving] = useState(false);
+  const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
 
   // Memoize the selected person's full details to avoid re-renders if the object reference changes but content is same
   const personDetails = useMemo(() => selectedPerson, [selectedPerson]);
@@ -97,6 +99,28 @@ const PersonDetails = ({ selectedPerson, allNodesData, activeTreeId }) => {
      }
   };
 
+  // Function to handle removing a person from the current tree
+  const handleRemoveFromTree = async () => {
+    if (!personDetails?.id || !activeTreeId) return;
+    
+    setIsRemoving(true);
+    setError(null);
+    
+    try {
+      await api.removePersonFromTree(personDetails.id, activeTreeId);
+      setShowRemoveConfirm(false);
+      // Call the callback to notify parent component
+      if (onPersonRemoved) {
+        onPersonRemoved(personDetails.id);
+      }
+    } catch (err) {
+      console.error("Failed to remove person from tree:", err);
+      setError(err.response?.data?.message || err.message || "Failed to remove person from tree");
+    } finally {
+      setIsRemoving(false);
+    }
+  };
+
   // Use CSS classes defined in index.css or a dedicated CSS module
   if (!personDetails) {
     // Use card class for consistent styling
@@ -164,6 +188,39 @@ const PersonDetails = ({ selectedPerson, allNodesData, activeTreeId }) => {
        {personDetails.id && (
            <div style={{ marginTop: '20px', textAlign: 'center' }}>
                <Link to={`/edit-person/${personDetails.id}`} className="button">Edit Person</Link>
+               
+               {/* Add button to remove person from tree */}
+               {!showRemoveConfirm ? (
+                 <button 
+                   className="button button-danger" 
+                   style={{ marginLeft: '10px' }}
+                   onClick={() => setShowRemoveConfirm(true)}
+                 >
+                   Remove from Tree
+                 </button>
+               ) : (
+                 <div style={{ marginTop: '10px', padding: '10px', border: '1px solid #ff6b6b', borderRadius: '4px', backgroundColor: '#fff0f0' }}>
+                   <p style={{ marginBottom: '10px' }}>
+                     Are you sure you want to remove this person from the current tree? 
+                     The person record will remain in the system and can be added to this or other trees later.
+                   </p>
+                   <button 
+                     className="button button-danger" 
+                     disabled={isRemoving}
+                     onClick={handleRemoveFromTree}
+                   >
+                     {isRemoving ? 'Removing...' : 'Confirm Remove'}
+                   </button>
+                   <button 
+                     className="button" 
+                     style={{ marginLeft: '10px' }}
+                     disabled={isRemoving}
+                     onClick={() => setShowRemoveConfirm(false)}
+                   >
+                     Cancel
+                   </button>
+                 </div>
+               )}
            </div>
        )}
     </div>

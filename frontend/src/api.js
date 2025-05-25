@@ -28,6 +28,20 @@ const api = {
     return response.data;
   },
 
+  // --- NEW Person-Tree Association API Calls ---
+  addPersonToTree: async (personId, treeId) => {
+    const response = await axios.post(`${BASE_URL}/trees/${treeId}/persons`, 
+      { person_id: personId }, 
+      { withCredentials: true });
+    return response.data;
+  },
+
+  removePersonFromTree: async (personId, treeId) => {
+    await axios.delete(`${BASE_URL}/trees/${treeId}/persons/${personId}`, 
+      { withCredentials: true });
+    return { message: 'Person removed from tree successfully' };
+  },
+
   createPerson: async (personData, activeTreeId) => {
     // Backend expects tree_id to be associated with the request,
     // likely via the active_tree_id in the session.
@@ -117,6 +131,18 @@ const api = {
 
   setUserRole: async (userId, role) => {
     const response = await axios.put(`${BASE_URL}/users/${userId}/role`, { role }, { withCredentials: true });
+    return response.data;
+  },
+
+  // --- NEW Global People API Call ---
+  getGlobalPeopleNotInTree: async (treeId, searchParams = {}) => {
+    // Build query string from searchParams
+    const queryParams = new URLSearchParams({
+      not_in_tree: treeId,
+      ...searchParams
+    });
+    
+    const response = await axios.get(`${BASE_URL}/global-people?${queryParams}`, { withCredentials: true });
     return response.data;
   },
 

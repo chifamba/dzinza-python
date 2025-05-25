@@ -93,9 +93,9 @@ function AddPersonPage() {
     };
 
     try {
-      // Pass activeTreeId implicitly via session managed by api.js
-      await api.createPerson(dataToSend, activeTreeId);
-      setSuccessMessage('Person added successfully!');
+      // Create the person - backend will automatically create a PersonTreeAssociation
+      const createdPerson = await api.createPerson(dataToSend, activeTreeId);
+      setSuccessMessage('Person added successfully to the current family tree!');
       setPerson(initialPersonState); // Reset form
       // Optionally navigate back to dashboard after success
       setTimeout(() => {
