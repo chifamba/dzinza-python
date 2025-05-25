@@ -11,6 +11,8 @@ echo "Docker system cleaned."
 echo "========================================================"
 echo "Starting Dzinza Family Tree using Docker Compose..."
 
+
+export OPENSEARCH_INITIAL_ADMIN_PASSWORD='@(*(HI@#*00uk9))'
 # Check if .env file exists, warn if not (optional but good practice)
 if [ ! -f ".env" ]; then
     echo "WARNING: .env file not found in the project root."
