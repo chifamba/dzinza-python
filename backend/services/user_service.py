@@ -17,7 +17,7 @@ from utils import (_validate_password_complexity, _hash_password, _verify_passwo
 import config as app_config_module
 import extensions # For metrics and get_fernet
 from services.activity_service import log_activity # For audit logging
-from backend.email_utils import send_email # For sending password reset emails
+from email_utils import send_email  # For sending password reset emails
 
 logger = structlog.get_logger(__name__)
 

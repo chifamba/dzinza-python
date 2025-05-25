@@ -1,5 +1,7 @@
 import unittest
-from backend.main import _hash_password, _verify_password
+
+from main import _hash_password, _verify_password
+
 
 class TestPasswordHashing(unittest.TestCase):
 
@@ -29,6 +31,7 @@ class TestPasswordHashing(unittest.TestCase):
             _verify_password(incorrect_password, hashed_password),
             "Incorrect password verification passed"
         )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -5,7 +5,7 @@ import structlog
 
 # Assuming your application config instance is available via this import path
 # Adjust if your config is located elsewhere or named differently
-from backend.config import config as app_config
+from config import config as app_config
 
 logger = structlog.get_logger(__name__)
 
@@ -22,16 +22,20 @@ def send_email(to_email: str, subject: str, html_body: str) -> bool:
         True if the email was sent successfully (or appeared to be in a sandbox), False otherwise.
     """
     # Ensure all necessary configurations are present
-    if not all([app_config.EMAIL_SERVER, 
-                app_config.EMAIL_PORT, 
-                app_config.MAIL_SENDER_EMAIL, # Check for sender email
-                app_config.EMAIL_USERNAME, # Username for login
-                app_config.EMAIL_PASSWORD]): # Password for login
-        logger.error("Email configuration is incomplete. Cannot send email.",
-                     server_set=bool(app_config.EMAIL_SERVER),
-                     port_set=bool(app_config.EMAIL_PORT),
-                     sender_email_set=bool(app_config.MAIL_SENDER_EMAIL),
-                     username_set=bool(app_config.EMAIL_USERNAME))
+    if not all([
+        app_config.EMAIL_SERVER,
+        app_config.EMAIL_PORT,
+        app_config.MAIL_SENDER_EMAIL,  # Check for sender email
+        app_config.EMAIL_USERNAME,     # Username for login
+        app_config.EMAIL_PASSWORD      # Password for login
+    ]):
+        logger.error(
+            "Email configuration is incomplete. Cannot send email.",
+            server_set=bool(app_config.EMAIL_SERVER),
+            port_set=bool(app_config.EMAIL_PORT),
+            sender_email_set=bool(app_config.MAIL_SENDER_EMAIL),
+            username_set=bool(app_config.EMAIL_USERNAME)
+        )
         return False
 
     try:

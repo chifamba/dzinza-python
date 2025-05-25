@@ -5,13 +5,13 @@ from unittest.mock import patch, MagicMock
 from datetime import datetime, timedelta
 import uuid
 
-from backend.models import User, RoleOptions
+from models import User, RoleOptions
 from backend.services.user_service import (
     _validate_password_complexity,
     MIN_PASSWORD_LENGTH,
     PASSWORD_COMPLEXITY_REGEX_STR
 )
-from backend.config import Config
+from config import Config
 
 # Helper to create a user directly in the DB for testing specific states
 def create_user_direct(db_session, username, email, password, role=RoleOptions.USER, is_active=True, full_name=None):

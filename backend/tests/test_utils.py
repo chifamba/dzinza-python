@@ -10,7 +10,7 @@ import json
 import uuid
 from datetime import datetime
 
-from backend.utils import (
+from utils import (
     load_encryption_key,
     EncryptedString,
     apply_sorting,
@@ -19,8 +19,8 @@ from backend.utils import (
     _handle_sqlalchemy_error,
     _get_or_404
 )
-from backend.models import User # For _get_or_404 and paginate_query
-from backend.config import Config
+from models import User  # For _get_or_404 and paginate_query
+from config import Config
 
 
 # --- Test load_encryption_key ---

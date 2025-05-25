@@ -4,7 +4,7 @@ from sqlalchemy.exc import IntegrityError
 from datetime import datetime, timedelta
 import uuid
 
-from backend.services.user_service import (
+from services.user_service import (
     authenticate_user_db,
     register_user_db,
     request_password_reset_db,
@@ -17,8 +17,8 @@ from backend.services.user_service import (
     MIN_PASSWORD_LENGTH,
     PASSWORD_COMPLEXITY_REGEX_STR
 )
-from backend.models import User, RoleOptions, db
-from backend.config import Config
+from models import User, RoleOptions
+from config import Config
 
 # Helper to create a user directly for service tests
 def create_user_for_service_test(session, username, email, password_plain, role=RoleOptions.USER, is_active=True):

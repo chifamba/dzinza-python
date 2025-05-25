@@ -3,10 +3,8 @@ import uuid
 from flask import Flask, g, session, jsonify, request
 from unittest.mock import MagicMock, patch
 
-# Assuming decorators are in backend.decorators
-from backend.decorators import require_auth, require_admin, require_tree_access
-# Assuming models are in backend.models
-from backend.models import User, Tree, TreeAccess, UserRole, TreePrivacySettingEnum
+from decorators import require_auth, require_admin, require_tree_access
+from models import User, Tree, TreeAccess, UserRole, TreePrivacySettingEnum
 
 # Helper function to create a mock user object (already provided in previous attempt)
 def create_mock_user(user_id, username, role, is_active=True):

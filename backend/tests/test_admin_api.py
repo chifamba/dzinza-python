@@ -1,7 +1,7 @@
 import pytest
 import json
 import uuid
-from backend.models import User, RoleOptions
+from models import User, RoleOptions
 
 # --- Test Get All Users Endpoint (Admin) ---
 def test_get_all_users_as_admin(client, admin_auth_headers, test_user, other_user, admin_user):

@@ -133,6 +133,7 @@ services:
       - "4318:4318"
     environment:
       - LOG_LEVEL=error
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=01Admin_2025
     logging: *logging
 
   # Grafana
@@ -148,6 +149,7 @@ services:
       - GF_INSTALL_PLUGINS=grafana-opensearch-datasource
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=01Admin_2025
       - LOG_LEVEL=error
     volumes:
       - ./otel-config/grafana.ini:/etc/grafana/grafana.ini
@@ -182,6 +184,7 @@ services:
     logging: *logging
     environment:
       - PROMETHEUS_STORAGE_PATH=/prometheus
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=01Admin_2025
       - LOG_LEVEL=error
     ulimits:
       nofile:
