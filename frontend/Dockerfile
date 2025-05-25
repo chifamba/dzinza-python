@@ -7,16 +7,16 @@ FROM node:23-alpine AS build
 # Set the working directory
 WORKDIR /app
 
-COPY frontend/ /app/
-
+# Copy package files first to leverage Docker caching
+COPY package.json package-lock.json ./
 
 # Install dependencies
-# Use --legacy-peer-deps if you encounter peer dependency issues, otherwise remove it
- RUN npm install # --legacy-peer-deps
+RUN npm install
 
+# Copy the rest of the application
+COPY . .
 
 # Build the React application for production
-# Ensure the build command succeeds
 RUN npm run build
 
 # --- Production Stage ---
@@ -26,8 +26,7 @@ FROM nginx:stable-alpine
 # Copy the built assets from the build stage to Nginx's web root
 COPY --from=build /app/dist /usr/share/nginx/html
 
-# *** ADDED LINE: Copy custom Nginx configuration ***
-# This replaces the default Nginx config with our SPA-friendly one
+# Copy custom Nginx configuration
 COPY --from=build /app/nginx.conf /etc/nginx/conf.d/default.conf
 
 # Expose port 80 (default Nginx port)
