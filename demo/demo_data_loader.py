@@ -236,7 +236,7 @@ class APIClient:
         payload = {
             "person1_id": person1_id,
             "person2_id": person2_id,
-            "relationship_type": relationship_type, # e.g., "spouse_current", "biological_parent", "biological_child"
+            "relationship_type": relationship_type, # e.g., "SPOUSE", "PARENT_OF", "CHILD_OF"
             "tree_id": tree_id
         }
         if start_date:
@@ -317,8 +317,7 @@ def create_family_tree_for_user(api_client, config, user_num, tree_num_for_user)
         if husband and wife:
             marriage_date = generate_random_date(max(datetime.strptime(h_bdate, "%Y-%m-%d").year, datetime.strptime(w_bdate, "%Y-%m-%d").year) + 18,
                                                  max(datetime.strptime(h_bdate, "%Y-%m-%d").year, datetime.strptime(w_bdate, "%Y-%m-%d").year) + 30)
-            api_client.create_relationship(tree_id, husband['id'], wife['id'], 
-                                          "spouse_current", start_date=marriage_date)
+            api_client.create_relationship(tree_id, husband['id'], wife['id'], "spouse_current", start_date=marriage_date)
             current_generation_couples.append({'husband': husband, 'wife': wife, 'gen_num': config['num_generations']})
             logger.info(f"Created initial couple: {h_first} {h_last} & {w_first} {w_last}")
 
@@ -381,7 +380,7 @@ def create_family_tree_for_user(api_client, config, user_num, tree_num_for_user)
                                 max(datetime.strptime(child_bdate, "%Y-%m-%d").year, datetime.strptime(spouse_bdate, "%Y-%m-%d").year) + 18,
                                 max(datetime.strptime(child_bdate, "%Y-%m-%d").year, datetime.strptime(spouse_bdate, "%Y-%m-%d").year) + 30
                             )
-                            api_client.create_relationship(tree_id, child['id'], spouse['id'], "spouse_current", start_date=marriage_date)
+                            api_client.create_relationship(tree_id, child['id'], spouse['id'], "SPOUSE", start_date=marriage_date)
                             
                             # Add this new couple to the list for the next generation's processing
                             # Ensure correct gender assignment for 'husband' and 'wife' roles in the couple dict
