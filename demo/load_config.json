@@ -23,5 +23,6 @@
   "chance_of_marriage_in_generation": 0.8,
   "max_retries": 3,
   "retry_delay_seconds": 5,
+  "max_total_persons": 100,
   "log_level": "INFO"
 }

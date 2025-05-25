@@ -13,6 +13,8 @@ CRED_FILE_PATH = "cred.json"
 # --- Global Variables ---
 fake = Faker()
 logger = logging.getLogger(__name__)
+PERSON_CREATION_COUNT = 0
+MAX_PERSONS_LIMIT = None
 
 # --- Default Configuration ---
 DEFAULT_CONFIG = {
@@ -28,7 +30,8 @@ DEFAULT_CONFIG = {
     "chance_of_marriage_in_generation": 0.8,
     "max_retries": 3,
     "retry_delay_seconds": 5,
-    "log_level": "INFO"
+    "log_level": "INFO",
+    "max_total_persons": 100,
 }
 
 # --- Helper Functions ---
@@ -176,6 +179,17 @@ class APIClient:
         Creates a person in the active tree.
         The backend automatically associates the person with the active tree in the session.
         """
+        global PERSON_CREATION_COUNT
+        # MAX_PERSONS_LIMIT is read, so global declaration not strictly needed but can be included for clarity
+        # global MAX_PERSONS_LIMIT
+
+        if MAX_PERSONS_LIMIT is not None and PERSON_CREATION_COUNT >= MAX_PERSONS_LIMIT:
+            logger.warning(
+                f"Reached maximum person creation limit ({MAX_PERSONS_LIMIT}). "
+                f"Cannot create new person '{first_name} {last_name}'."
+            )
+            return None
+
         payload = {
             "first_name": first_name,
             "last_name": last_name,
@@ -188,7 +202,8 @@ class APIClient:
             response = self._request("POST", "/people", json=payload)
             if response and response.status_code == 201:
                 person_data = response.json()
-                logger.info(f"Person '{first_name} {last_name}' created with ID: {person_data.get('id')}")
+                PERSON_CREATION_COUNT += 1
+                logger.info(f"Person '{first_name} {last_name}' created with ID: {person_data.get('id')}. Total persons created in script: {PERSON_CREATION_COUNT}")
                 return person_data
             elif response:
                 logger.error(f"Failed to create person {first_name} {last_name}. Status: {response.status_code}, Response: {response.text}")
@@ -414,6 +429,10 @@ def main():
     else:
         config = DEFAULT_CONFIG.copy()
         config.update(config_data) # Override defaults with file contents
+
+    global MAX_PERSONS_LIMIT
+    MAX_PERSONS_LIMIT = config.get("max_total_persons")
+    logger.info(f"Maximum number of persons to create in this execution: {MAX_PERSONS_LIMIT}")
 
     setup_logging(config.get("log_level", "INFO"))
     logger.info("Starting demo data loader script...")
