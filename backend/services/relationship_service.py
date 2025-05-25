@@ -8,9 +8,12 @@ from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from sqlalchemy import or_
 from flask import abort
 
-from models import Relationship, Person, RelationshipTypeEnum
+from models import Relationship, Person, RelationshipTypeEnum, PersonTreeAssociation # Added PersonTreeAssociation
 from utils import _get_or_404, _handle_sqlalchemy_error, paginate_query
 import config as app_config_module
+# Import for get_relationships_for_tree_db
+from services.person_service import get_all_people_db as get_persons_in_tree_db
+
 
 logger = structlog.get_logger(__name__)
 
@@ -72,12 +75,13 @@ def get_all_relationships_db(db: DBSession,
     return {}
 
 def get_relationship_db(db: DBSession, relationship_id: uuid.UUID, tree_id: uuid.UUID) -> Dict[str, Any]:
-    logger.info("Fetching relationship", relationship_id=relationship_id, tree_id=tree_id)
-    relationship = _get_or_404(db, Relationship, relationship_id, tree_id=tree_id)
+    logger.info("Fetching relationship", relationship_id=relationship_id) # Removed tree_id from log
+    relationship = _get_or_404(db, Relationship, relationship_id) # Fetch globally
     return relationship.to_dict()
 
-def create_relationship_db(db: DBSession, user_id: uuid.UUID, tree_id: uuid.UUID, rel_data: Dict[str, Any]) -> Dict[str, Any]:
-    logger.info("Creating relationship", user_id=user_id, tree_id=tree_id, data_keys=list(rel_data.keys()))
+def create_relationship_db(db: DBSession, user_id: uuid.UUID, rel_data: Dict[str, Any]) -> Dict[str, Any]:
+    # Removed tree_id from parameters
+    logger.info("Creating relationship", user_id=user_id, data_keys=list(rel_data.keys()))
     p1_id_str = rel_data.get('person1_id'); p2_id_str = rel_data.get('person2_id'); rel_type_str = rel_data.get('relationship_type')
     errors = {}
     if not p1_id_str: errors['person1_id'] = "Required."
@@ -89,7 +93,8 @@ def create_relationship_db(db: DBSession, user_id: uuid.UUID, tree_id: uuid.UUID
         person1_id = uuid.UUID(p1_id_str); person2_id = uuid.UUID(p2_id_str)
         relationship_type = RelationshipTypeEnum(rel_type_str)
     except ValueError as e: abort(400, f"Invalid input format: {e}")
-    _get_or_404(db, Person, person1_id, tree_id=tree_id); _get_or_404(db, Person, person2_id, tree_id=tree_id)
+    # Validate persons globally
+    _get_or_404(db, Person, person1_id); _get_or_404(db, Person, person2_id)
     start_date, end_date = None, None
     if rel_data.get('start_date'):
         try: start_date = date.fromisoformat(rel_data['start_date'])
@@ -99,31 +104,36 @@ def create_relationship_db(db: DBSession, user_id: uuid.UUID, tree_id: uuid.UUID
         except ValueError: abort(400, {"message": "Validation failed", "details": {"end_date": "Invalid date format."}})
     if start_date and end_date and end_date < start_date: abort(400, {"message": "Validation failed", "details": {"date_comparison": "End date before start."}})
     try:
-        new_rel = Relationship(tree_id=tree_id, created_by=user_id, person1_id=person1_id, person2_id=person2_id,
+        new_rel = Relationship( # tree_id removed
+            created_by=user_id, person1_id=person1_id, person2_id=person2_id,
             relationship_type=relationship_type, start_date=start_date, end_date=end_date,
             certainty_level=rel_data.get('certainty_level'), custom_attributes=rel_data.get('custom_attributes', {}),
-            notes=rel_data.get('notes'), location=rel_data.get('location')) # Added location
+            notes=rel_data.get('notes'), location=rel_data.get('location'))
         db.add(new_rel); db.commit(); db.refresh(new_rel)
-        logger.info("Relationship created.", rel_id=new_rel.id, tree_id=tree_id)
+        logger.info("Relationship created.", rel_id=new_rel.id) # Removed tree_id from log
         return new_rel.to_dict()
     except IntegrityError as e: _handle_sqlalchemy_error(e, "creating relationship (integrity)", db)
     except SQLAlchemyError as e: _handle_sqlalchemy_error(e, "creating relationship", db)
     except Exception as e:
-        db.rollback(); logger.error("Unexpected error creating relationship.", tree_id=tree_id, exc_info=True)
+        db.rollback(); logger.error("Unexpected error creating relationship.", exc_info=True) # Removed tree_id from log
         abort(500, "Error creating relationship.")
     return {}
 
-def update_relationship_db(db: DBSession, relationship_id: uuid.UUID, tree_id: uuid.UUID, rel_data: Dict[str, Any]) -> Dict[str, Any]:
-    logger.info("Updating relationship", rel_id=relationship_id, tree_id=tree_id, data_keys=list(rel_data.keys()))
-    relationship = _get_or_404(db, Relationship, relationship_id, tree_id=tree_id)
+def update_relationship_db(db: DBSession, relationship_id: uuid.UUID, rel_data: Dict[str, Any]) -> Dict[str, Any]:
+    # Removed tree_id from parameters
+    logger.info("Updating relationship", rel_id=relationship_id, data_keys=list(rel_data.keys()))
+    relationship = _get_or_404(db, Relationship, relationship_id) # Fetch globally
+    # Authorization to update a relationship would typically depend on user's rights to edit EITHER person involved,
+    # or specific rights to the relationship type, or admin rights. This is not handled here yet.
+
     validation_errors = {}; allowed_fields = ['person1_id', 'person2_id', 'relationship_type', 'start_date', 'end_date',
-        'certainty_level', 'custom_attributes', 'notes', 'location'] # Added location to allowed_fields
+        'certainty_level', 'custom_attributes', 'notes', 'location']
     for field, value in rel_data.items():
         if field not in allowed_fields: continue
         try:
             if field in ['person1_id', 'person2_id']:
                 person_uuid = uuid.UUID(str(value)) if value else None
-                if person_uuid: _get_or_404(db, Person, person_uuid, tree_id=tree_id)
+                if person_uuid: _get_or_404(db, Person, person_uuid) # Validate globally
                 setattr(relationship, field, person_uuid)
             elif field == 'relationship_type': setattr(relationship, field, RelationshipTypeEnum(value) if value else None)
             elif field in ['start_date', 'end_date']: setattr(relationship, field, date.fromisoformat(str(value)) if value else None)
@@ -152,12 +162,77 @@ def update_relationship_db(db: DBSession, relationship_id: uuid.UUID, tree_id: u
         abort(500, "Error updating relationship.")
     return {}
 
-def delete_relationship_db(db: DBSession, relationship_id: uuid.UUID, tree_id: uuid.UUID) -> bool:
-    logger.info("Deleting relationship", rel_id=relationship_id, tree_id=tree_id)
-    relationship = _get_or_404(db, Relationship, relationship_id, tree_id=tree_id)
+def get_relationships_for_person_db(db: DBSession,
+                                    person_id: uuid.UUID,
+                                    page: int = -1, per_page: int = -1,
+                                    sort_by: Optional[str] = "created_at",
+                                    sort_order: Optional[str] = "desc",
+                                    filters: Optional[Dict[str, Any]] = None
+                                    ) -> Dict[str, Any]:
+    """Fetches all global relationships for a given person."""
+    cfg_pagination = app_config_module.config.PAGINATION_DEFAULTS
+    if page == -1: page = cfg_pagination["page"]
+    if per_page == -1: per_page = cfg_pagination["per_page"]
+
+    logger.info("Fetching all relationships for person", person_id=person_id, page=page, per_page=per_page, filters=filters)
+    
+    # Ensure person exists globally
+    _get_or_404(db, Person, person_id)
+
+    try:
+        query = db.query(Relationship).filter(
+            or_(Relationship.person1_id == person_id, Relationship.person2_id == person_id)
+        )
+
+        if filters:
+            # Example filter: by relationship type
+            if 'relationship_type' in filters and filters['relationship_type']:
+                try:
+                    query = query.filter(Relationship.relationship_type == RelationshipTypeEnum(str(filters['relationship_type'])))
+                except ValueError:
+                    logger.warning(f"Invalid relationship_type filter: {filters['relationship_type']}. Ignoring.")
+            # Example filter: by other person involved (if a specific other person is provided)
+            if 'other_person_id' in filters and filters['other_person_id']:
+                try:
+                    other_person_uuid = uuid.UUID(str(filters['other_person_id']))
+                    # Ensure this other person also exists globally
+                    _get_or_404(db, Person, other_person_uuid)
+                    query = query.filter(
+                        or_(
+                            (Relationship.person1_id == person_id) & (Relationship.person2_id == other_person_uuid),
+                            (Relationship.person1_id == other_person_uuid) & (Relationship.person2_id == person_id)
+                        )
+                    )
+                except ValueError:
+                    abort(400, "Invalid other_person_id format for filter.")
+                except HTTPException: # Catch 404 if other_person_id does not exist
+                    logger.warning(f"Other person_id {filters['other_person_id']} not found for filtering. Relationship might not exist.")
+                    # Depending on desired behavior, could return empty or just ignore this part of the filter.
+                    # For now, if other_person_id is specified but not found, the query will likely yield no results if that person was essential.
+
+        if not hasattr(Relationship, sort_by or ""):
+            logger.warning(f"Invalid sort_by '{sort_by}' for Relationship. Defaulting to 'created_at'.")
+            sort_by = "created_at"
+            
+        return paginate_query(query, Relationship, page, per_page, cfg_pagination["max_per_page"], sort_by, sort_order)
+    except SQLAlchemyError as e:
+        _handle_sqlalchemy_error(e, f"fetching relationships for person {person_id}", db)
+    except HTTPException: # Re-raise aborts (e.g. from _get_or_404 if other_person_id not found)
+        raise
+    except Exception as e:
+        logger.error("Unexpected error fetching relationships for person.", person_id=person_id, exc_info=True)
+        abort(500, "Error fetching relationships for person.")
+    return {}
+
+def delete_relationship_db(db: DBSession, relationship_id: uuid.UUID) -> bool:
+    # Removed tree_id from parameters
+    logger.info("Deleting relationship", rel_id=relationship_id)
+    relationship = _get_or_404(db, Relationship, relationship_id) # Fetch globally
+    # Authorization to delete a relationship would be similar to updating.
+
     try:
         db.delete(relationship); db.commit()
-        logger.info("Relationship deleted.", rel_id=relationship_id, tree_id=tree_id)
+        logger.info("Relationship deleted.", rel_id=relationship_id) # Removed tree_id from log
         return True
     except SQLAlchemyError as e: _handle_sqlalchemy_error(e, f"deleting relationship {relationship_id}", db)
     except Exception as e:

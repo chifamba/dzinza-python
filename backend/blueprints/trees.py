@@ -8,14 +8,15 @@ from decorators import require_auth, require_tree_access
 from services.tree_service import (
     create_tree_db, get_user_trees_db,
     get_tree_data_for_visualization_db,
-    upload_tree_cover_image_db
+    upload_tree_cover_image_db,
+    add_person_to_tree_db, remove_person_from_tree_db # Added new services
 )
 from services.media_service import get_media_for_entity_db # Added for tree media
 from services.event_service import get_events_for_tree_db # Added for tree events
 from utils import get_pagination_params
 # werkzeug.utils.secure_filename is imported in service now
 from extensions import limiter
-from models import Tree, TreeAccess # For direct query in set_active_tree
+from models import Tree, TreeAccess, TreePrivacySettingEnum # For direct query in set_active_tree, added TreePrivacySettingEnum explicitly
 
 logger = structlog.get_logger(__name__)
 trees_bp = Blueprint('trees_api', __name__, url_prefix='/api') # Base prefix /api
@@ -150,10 +151,13 @@ def get_tree_media_endpoint(tree_id_param: uuid.UUID):
     logger.info("Get media for tree endpoint", tree_id=tree_id_param,
                 page=page, per_page=per_page, sort_by=sort_by, sort_order=sort_order)
     try:
-        # Here, tree_id_param is used for both tree_id and entity_id context in get_media_for_entity_db
         media_list_dict = get_media_for_entity_db(
-            db_session, tree_id_param, "Tree", tree_id_param, 
-            page, per_page, sort_by, sort_order
+            db=db_session, 
+            entity_type="Tree", 
+            entity_id=tree_id_param, 
+            page=page, per_page=per_page, 
+            sort_by=sort_by, sort_order=sort_order,
+            tree_id_context=tree_id_param # Pass tree_id_param as tree_id_context
         )
         return jsonify(media_list_dict), 200
     except HTTPException as e:
@@ -198,3 +202,66 @@ def get_tree_events_endpoint(tree_id_param: uuid.UUID):
         logger.error("Error in get_tree_events_endpoint", exc_info=True)
         abort(500, description="Error fetching events for tree.")
     return {}
+
+
+# --- New Endpoints for Person-Tree Association ---
+
+@trees_bp.route('/trees/<uuid:tree_id_param>/persons', methods=['POST'])
+@require_auth
+@require_tree_access('edit') # Or 'admin' depending on desired permission level
+def add_person_to_tree_route(tree_id_param: uuid.UUID):
+    """Adds an existing global person to a specific tree."""
+    db = g.db
+    current_user_id = uuid.UUID(session['user_id'])
+    active_tree_id = uuid.UUID(g.active_tree_id) # from @require_tree_access
+
+    if active_tree_id != tree_id_param:
+        abort(400, "URL tree ID does not match active tree context set by decorator.")
+
+    data = request.get_json()
+    if not data or 'person_id' not in data:
+        abort(400, description="Missing 'person_id' in request body.")
+    
+    try:
+        person_id_to_add = uuid.UUID(data['person_id'])
+    except ValueError:
+        abort(400, description="Invalid 'person_id' format.")
+
+    logger.info("Adding person to tree", tree_id=tree_id_param, person_id_to_add=person_id_to_add, current_user_id=current_user_id)
+    try:
+        result = add_person_to_tree_db(db, person_id_to_add, tree_id_param, current_user_id)
+        # The service returns a dict with message and possibly person_id, tree_id.
+        # If it returns a specific "already associated" message, we might want a different status code like 200.
+        if result.get("message") == "Person already associated with this tree.":
+            return jsonify(result), 200 
+        return jsonify(result), 201 # 201 Created for new association
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error adding person to tree.", tree_id=tree_id_param, person_id=person_id_to_add, exc_info=True)
+        abort(500, "Could not add person to the tree.")
+
+@trees_bp.route('/trees/<uuid:tree_id_param>/persons/<uuid:person_id_to_remove>', methods=['DELETE'])
+@require_auth
+@require_tree_access('edit') # Or 'admin'
+def remove_person_from_tree_route(tree_id_param: uuid.UUID, person_id_to_remove: uuid.UUID):
+    """Removes a person's association from a specific tree."""
+    db = g.db
+    current_user_id = uuid.UUID(session['user_id'])
+    active_tree_id = uuid.UUID(g.active_tree_id) # from @require_tree_access
+
+    if active_tree_id != tree_id_param:
+        abort(400, "URL tree ID does not match active tree context set by decorator.")
+
+    logger.info("Removing person from tree", tree_id=tree_id_param, person_id_to_remove=person_id_to_remove, current_user_id=current_user_id)
+    try:
+        if remove_person_from_tree_db(db, person_id_to_remove, tree_id_param, current_user_id):
+            return '', 204 # No content, successful deletion
+        else:
+            # This path should ideally not be reached if service uses aborts for failures.
+            abort(500, "Failed to remove person from tree for an unknown reason.") 
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error removing person from tree.", tree_id=tree_id_param, person_id=person_id_to_remove, exc_info=True)
+        abort(500, "Could not remove person from the tree.")
