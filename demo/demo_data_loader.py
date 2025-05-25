@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 # --- Default Configuration ---
 DEFAULT_CONFIG = {
-    "api_base_url": "http://127.0.0.1:5000",
+    "api_base_url": "http://127.0.0.1:8090/api",
     "num_users_to_process": None,
     "users_to_process": [],
     "num_trees_per_user": 1,
@@ -126,7 +126,7 @@ class APIClient:
         """Registers the user."""
         payload = {"username": self.username, "email": self.email, "password": self.password}
         try:
-            response = self._request("POST", "/auth/register", json=payload)
+            response = self._request("POST", "/register", json=payload)
             if response and response.status_code == 201: # Assuming 201 Created for registration
                 logger.info(f"User {self.username} registered successfully.")
                 return True
@@ -149,7 +149,7 @@ class APIClient:
         """Logs in the user and stores the session."""
         payload = {"username": self.username, "password": self.password}
         try:
-            response = self._request("POST", "/auth/login", data=payload) # form data for login
+            response = self._request("POST", "/login", json=payload) # JSON data for login
             if response and response.status_code == 200:
                 login_data = response.json()
                 self.user_id = login_data.get("user", {}).get("id")
@@ -172,7 +172,10 @@ class APIClient:
             return False
 
     def create_person(self, first_name, last_name, birth_date, gender, death_date=None, notes=""):
-        """Creates a person."""
+        """
+        Creates a person in the active tree.
+        The backend automatically associates the person with the active tree in the session.
+        """
         payload = {
             "first_name": first_name,
             "last_name": last_name,
@@ -187,7 +190,7 @@ class APIClient:
                 person_data = response.json()
                 logger.info(f"Person '{first_name} {last_name}' created with ID: {person_data.get('id')}")
                 return person_data
-            elif response :
+            elif response:
                 logger.error(f"Failed to create person {first_name} {last_name}. Status: {response.status_code}, Response: {response.text}")
             return None
         except Exception as e:
@@ -195,7 +198,10 @@ class APIClient:
             return None
 
     def create_tree(self, name, description=""):
-        """Creates a family tree."""
+        """
+        Creates a family tree and sets it as the active tree in the session.
+        The backend automatically sets the created tree as active.
+        """
         payload = {"name": name, "description": description}
         try:
             response = self._request("POST", "/trees", json=payload)
@@ -209,22 +215,20 @@ class APIClient:
         except Exception as e:
             logger.error(f"Error creating tree {name}: {e}")
             return None
-
-    def add_person_to_tree(self, tree_id, person_id):
-        """Adds a person to a tree."""
-        # The backend endpoint is POST /trees/<int:tree_id>/people/<int:person_id>
-        # It does not take a request body according to blueprints/trees.py
-        endpoint = f"/trees/{tree_id}/people/{person_id}"
+            
+    def set_active_tree(self, tree_id):
+        """Sets the active tree in the session."""
+        payload = {"tree_id": tree_id}
         try:
-            response = self._request("POST", endpoint) # No JSON payload needed
-            if response and response.status_code == 200: # Assuming 200 OK for successful addition
-                logger.info(f"Person ID {person_id} added to Tree ID {tree_id}.")
+            response = self._request("PUT", "/session/active_tree", json=payload)
+            if response and response.status_code == 200:
+                logger.info(f"Active tree set to ID: {tree_id}")
                 return True
             elif response:
-                logger.error(f"Failed to add person {person_id} to tree {tree_id}. Status: {response.status_code}, Response: {response.text}")
+                logger.error(f"Failed to set active tree {tree_id}. Status: {response.status_code}, Response: {response.text}")
             return False
         except Exception as e:
-            logger.error(f"Error adding person {person_id} to tree {tree_id}: {e}")
+            logger.error(f"Error setting active tree {tree_id}: {e}")
             return False
 
     def create_relationship(self, tree_id, person1_id, person2_id, relationship_type, start_date=None, end_date=None):
@@ -232,7 +236,7 @@ class APIClient:
         payload = {
             "person1_id": person1_id,
             "person2_id": person2_id,
-            "relationship_type": relationship_type, # e.g., "SPOUSE", "PARENT_OF", "CHILD_OF"
+            "relationship_type": relationship_type, # e.g., "spouse_current", "biological_parent", "biological_child"
             "tree_id": tree_id
         }
         if start_date:
@@ -289,6 +293,11 @@ def create_family_tree_for_user(api_client, config, user_num, tree_num_for_user)
     
     tree_id = tree.get("id")
     all_people_in_tree = {} # Store person_id: person_data
+    
+    # Ensure the tree is set as active
+    if not api_client.set_active_tree(tree_id):
+        logger.error(f"Failed to set tree '{tree_name}' as active. Skipping this tree.")
+        return
 
     # Generation 0: Initial Couple(s)
     current_generation_couples = []
@@ -297,20 +306,19 @@ def create_family_tree_for_user(api_client, config, user_num, tree_num_for_user)
         h_first, h_last, h_bdate, h_gender, h_ddate = generate_person_details(generation_num=config['num_generations'])
         husband = api_client.create_person(h_first, h_last, h_bdate, "MALE", h_ddate) # Force MALE for this role
         if husband:
-            api_client.add_person_to_tree(tree_id, husband['id'])
             all_people_in_tree[husband['id']] = husband
         
         # Wife
         w_first, w_last, w_bdate, w_gender, w_ddate = generate_person_details(generation_num=config['num_generations'], base_year=datetime.strptime(h_bdate, "%Y-%m-%d").year + random.randint(-2, 5))
         wife = api_client.create_person(w_first, h_last, w_bdate, "FEMALE", w_ddate) # Share last name, force FEMALE
         if wife:
-            api_client.add_person_to_tree(tree_id, wife['id'])
             all_people_in_tree[wife['id']] = wife
 
         if husband and wife:
             marriage_date = generate_random_date(max(datetime.strptime(h_bdate, "%Y-%m-%d").year, datetime.strptime(w_bdate, "%Y-%m-%d").year) + 18,
                                                  max(datetime.strptime(h_bdate, "%Y-%m-%d").year, datetime.strptime(w_bdate, "%Y-%m-%d").year) + 30)
-            api_client.create_relationship(tree_id, husband['id'], wife['id'], "SPOUSE", start_date=marriage_date)
+            api_client.create_relationship(tree_id, husband['id'], wife['id'], 
+                                          "spouse_current", start_date=marriage_date)
             current_generation_couples.append({'husband': husband, 'wife': wife, 'gen_num': config['num_generations']})
             logger.info(f"Created initial couple: {h_first} {h_last} & {w_first} {w_last}")
 
@@ -346,15 +354,14 @@ def create_family_tree_for_user(api_client, config, user_num, tree_num_for_user)
                 # Inherit last name from one of the parents (e.g. husband)
                 child = api_client.create_person(child_first, parent1['last_name'], child_bdate, child_gender, child_ddate)
                 if child:
-                    api_client.add_person_to_tree(tree_id, child['id'])
                     all_people_in_tree[child['id']] = child
                     
                     # Add PARENT_OF relationships
                     # Backend might enforce PARENT_OF from parent to child, or CHILD_OF from child to parent
                     # Let's assume PARENT_OF is the primary one to create.
                     # The relationship service should ideally handle creating the inverse.
-                    api_client.create_relationship(tree_id, parent1['id'], child['id'], "PARENT_OF")
-                    api_client.create_relationship(tree_id, parent2['id'], child['id'], "PARENT_OF")
+                    api_client.create_relationship(tree_id, parent1['id'], child['id'], "biological_parent")
+                    api_client.create_relationship(tree_id, parent2['id'], child['id'], "biological_parent")
                     logger.info(f"Created child: {child_first} {parent1['last_name']} for {parent1['first_name']} & {parent2['first_name']}")
 
                     # Chance for this child to marry and form a new couple for the *next* generation's processing
@@ -368,14 +375,13 @@ def create_family_tree_for_user(api_client, config, user_num, tree_num_for_user)
                         spouse = api_client.create_person(spouse_first, spouse_last, # Spouse can have different last name
                                                           spouse_bdate, spouse_gender, spouse_ddate)
                         if spouse:
-                            api_client.add_person_to_tree(tree_id, spouse['id'])
                             all_people_in_tree[spouse['id']] = spouse
                             
                             marriage_date = generate_random_date(
                                 max(datetime.strptime(child_bdate, "%Y-%m-%d").year, datetime.strptime(spouse_bdate, "%Y-%m-%d").year) + 18,
                                 max(datetime.strptime(child_bdate, "%Y-%m-%d").year, datetime.strptime(spouse_bdate, "%Y-%m-%d").year) + 30
                             )
-                            api_client.create_relationship(tree_id, child['id'], spouse['id'], "SPOUSE", start_date=marriage_date)
+                            api_client.create_relationship(tree_id, child['id'], spouse['id'], "spouse_current", start_date=marriage_date)
                             
                             # Add this new couple to the list for the next generation's processing
                             # Ensure correct gender assignment for 'husband' and 'wife' roles in the couple dict
