@@ -192,54 +192,18 @@ class APIClient:
             "notes": notes
         }
         
-        # WORKAROUND: Create a mock Person object since the backend API has a bug
-        # The server has a bug in models.py where Person.to_dict() tries to access self.tree_id
-        # which no longer exists in the Person model
-        mock_person = {
-            "id": str(uuid.uuid4()),
-            "first_name": first_name,
-            "last_name": last_name,
-            "birth_date": birth_date,
-            "gender": gender,
-            "death_date": death_date,
-            "notes": notes
-        }
-        
-        try:
-            response = self._request("POST", "/people", json=payload)
-            if response and response.status_code == 201:
-                person_data = response.json()
-                
-                # Add tree_id to person data since model no longer includes it directly
-                if self.active_tree_id:
-                    person_data["tree_id"] = self.active_tree_id
-                
-                PERSON_CREATION_COUNT += 1
-                logger.info(
-                    f"Person '{first_name} {last_name}' created with ID: {person_data.get('id')}. "
-                    f"Total persons: {PERSON_CREATION_COUNT}"
-                )
-                return person_data
-            elif response and response.status_code == 500:
-                # WORKAROUND: Use mock data if server returns 500 error due to known bug
-                logger.warning(f"Server returned 500 error creating person {first_name} {last_name}. Using mock data.")
-                PERSON_CREATION_COUNT += 1
-                
-                # Add tree_id to person data
-                if self.active_tree_id:
-                    mock_person["tree_id"] = self.active_tree_id
-                
-                logger.info(
-                    f"Using mock person '{first_name} {last_name}' with ID: {mock_person.get('id')}. "
-                    f"Total persons: {PERSON_CREATION_COUNT}"
-                )
-                return mock_person
-            elif response:
-                logger.error(f"Failed to create person {first_name} {last_name}. Status: {response.status_code}, Response: {response.text}")
-            return None
-        except Exception as e:
-            logger.error(f"Error creating person {first_name} {last_name}: {e}")
-            return None
+        response = self._request("POST", "/people", json=payload)
+        if response and response.status_code == 201:
+            person_data = response.json()
+            PERSON_CREATION_COUNT += 1
+            logger.info(
+                f"Person '{first_name} {last_name}' created with ID: {person_data.get('id')}. "
+                f"Total persons: {PERSON_CREATION_COUNT}"
+            )
+            return person_data
+        elif response:
+            logger.error(f"Failed to create person {first_name} {last_name}. Status: {response.status_code}, Response: {response.text}")
+        return None
 
     def create_tree(self, name, description=""):
         """
@@ -283,7 +247,6 @@ class APIClient:
             "person1_id": person1_id,
             "person2_id": person2_id,
             "relationship_type": relationship_type,
-            "tree_id": self.active_tree_id  # Explicitly provide tree_id in payload
         }
         if start_date:
             payload["start_date"] = start_date

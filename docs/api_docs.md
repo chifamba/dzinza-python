@@ -56,13 +56,15 @@ All endpoints requiring authentication expect session cookies to be sent (`withC
 ```json
 {
     "username": "new_username",
+    "email": "user@example.com",
     "password": "new_password" // Min length/complexity might be enforced by backend logic (currently basic check)
 }
 ```
+Note: `username`, `email`, and `password` are required fields.
 
 #### **Response Codes**:
 - **201 Created**: Registration successful.
-- **400 Bad Request**: Missing username/password, empty values, or invalid JSON.
+- **400 Bad Request**: Missing username, email, or password; empty values; or invalid JSON.
 - **409 Conflict**: Username already exists.
 - **500 Internal Server Error**: An unexpected error occurred during registration (e.g., hashing failed, save failed).
 - **503 Service Unavailable**: Registration service not initialized.
@@ -252,10 +254,10 @@ All endpoints requiring authentication expect session cookies to be sent (`withC
 #### **Response Body**: A single Person object (see format above).
 
 ### **Add Person** (`POST /people`)
-**Description**: Adds a new person to the family tree.  
+**Description**: Adds a new person to the family tree. New people are automatically associated with the user's currently active tree (set via `PUT /session/active_tree`). The `tree_id` should not be sent in the request payload.
 **Authentication**: Required.  
 
-#### **Request Body**: A Person object (without person_id). first_name is required.
+#### **Request Body**: A Person object (without `id`). `first_name` is required.
 ```json
 {
     "first_name": "New",
@@ -279,7 +281,22 @@ All endpoints requiring authentication expect session cookies to be sent (`withC
 - **503 Service Unavailable**: Family tree service not available.
 
 #### **Response Body**:
-- **Success - 201 Created**: The newly created Person object (including the generated person_id).
+- **Success - 201 Created**: The newly created Person object (including the generated `id`).
+  ```json
+  {
+      "id": "new_person_uuid",
+      "first_name": "New",
+      "last_name": "Person",
+      "nickname": "NP",
+      "birth_date": "2000-01-01",
+      "death_date": null,
+      "gender": "Other",
+      "place_of_birth": "London",
+      "place_of_death": null,
+      "notes": "Some notes",
+      "attributes": {"custom_key": "value"}
+  }
+  ```
 
 ### **Edit Person** (`PUT /people/{person_id}`)
 **Description**: Edits an existing person's details. Only include fields to be updated.  
@@ -357,29 +374,38 @@ All endpoints requiring authentication expect session cookies to be sent (`withC
 ```
 
 ### **Add Relationship** (`POST /relationships`)
-**Description**: Adds a new relationship between two people.  
+**Description**: Adds a new relationship between two people. The `tree_id` should not be sent in the payload. Relationships are between people, and their association with a tree is implicit through those people's membership in the tree (which is determined by their association with the active tree at the time of their creation).  
 **Authentication**: Required.  
 
 #### **Request Body**:
 ```json
 {
-    "person1": "person_uuid_1", // ID of the first person
-    "person2": "person_uuid_2", // ID of the second person
-    "relationshipType": "parent", // Type of relationship (from person1 to person2)
-    "attributes": {"custom": "data"} // Optional attributes dictionary
+    "person1_id": "person_uuid_1",        // ID of the first person
+    "person2_id": "person_uuid_2",        // ID of the second person
+    "relationship_type": "biological_parent", // Or other valid RelationshipTypeEnum (e.g. "spouse_current", "sibling")
+    "attributes": {"start_date": "2000-01-01"}   // Optional attributes dictionary
 }
 ```
 
 #### **Response Codes**:
 - **201 Created**: Relationship added successfully.
-- **400 Bad Request**: Invalid input data (e.g., missing IDs, invalid type, persons not found, self-relationship). Response body contains validation details.
+- **400 Bad Request**: Invalid input data (e.g., missing `person1_id`, `person2_id`, or `relationship_type`; invalid type; persons not found; self-relationship). Response body contains validation details.
 - **401 Unauthorized**: User not authenticated.
 - **409 Conflict**: Relationship might already exist (depends on backend logic).
 - **500 Internal Server Error**: An unexpected error occurred while adding the relationship.
 - **503 Service Unavailable**: Family tree service not available.
 
 #### **Response Body**:
-- **Success - 201 Created**: The newly created Relationship object (including the generated rel_id).
+- **Success - 201 Created**: The newly created Relationship object (including the generated `id`).
+  ```json
+  {
+      "id": "new_relationship_uuid",
+      "person1_id": "person_uuid_1",
+      "person2_id": "person_uuid_2",
+      "relationship_type": "biological_parent",
+      "attributes": {"start_date": "2000-01-01"}
+  }
+  ```
 
 ### **Edit Relationship** (`PUT /relationships/{relationship_id}`)
 **Description**: Edits an existing relationship's type or attributes. Can also change the persons involved.  
