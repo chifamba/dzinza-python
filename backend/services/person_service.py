@@ -14,7 +14,7 @@ from werkzeug.utils import secure_filename # For sanitizing filenames
 # from botocore.exceptions import S3UploadFailedError, ClientError # More specific Boto3 exceptions
 
 # Absolute imports from the app root
-from models import Person, PrivacyLevelEnum # MediaItem, MediaTypeEnum (Not needed for this task)
+from models import Person, PrivacyLevelEnum, PersonTreeAssociation # MediaItem, MediaTypeEnum (Not needed for this task)
 from utils import _get_or_404, _handle_sqlalchemy_error, paginate_query
 from config import config # Direct import of the config instance
 from storage_client import get_storage_client, create_bucket_if_not_exists
@@ -41,7 +41,9 @@ def get_all_people_db(db: DBSession,
 
     logger.info("Fetching people for tree", tree_id=tree_id, page=current_page, per_page=current_per_page, sort_by=sort_by, filters=filters)
     try:
-        query = db.query(Person).filter(Person.tree_id == tree_id)
+        # Query Person objects by joining with PersonTreeAssociation
+        query = db.query(Person).join(PersonTreeAssociation, Person.id == PersonTreeAssociation.person_id)\
+                                .filter(PersonTreeAssociation.tree_id == tree_id)
         
         filter_conditions = [] 
 
@@ -112,10 +114,25 @@ def get_all_people_db(db: DBSession,
     return {} # Should be unreachable if aborts are working
 
 def get_person_db(db: DBSession, person_id: uuid.UUID, tree_id: uuid.UUID) -> Dict[str, Any]:
-    """Fetches a single person by ID within a specific tree."""
+    """Fetches a single person by ID if they are associated with the specific tree."""
     logger.info("Fetching person details", person_id=person_id, tree_id=tree_id)
-    person = _get_or_404(db, Person, person_id, tree_id=tree_id)
-    return person.to_dict()
+    try:
+        person = db.query(Person)\
+            .join(PersonTreeAssociation, Person.id == PersonTreeAssociation.person_id)\
+            .filter(Person.id == person_id, PersonTreeAssociation.tree_id == tree_id)\
+            .one_or_none()
+
+        if not person:
+            logger.warning("Person not found or not associated with tree", person_id=person_id, tree_id=tree_id)
+            abort(404, description=f"Person with ID {person_id} not found in tree {tree_id}.")
+        
+        return person.to_dict()
+    except SQLAlchemyError as e:
+        _handle_sqlalchemy_error(e, f"fetching person {person_id} for tree {tree_id}", db)
+    except Exception as e:
+        logger.error("Unexpected error fetching person.", person_id=person_id, tree_id=tree_id, exc_info=True)
+        abort(500, description="Error fetching person details.")
+    return {} # Should be unreachable
 
 def create_person_db(db: DBSession, 
                      user_id: uuid.UUID, # This is the actor_user_id for creation
@@ -163,7 +180,8 @@ def create_person_db(db: DBSession,
 
     try:
         new_person = Person(
-            tree_id=tree_id, created_by=user_id,
+            # tree_id is no longer directly on Person model
+            created_by=user_id,
             first_name=person_data['first_name'], # Already checked for presence
             middle_names=person_data.get('middle_names'),
             last_name=person_data.get('last_name'),
@@ -192,14 +210,27 @@ def create_person_db(db: DBSession,
             new_person.is_living = new_person.death_date is None
 
         db.add(new_person)
-        db.commit()
-        db.refresh(new_person)
-        person_dict = new_person.to_dict()
-        logger.info("Person created successfully", person_id=new_person.id, tree_id=tree_id, created_by=user_id)
+        db.flush() # Flush to get the new_person.id
+
+        # Create the association with the tree
+        association = PersonTreeAssociation(person_id=new_person.id, tree_id=tree_id)
+        db.add(association)
         
-        # Audit Log
+        db.commit()
+        db.refresh(new_person) # Refresh new_person to get any db-generated values if needed
+        # db.refresh(association) # Optionally refresh association if its state is needed
+
+        # Person.to_dict() should no longer include tree_id directly.
+        # If tree_id is needed in the response for this specific context, it should be added separately.
+        person_dict = new_person.to_dict()
+        # Add tree_id to response for this context if required by API contract, e.g.
+        # person_dict['associated_tree_id'] = str(tree_id) 
+        
+        logger.info("Person created and associated with tree successfully", person_id=new_person.id, tree_id=tree_id, created_by=user_id)
+        
+        # Audit Log - tree_id is still relevant for context of creation
         log_activity(db=db, actor_user_id=user_id, action_type="CREATE_PERSON",
-                     entity_type="PERSON", entity_id=new_person.id, tree_id=tree_id,
+                     entity_type="PERSON", entity_id=new_person.id, tree_id=tree_id, 
                      new_state=person_dict, ip_address=ip_address, user_agent=user_agent)
         
         return person_dict
@@ -222,9 +253,17 @@ def update_person_db(db: DBSession,
                      ip_address: Optional[str] = None,      # Added for audit logging
                      user_agent: Optional[str] = None       # Added for audit logging
                      ) -> Dict[str, Any]:
-    """Updates an existing person in the database."""
+    """Updates an existing person in the database, ensuring they are part of the specified tree."""
     logger.info("Attempting to update person", person_id=person_id, tree_id=tree_id, actor_user_id=actor_user_id, data_keys=list(person_data.keys()))
-    person = _get_or_404(db, Person, person_id, tree_id=tree_id)
+
+    # First, verify the person is associated with the tree
+    association = db.query(PersonTreeAssociation).filter_by(person_id=person_id, tree_id=tree_id).one_or_none()
+    if not association:
+        logger.warning("Person-tree association not found for update.", person_id=person_id, tree_id=tree_id)
+        abort(404, description=f"Person with ID {person_id} is not associated with tree {tree_id}.")
+
+    # If association exists, fetch the person
+    person = _get_or_404(db, Person, person_id) # No longer pass tree_id here
     previous_state = person.to_dict() # Capture state before update
     
     validation_errors: Dict[str, str] = {}
@@ -315,9 +354,17 @@ def delete_person_db(db: DBSession,
                      ip_address: Optional[str] = None,      # Added for audit logging
                      user_agent: Optional[str] = None       # Added for audit logging
                      ) -> bool:
-    """Deletes a person from the database."""
+    """Deletes a person from the database, ensuring they are part of the specified tree."""
     logger.info("Attempting to delete person", person_id=person_id, tree_id=tree_id, actor_user_id=actor_user_id)
-    person = _get_or_404(db, Person, person_id, tree_id=tree_id)
+
+    # First, verify the person is associated with the tree
+    association = db.query(PersonTreeAssociation).filter_by(person_id=person_id, tree_id=tree_id).one_or_none()
+    if not association:
+        logger.warning("Person-tree association not found for delete.", person_id=person_id, tree_id=tree_id)
+        abort(404, description=f"Person with ID {person_id} is not associated with tree {tree_id}.")
+
+    # If association exists, fetch the person
+    person = _get_or_404(db, Person, person_id) # No longer pass tree_id here
     previous_state = person.to_dict() # Capture state before delete
     person_name_for_log = f"{previous_state.get('first_name', '')} {previous_state.get('last_name', '')}".strip()
 
@@ -349,9 +396,19 @@ def upload_profile_picture_db(db: DBSession, person_id: uuid.UUID, tree_id: uuid
     Uploads a profile picture for a person, saves it to object storage,
     and updates the person's profile_picture_url with the object key.
     """
-    logger.info("Attempting to upload profile picture", person_id=person_id, tree_id=tree_id, filename=filename)
+    logger.info("Attempting to upload profile picture", person_id=person_id, tree_id=tree_id, user_id=user_id, filename=filename)
     
-    person = _get_or_404(db, Person, person_id, tree_id=tree_id)
+    # First, verify the person is associated with the tree
+    association = db.query(PersonTreeAssociation).filter_by(person_id=person_id, tree_id=tree_id).one_or_none()
+    if not association:
+        logger.warning("Person-tree association not found for profile picture upload.", person_id=person_id, tree_id=tree_id)
+        abort(404, description=f"Person with ID {person_id} is not associated with tree {tree_id}.")
+
+    # If association exists, fetch the person
+    person = _get_or_404(db, Person, person_id) # No longer pass tree_id here
+    
+    # Note: The user_id parameter in this function signature is the actor, not necessarily the person's creator.
+    # Authorization checks (e.g., if user_id can edit this person in this tree) should be handled by the route/controller layer.
 
     try:
         s3_client = get_storage_client()

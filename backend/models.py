@@ -171,10 +171,25 @@ class TreeAccess(Base):
             "granted_by": str(self.granted_by) if self.granted_by else None,
             "granted_at": self.granted_at.isoformat() if self.granted_at else None}
 
+class PersonTreeAssociation(Base):
+    __tablename__ = "person_tree_association"
+    person_id = Column(PG_UUID(as_uuid=True), ForeignKey("people.id", ondelete="CASCADE"), primary_key=True)
+    tree_id = Column(PG_UUID(as_uuid=True), ForeignKey("trees.id", ondelete="CASCADE"), primary_key=True)
+    # Add any other relevant fields if needed, like 'date_added_to_tree', 'role_in_tree' (if a person can have different roles in different trees)
+    # For now, keeping it simple as per the plan.
+    # Consider adding a __table_args__ for a UniqueConstraint on (person_id, tree_id) if not already covered by composite primary key.
+    # SQLAlchemy usually handles composite primary keys as implicitly unique.
+
+    # Optional: Add a to_dict method if this model will be directly serialized.
+    # def to_dict(self):
+    #     return {
+    #         "person_id": str(self.person_id),
+    #         "tree_id": str(self.tree_id),
+    #     }
+
 class Person(Base):
     __tablename__ = "people"
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tree_id = Column(PG_UUID(as_uuid=True), ForeignKey("trees.id", ondelete="CASCADE"), nullable=False, index=True)
     first_name = Column(EncryptedString, index=True) 
     middle_names = Column(EncryptedString)
     last_name = Column(EncryptedString, index=True)
@@ -222,7 +237,6 @@ class Person(Base):
 class Relationship(Base):
     __tablename__ = "relationships"
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tree_id = Column(PG_UUID(as_uuid=True), ForeignKey("trees.id", ondelete="CASCADE"), nullable=False, index=True)
     person1_id = Column(PG_UUID(as_uuid=True), ForeignKey("people.id", ondelete="CASCADE"), nullable=False, index=True)
     person2_id = Column(PG_UUID(as_uuid=True), ForeignKey("people.id", ondelete="CASCADE"), nullable=False, index=True)
     relationship_type = Column(SQLAlchemyEnum(RelationshipTypeEnum, name="relationshiptypeenum", create_type=False), nullable=False)
@@ -234,10 +248,10 @@ class Relationship(Base):
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     location = Column(String(255), nullable=True) # Added location field
-    __table_args__ = (UniqueConstraint("tree_id", "person1_id", "person2_id", "relationship_type", name="uq_relationship_key_fields"),)
+    __table_args__ = (UniqueConstraint("person1_id", "person2_id", "relationship_type", name="uq_relationship_key_fields"),)
 
     def to_dict(self):
-        return {"id": str(self.id), "tree_id": str(self.tree_id),
+        return {"id": str(self.id),
             "person1_id": str(self.person1_id), "person2_id": str(self.person2_id),
             "relationship_type": self.relationship_type.value,
             "start_date": self.start_date.isoformat() if self.start_date else None,
@@ -251,7 +265,6 @@ class Relationship(Base):
 class Event(Base):
     __tablename__ = "events"
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tree_id = Column(PG_UUID(as_uuid=True), ForeignKey("trees.id", ondelete="CASCADE"), nullable=False, index=True)
     person_id = Column(PG_UUID(as_uuid=True), ForeignKey("people.id", ondelete="CASCADE"), nullable=True, index=True) # Changed to nullable=True
     event_type = Column(String(100), nullable=False, index=True)
     date = Column(Date, index=True); date_approx = Column(Boolean, default=False)
@@ -268,7 +281,6 @@ class Event(Base):
     def to_dict(self):
         return {
             "id": str(self.id),
-            "tree_id": str(self.tree_id),
             "person_id": str(self.person_id) if self.person_id else None, # Handle nullable person_id
             "event_type": self.event_type,
             "date": self.date.isoformat() if self.date else None,
@@ -289,7 +301,7 @@ class MediaItem(Base): # Renamed Media to MediaItem
     __tablename__ = "media" # Table name remains "media"
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     uploader_user_id = Column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True) # Renamed created_by
-    tree_id = Column(PG_UUID(as_uuid=True), ForeignKey("trees.id", ondelete="CASCADE"), nullable=False, index=True)
+    tree_id = Column(PG_UUID(as_uuid=True), ForeignKey("trees.id", ondelete="CASCADE"), nullable=True, index=True)
     
     file_name = Column(String(255), nullable=False) # Renamed original_filename, made non-nullable
     file_type = Column(SQLAlchemyEnum(MediaTypeEnum, name="mediatypeenum", create_type=False), nullable=False) # Was media_type
@@ -311,7 +323,7 @@ class MediaItem(Base): # Renamed Media to MediaItem
         return {
             "id": str(self.id),
             "uploader_user_id": str(self.uploader_user_id),
-            "tree_id": str(self.tree_id),
+            "tree_id": str(self.tree_id) if self.tree_id else None,
             "file_name": self.file_name,
             "file_type": self.file_type.value if self.file_type else None,
             "mime_type": self.mime_type,
