@@ -6,11 +6,13 @@ import ReactFlow, {
   useEdgesState,
   Controls,
   Background,
-  useReactFlow
+  useReactFlow,
+  addEdge // Import addEdge utility
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import api from '../api';
 import PersonNode from './PersonNode';
+import RelationshipTypeModal from './RelationshipTypeModal'; // Import the modal
 
 // Define custom node types
 const nodeTypes = {
@@ -36,6 +38,11 @@ const FamilyTreeVisualization = ({ activeTreeId }) => {
   const [hasNextPage, setHasNextPage] = useState(false);
   const [totalPersons, setTotalPersons] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false); // For subsequent page loads
+
+  // Modal State
+  const [isRelationshipModalOpen, setIsRelationshipModalOpen] = useState(false);
+  const [connectionDetails, setConnectionDetails] = useState(null);
+
 
   // Layout calculation function - remains the same, processes given nodes/edges
   const calculateLayout = useCallback((rawNodes, rawEdges) => {
@@ -228,6 +235,89 @@ const FamilyTreeVisualization = ({ activeTreeId }) => {
     }
   }, [activeTreeId, currentPage, hasNextPage, loadingMore, nodes, edges, calculateLayout, fitView, setNodes, setEdges, setError, setCurrentPage, setTotalPages, setHasNextPage]);
 
+  const handleOnConnect = useCallback((params) => {
+    // Find source and target node objects from the current 'nodes' state
+    const sourceNode = nodes.find(node => node.id === params.source);
+    const targetNode = nodes.find(node => node.id === params.target);
+
+    if (sourceNode && targetNode) {
+      setConnectionDetails({
+        source: params.source,
+        target: params.target,
+        sourceHandle: params.sourceHandle,
+        targetHandle: params.targetHandle,
+        sourceNode: sourceNode, // Full source node object
+        targetNode: targetNode, // Full target node object
+      });
+      setIsRelationshipModalOpen(true);
+    } else {
+      console.error("Could not find source or target node for connection:", params, nodes);
+      // Optionally, provide user feedback here if nodes are not found
+    }
+  }, [nodes, setConnectionDetails, setIsRelationshipModalOpen]); // Added nodes dependency
+
+  const handleCloseRelationshipModal = useCallback(() => {
+    setIsRelationshipModalOpen(false);
+    setConnectionDetails(null);
+  }, [setIsRelationshipModalOpen, setConnectionDetails]);
+
+  const handleSubmitRelationshipModal = useCallback(async (modalData) => {
+    // modalData is { relationshipType: 'selected_type' }
+    if (!connectionDetails) {
+      console.error("No connection details available for submission.");
+      handleCloseRelationshipModal();
+      return;
+    }
+
+    const { source, target, sourceNode, targetNode } = connectionDetails;
+    const { relationshipType } = modalData;
+
+    // Payload for the API
+    const relationshipPayload = {
+      person1_id: source,
+      person2_id: target,
+      relationship_type: relationshipType,
+      // start_date, end_date, notes can be added here if collected by the modal
+    };
+
+    // Clear previous general errors, specific errors handled below
+    setError(null); 
+
+    try {
+      console.log('Attempting to create relationship with payload:', relationshipPayload);
+      // The second argument to api.createRelationship is activeTreeId,
+      // but it's not used by the current api.js implementation of createRelationship.
+      // The backend endpoint /relationships (POST) relies on session for activeTreeId.
+      const createdRelationship = await api.createRelationship(relationshipPayload, activeTreeId);
+      
+      console.log('Relationship created successfully:', createdRelationship);
+
+      if (createdRelationship && createdRelationship.id) {
+        const newEdge = {
+          id: String(createdRelationship.id), // Ensure ID is a string
+          source: String(createdRelationship.person1_id), // Ensure source/target are strings
+          target: String(createdRelationship.person2_id),
+          type: 'smoothstep', // Or your preferred edge type
+          label: createdRelationship.relationship_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+          data: { ...createdRelationship }, // Store full relationship data
+        };
+        setEdges((eds) => addEdge(newEdge, eds));
+        // Optionally, add a success notification here
+      } else {
+        // This case might indicate an issue with the API response structure
+        console.error("Created relationship data is missing ID or is invalid:", createdRelationship);
+        setError("Failed to create relationship: Invalid response from server.");
+      }
+    } catch (apiError) {
+      console.error("Failed to create relationship via API:", apiError);
+      // Display error to the user. The existing error display logic will pick this up.
+      setError(apiError.response?.data?.message || apiError.message || "An unknown error occurred while creating the relationship.");
+      // No need to remove a temporary edge as we are not adding one optimistically anymore before API call.
+    } finally {
+      handleCloseRelationshipModal();
+    }
+  }, [connectionDetails, handleCloseRelationshipModal, setEdges, activeTreeId, setError]);
+
 
   if (loading) { // This loading state is for the initial fetch
     return (
@@ -256,6 +346,7 @@ const FamilyTreeVisualization = ({ activeTreeId }) => {
           edges={edges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
+          onConnect={handleOnConnect} // Added onConnect handler
           nodeTypes={nodeTypes}
           fitView
           attributionPosition="bottom-right"
@@ -287,6 +378,16 @@ const FamilyTreeVisualization = ({ activeTreeId }) => {
           <div className="text-sm text-red-500 ml-4">Error: {error}</div>
         )}
       </div>
+
+      {isRelationshipModalOpen && connectionDetails && (
+        <RelationshipTypeModal
+          isOpen={isRelationshipModalOpen}
+          onClose={handleCloseRelationshipModal}
+          onSubmit={handleSubmitRelationshipModal}
+          sourceNode={connectionDetails.sourceNode}
+          targetNode={connectionDetails.targetNode}
+        />
+      )}
     </div>
   );
 };
