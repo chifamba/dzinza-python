@@ -50,6 +50,7 @@ services:
       - dzinza-net
 
   backend:
+    image: dzinza-backend:v0.2
     build:
       context: .
       dockerfile: backend/Dockerfile
@@ -87,6 +88,7 @@ services:
       - dzinza-net
   
   frontend:
+    image: dzinza-frontend:v0.2
     build:
       context: ./frontend
       dockerfile: Dockerfile
