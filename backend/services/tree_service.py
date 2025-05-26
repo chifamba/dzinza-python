@@ -155,7 +155,7 @@ def delete_tree_db(db: DBSession, tree_id: uuid.UUID) -> None:
         db.rollback(); logger.error("Unexpected error deleting tree.", tree_id=tree_id, exc_info=True)
         abort(500, "Error deleting tree.")
 
-def get_tree_data_for_visualization_db(db: DBSession, tree_id: uuid.UUID, page: int, per_page: int, sort_by: str = "created_at", sort_order: str = "asc") -> Dict[str, Any]:
+def get_tree_data_for_visualization_db(db: DBSession, tree_id: uuid.UUID, page: int, per_page: int = None, sort_by: str = "created_at", sort_order: str = "asc") -> Dict[str, Any]:
     logger.info("Fetching paginated tree data for visualization", tree_id=tree_id, page=page, per_page=per_page)
     _get_or_404(db, Tree, tree_id)  # Ensure tree exists
 
@@ -169,6 +169,11 @@ def get_tree_data_for_visualization_db(db: DBSession, tree_id: uuid.UUID, page: 
             sort_by = "created_at" # Default sort column for persons
         if sort_order not in ['asc', 'desc']:
             sort_order = 'asc'
+            
+        # Use tree visualization-specific page size if per_page is not specified
+        if per_page is None:
+            # Access TREE_VIZ_DEFAULT_PAGE_SIZE directly from the config module
+            per_page = config.PAGINATION_DEFAULTS.get("tree_viz_per_page", config.TREE_VIZ_DEFAULT_PAGE_SIZE)
 
         paginated_persons_result = paginate_query(
             persons_query, Person, page, per_page, 
@@ -177,10 +182,11 @@ def get_tree_data_for_visualization_db(db: DBSession, tree_id: uuid.UUID, page: 
         )
 
         # paginated_persons_result is a dict with 'items', 'total_items', 'total_pages', etc.
-        # 'items' contains Person objects. We need to convert them to dicts for nodes.
+        # 'items' contains dictionaries with person data, not Person objects
         
         current_page_person_objects = paginated_persons_result['items']
-        person_ids_in_current_page = {p.id for p in current_page_person_objects}
+        # Use dictionary access for dictionaries, not attribute access
+        person_ids_in_current_page = {uuid.UUID(p['id']) for p in current_page_person_objects}
 
         if not person_ids_in_current_page:
             logger.info("No persons found on this page for this tree.", tree_id=tree_id, page=page)
@@ -193,19 +199,25 @@ def get_tree_data_for_visualization_db(db: DBSession, tree_id: uuid.UUID, page: 
 
         # 2. Construct nodes for persons in the current page
         nodes = []
-        for p in current_page_person_objects: # Iterate over Person objects
-            label = f"{p.first_name or ''} {p.last_name or ''}".strip()
-            if p.nickname: label += f" ({p.nickname})"
-            if not label.strip(): label = f"Person (ID: {str(p.id)[:8]})"
+        # Iterate over person dictionaries
+        for p in current_page_person_objects: 
+            label = f"{p['first_name'] or ''} {p['last_name'] or ''}".strip()
+            if p['nickname']: 
+                label += f" ({p['nickname']})"
+            if not label.strip(): 
+                label = f"Person (ID: {str(p['id'])[:8]})"
             nodes.append({
-                "id": str(p.id), "type": "personNode", "position": {"x": 0, "y": 0},
+                "id": str(p['id']), 
+                "type": "personNode", 
+                "position": {"x": 0, "y": 0},
                 "data": {
-                    "id": str(p.id), "label": label,
-                    "full_name": f"{p.first_name or ''} {p.last_name or ''}".strip(),
-                    "gender": p.gender.value if p.gender else None, # Access .value for Enum
-                    "dob": p.birth_date.isoformat() if p.birth_date else None,
-                    "dod": p.death_date.isoformat() if p.death_date else None,
-                    "is_living": p.is_living,
+                    "id": str(p['id']), 
+                    "label": label,
+                    "full_name": f"{p['first_name'] or ''} {p['last_name'] or ''}".strip(),
+                    "gender": p['gender'] if p['gender'] else None,
+                    "dob": p['birth_date'] if p['birth_date'] else None,
+                    "dod": p['death_date'] if p['death_date'] else None,
+                    "is_living": p['is_living'],
                 }
             })
 
@@ -246,13 +258,13 @@ def get_tree_data_for_visualization_db(db: DBSession, tree_id: uuid.UUID, page: 
             "nodes": nodes, 
             "links": links, 
             "events": events_data, # Events for current page persons
-            "pagination": { # Pass through pagination details from paginate_query
+            "pagination": {  # Pass through pagination details
                 'total_items': paginated_persons_result['total_items'],
                 'total_pages': paginated_persons_result['total_pages'],
-                'current_page': paginated_persons_result['current_page'],
+                'current_page': paginated_persons_result['page'],
                 'per_page': paginated_persons_result['per_page'],
-                'has_next_page': paginated_persons_result['has_next_page'],
-                'has_prev_page': paginated_persons_result['has_prev_page'],
+                'has_next_page': paginated_persons_result['has_next'],
+                'has_prev_page': paginated_persons_result['has_prev'],
             }
         }
 

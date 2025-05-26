@@ -11,15 +11,22 @@ load_dotenv()
 DEFAULT_PAGE = 1
 DEFAULT_PAGE_SIZE = 20
 MAX_PAGE_SIZE = 100
+# Tree visualization specific defaults
+TREE_VIZ_DEFAULT_PAGE_SIZE = int(os.getenv("TREE_VIZ_PAGE_SIZE", "20"))
 PAGINATION_DEFAULTS = {
     "page": DEFAULT_PAGE,
     "per_page": DEFAULT_PAGE_SIZE,
     "max_per_page": MAX_PAGE_SIZE,
+    "tree_viz_per_page": TREE_VIZ_DEFAULT_PAGE_SIZE,
 }
 
 # --- Application Configuration ---
 class Config:
     SECRET_KEY = os.getenv("FLASK_SECRET_KEY", "your_default_secret_key_for_session_signing")
+    
+    # Default pagination values
+    DEFAULT_PAGE_SIZE = DEFAULT_PAGE_SIZE
+    TREE_VIZ_DEFAULT_PAGE_SIZE = TREE_VIZ_DEFAULT_PAGE_SIZE
     
     # Database
     DATABASE_URL = os.getenv('DATABASE_URL')

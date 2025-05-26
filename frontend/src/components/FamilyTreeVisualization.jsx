@@ -43,6 +43,9 @@ const FamilyTreeVisualization = ({ activeTreeId }) => {
   const [isRelationshipModalOpen, setIsRelationshipModalOpen] = useState(false);
   const [connectionDetails, setConnectionDetails] = useState(null);
 
+  // State to store page size from backend
+  const [pageSize, setPageSize] = useState(20); // Default to 20 until we get config from backend
+
 
   // Layout calculation function - remains the same, processes given nodes/edges
   const calculateLayout = useCallback((rawNodes, rawEdges) => {
@@ -109,7 +112,7 @@ const FamilyTreeVisualization = ({ activeTreeId }) => {
   }, []);
 
   useEffect(() => {
-    const loadInitialTreeData = async () => {
+    const loadTreeData = async (page = 1) => {
       if (!activeTreeId) {
         setError('No active tree selected');
         setLoading(false);
@@ -117,18 +120,21 @@ const FamilyTreeVisualization = ({ activeTreeId }) => {
       }
 
       try {
-        setLoading(true); // For the initial load
+        setLoading(true); 
         setError(null);
-        // Fetch initial page (e.g., page 1, 10 items per page)
-        const initialPage = 1;
-        const itemsPerPage = 20; // Or a configurable value
         
-        const response = await api.getTreeData(activeTreeId, initialPage, itemsPerPage);
+        // Don't specify itemsPerPage (pass null) to use backend default
+        const response = await api.getTreeData(activeTreeId, page, null);
         const { nodes: apiNodes, links: apiLinks, pagination } = response;
         
+        // Store the page size from backend for future requests
+        if (pagination && pagination.per_page) {
+          setPageSize(pagination.per_page);
+        }
+        
         const transformedNodes = apiNodes.map(node => ({
-          ...node, // Contains id, type, data { id, label, full_name, ... }
-          type: 'personNode', // Ensure type is set for custom node rendering
+          ...node,
+          type: 'personNode',
           data: { ...node.data, label: node.data.label || 'Unknown' }
         }));
 
@@ -136,10 +142,10 @@ const FamilyTreeVisualization = ({ activeTreeId }) => {
           id: link.id,
           source: link.source,
           target: link.target,
-          type: 'smoothstep', // Or link.type if provided by backend and matches React Flow types
+          type: 'smoothstep',
           animated: false,
           style: { stroke: '#666', strokeWidth: 2 },
-          data: link.data // Contains relationship type etc.
+          data: link.data
         }));
 
         const layoutedNodes = calculateLayout(transformedNodes, transformedEdges);
@@ -158,37 +164,36 @@ const FamilyTreeVisualization = ({ activeTreeId }) => {
         }, 100);
 
       } catch (err) {
-        console.error('Failed to load initial tree data:', err);
+        console.error('Failed to load tree data:', err);
         setError(err.message || 'Failed to load family tree data');
       } finally {
         setLoading(false);
+        setLoadingMore(false);
       }
     };
 
-    loadInitialTreeData();
-  }, [activeTreeId, calculateLayout, fitView, setNodes, setEdges]); // Added setNodes, setEdges to dependencies
+    loadTreeData();
+  }, [activeTreeId, calculateLayout, fitView, setNodes, setEdges]);
 
-  const handleLoadMore = useCallback(async () => {
-    if (!hasNextPage || loadingMore) return;
+  // Create navigation functions for next and previous page
+  const loadPage = useCallback(async (page) => {
+    if (loadingMore) return;
 
     setLoadingMore(true);
-    setError(null); // Clear previous errors
-
-    const nextPage = currentPage + 1;
-    const itemsPerPage = 20; // Consistent with initial load, or from a config/state
+    setError(null);
 
     try {
-      const response = await api.getTreeData(activeTreeId, nextPage, itemsPerPage);
-      const { nodes: newApiNodes, links: newApiLinks, pagination } = response;
+      const response = await api.getTreeData(activeTreeId, page, pageSize);
+      const { nodes: apiNodes, links: apiLinks, pagination } = response;
 
-      const transformedNewNodes = newApiNodes.map(node => ({
+      const transformedNodes = apiNodes.map(node => ({
         ...node,
         type: 'personNode',
         data: { ...node.data, label: node.data.label || 'Unknown' }
       }));
 
-      const transformedNewEdges = newApiLinks.map(link => ({
-        id: link.id, // Ensure unique IDs for edges too
+      const transformedEdges = apiLinks.map(link => ({
+        id: link.id,
         source: link.source,
         target: link.target,
         type: 'smoothstep',
@@ -197,43 +202,40 @@ const FamilyTreeVisualization = ({ activeTreeId }) => {
         data: link.data
       }));
 
-      // Combine existing nodes and edges with new ones
-      // Ensure no duplicate nodes by checking IDs before adding
-      const existingNodeIds = new Set(nodes.map(n => n.id));
-      const uniqueNewNodes = transformedNewNodes.filter(n => !existingNodeIds.has(n.id));
-      
-      const combinedNodes = [...nodes, ...uniqueNewNodes];
-      
-      // Ensure no duplicate edges by checking IDs
-      const existingEdgeIds = new Set(edges.map(e => e.id));
-      const uniqueNewEdges = transformedNewEdges.filter(e => !existingEdgeIds.has(e.id));
-
-      const combinedEdges = [...edges, ...uniqueNewEdges];
-      
-      const layoutedNodes = calculateLayout(combinedNodes, combinedEdges);
-      
+      // Replace current nodes and edges with new ones from this page
+      const layoutedNodes = calculateLayout(transformedNodes, transformedEdges);
       setNodes(layoutedNodes);
-      setEdges(combinedEdges); // Edges don't typically get new positions from layout function
-
-      // Update pagination state from the new response
+      setEdges(transformedEdges);
+      
+      // Update pagination state
       setCurrentPage(pagination.current_page);
       setTotalPages(pagination.total_pages);
       setHasNextPage(pagination.has_next_page);
-      // totalPersons remains the same as it's total for the tree
-
-      // Optionally, fit view to include new nodes, or let user explore
+      setTotalPersons(pagination.total_items);
+      
       setTimeout(() => {
         fitView({ padding: 0.2, duration: 300 });
       }, 100);
 
     } catch (err) {
-      console.error('Failed to load more tree data:', err);
-      setError(err.message || 'Failed to load more data. Please try again.');
-      // Potentially revert currentPage if the load failed, or allow retry
+      console.error(`Failed to load page ${page}:`, err);
+      setError(err.message || 'Failed to load page. Please try again.');
     } finally {
       setLoadingMore(false);
     }
-  }, [activeTreeId, currentPage, hasNextPage, loadingMore, nodes, edges, calculateLayout, fitView, setNodes, setEdges, setError, setCurrentPage, setTotalPages, setHasNextPage]);
+  }, [activeTreeId, loadingMore, calculateLayout, fitView, pageSize]);
+
+  const handleNextPage = useCallback(() => {
+    if (hasNextPage && !loadingMore) {
+      loadPage(currentPage + 1);
+    }
+  }, [currentPage, hasNextPage, loadingMore, loadPage]);
+
+  const handlePrevPage = useCallback(() => {
+    if (currentPage > 1 && !loadingMore) {
+      loadPage(currentPage - 1);
+    }
+  }, [currentPage, loadingMore, loadPage]);
 
   const handleOnConnect = useCallback((params) => {
     // Find source and target node objects from the current 'nodes' state
@@ -340,7 +342,7 @@ const FamilyTreeVisualization = ({ activeTreeId }) => {
 
   return (
     <div className="w-full h-full flex flex-col"> {/* Changed to full height and flex col */}
-      <div ref={containerRef} className="flex-grow w-full h-[calc(100%-40px)] border border-gray-300 rounded-lg shadow-lg bg-white"> {/* Adjusted height */}
+      <div ref={containerRef} className="flex-grow w-full h-[calc(100%-50px)] border border-gray-300 rounded-lg shadow-lg bg-white"> {/* Adjusted height */}
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -358,24 +360,43 @@ const FamilyTreeVisualization = ({ activeTreeId }) => {
           <Background color="#aaa" gap={16} />
         </ReactFlow>
       </div>
-      <div className="h-[40px] flex justify-center items-center p-2">
-        {hasNextPage && !loadingMore && (
-          <button
-            onClick={handleLoadMore}
-            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-300"
-            disabled={loadingMore}
-          >
-            Load More People ({nodes.length}/{totalPersons})
-          </button>
-        )}
+      <div className="h-[50px] flex justify-center items-center p-2 gap-4">
+        {/* Previous Page Button */}
+        <button
+          onClick={handlePrevPage}
+          className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
+          disabled={currentPage <= 1 || loadingMore}
+        >
+          Previous
+        </button>
+
+        {/* Page Indicator */}
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium">
+            Page {currentPage} of {totalPages || 1}
+          </span>
+          <span className="text-xs text-gray-500">
+            ({nodes.length} of {totalPersons} people, {pageSize} per page)
+          </span>
+        </div>
+
+        {/* Next Page Button */}
+        <button
+          onClick={handleNextPage}
+          className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
+          disabled={!hasNextPage || loadingMore}
+        >
+          Next
+        </button>
+
+        {/* Loading Indicator */}
         {loadingMore && (
-          <div className="text-sm text-gray-600">Loading more...</div>
+          <div className="text-sm text-gray-600 ml-2">Loading...</div>
         )}
-        {!hasNextPage && nodes.length > 0 && nodes.length === totalPersons && (
-           <div className="text-sm text-gray-500">All people loaded ({totalPersons}).</div>
-        )}
-         {error && loadingMore && ( // Display error specific to load more if it occurred
-          <div className="text-sm text-red-500 ml-4">Error: {error}</div>
+
+        {/* Error Display */}
+        {error && (
+          <div className="text-sm text-red-500 ml-2">Error: {error}</div>
         )}
       </div>
 

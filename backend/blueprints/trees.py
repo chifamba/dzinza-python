@@ -76,7 +76,7 @@ def set_active_tree_endpoint():
 
 @trees_bp.route('/tree_data', methods=['GET'])
 @require_tree_access('view')
-@limiter.limit("600 per minute")  # Increased from 10 to 60 requests per minute
+@limiter.limit("1200 per minute")  # Increased to 1200 per minute to prevent rate limiting
 def get_tree_data_endpoint():
     db = g.db; tree_id = g.active_tree_id
     page, per_page, sort_by, sort_order = get_pagination_params()
@@ -90,7 +90,19 @@ def get_tree_data_endpoint():
     logger.info("Get tree_data for visualization", tree_id=tree_id, page=page, per_page=per_page, sort_by=sort_by_person, sort_order=sort_order_person)
     try:
         # Pass page, per_page, and potentially sort_by, sort_order for the Person query
-        data = get_tree_data_for_visualization_db(db, tree_id, page, per_page, sort_by_person, sort_order_person)
+        # Use None for per_page to let the service use the configured tree_viz_per_page
+        # Only use explicit per_page if user specified a non-default value
+        from config import config as app_config
+        default_page_size = app_config.PAGINATION_DEFAULTS["per_page"]
+        
+        # If per_page is explicitly provided in the request and differs from default,
+        # use that value, otherwise pass None to use tree_viz_per_page
+        effective_per_page = per_page if per_page != default_page_size else None
+        
+        data = get_tree_data_for_visualization_db(
+            db, tree_id, page, effective_per_page, 
+            sort_by_person, sort_order_person
+        )
         return jsonify(data), 200
     except Exception as e:
         logger.error("Error fetching tree_data for viz.", tree_id=tree_id, exc_info=True)

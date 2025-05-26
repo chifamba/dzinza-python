@@ -112,9 +112,15 @@ const api = {
     return response.data;
   },
 
-  getTreeData: async (activeTreeId, page = 1, perPage = 10) => {
+  getTreeData: async (activeTreeId, page = 1, perPage = null) => {
     // Backend expects tree_id via session, page and perPage as query params
-    const response = await axios.get(`${BASE_URL}/tree_data?page=${page}&per_page=${perPage}`, { withCredentials: true });
+    // If perPage is null, don't include it in query params to use backend default
+    const queryParams = new URLSearchParams({ page });
+    if (perPage !== null) {
+      queryParams.append('per_page', perPage);
+    }
+    
+    const response = await axios.get(`${BASE_URL}/tree_data?${queryParams}`, { withCredentials: true });
     return response.data;
   },
 
