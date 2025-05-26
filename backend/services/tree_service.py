@@ -155,86 +155,112 @@ def delete_tree_db(db: DBSession, tree_id: uuid.UUID) -> None:
         db.rollback(); logger.error("Unexpected error deleting tree.", tree_id=tree_id, exc_info=True)
         abort(500, "Error deleting tree.")
 
-def get_tree_data_for_visualization_db(db: DBSession, tree_id: uuid.UUID) -> Dict[str, Any]:
-    logger.info("Fetching full tree data for visualization", tree_id=tree_id)
+def get_tree_data_for_visualization_db(db: DBSession, tree_id: uuid.UUID, page: int, per_page: int, sort_by: str = "created_at", sort_order: str = "asc") -> Dict[str, Any]:
+    logger.info("Fetching paginated tree data for visualization", tree_id=tree_id, page=page, per_page=per_page)
     _get_or_404(db, Tree, tree_id)  # Ensure tree exists
 
     try:
-        # 1. Get all persons associated with this tree_id using the (imported) service function
-        #    This function handles pagination, but for visualization, we usually need all persons.
-        #    Assuming get_persons_in_tree_db can return all if page/per_page are specific values,
-        #    or we fetch with a very large per_page. For simplicity, let's assume it gets all relevant Person objects.
-        #    The imported function already returns a dict like {'items': [Person.to_dict(), ...], ...}
-        #    We need the actual Person objects or at least their IDs.
-        #    Let's adjust to get Person objects directly if possible, or process IDs from dicts.
+        # 1. Paginate persons associated with this tree_id
+        persons_query = db.query(Person).join(PersonTreeAssociation).filter(PersonTreeAssociation.tree_id == tree_id)
         
-        # Using a direct query here for clarity on getting Person objects for the tree
-        persons_in_tree_query = db.query(Person).join(PersonTreeAssociation).filter(PersonTreeAssociation.tree_id == tree_id)
-        people_list = persons_in_tree_query.all()
+        # Validate sort_by column for Person model
+        if not hasattr(Person, sort_by):
+            logger.warning(f"Invalid sort_by column '{sort_by}' for Person. Defaulting to 'created_at'.")
+            sort_by = "created_at" # Default sort column for persons
+        if sort_order not in ['asc', 'desc']:
+            sort_order = 'asc'
+
+        paginated_persons_result = paginate_query(
+            persons_query, Person, page, per_page, 
+            config.PAGINATION_DEFAULTS["max_per_page"], 
+            sort_by, sort_order
+        )
+
+        # paginated_persons_result is a dict with 'items', 'total_items', 'total_pages', etc.
+        # 'items' contains Person objects. We need to convert them to dicts for nodes.
         
-        person_ids_in_tree = {p.id for p in people_list}
+        current_page_person_objects = paginated_persons_result['items']
+        person_ids_in_current_page = {p.id for p in current_page_person_objects}
 
-        if not person_ids_in_tree:
-            logger.info("No persons found in this tree for visualization.", tree_id=tree_id)
-            return {"nodes": [], "links": [], "events": []} # Include events key for consistency
+        if not person_ids_in_current_page:
+            logger.info("No persons found on this page for this tree.", tree_id=tree_id, page=page)
+            return {
+                "nodes": [], 
+                "links": [], 
+                "events": [], # Keep events for consistency, though not paginated here
+                "pagination": paginated_persons_result # Return pagination data even if no nodes
+            }
 
-        num_people = len(people_list)
-        if num_people > 1000: # Adjust threshold as needed
-            logger.warning(f"Fetching large tree for viz: {num_people} persons for tree {tree_id}.")
-
-        # 2. Construct nodes for persons in this tree
+        # 2. Construct nodes for persons in the current page
         nodes = []
-        for p in people_list:
+        for p in current_page_person_objects: # Iterate over Person objects
             label = f"{p.first_name or ''} {p.last_name or ''}".strip()
             if p.nickname: label += f" ({p.nickname})"
             if not label.strip(): label = f"Person (ID: {str(p.id)[:8]})"
             nodes.append({
-                "id": str(p.id), "type": "personNode", "position": {"x": 0, "y": 0}, # Position can be set by frontend
+                "id": str(p.id), "type": "personNode", "position": {"x": 0, "y": 0},
                 "data": {
-                    "id": str(p.id), "label": label, 
+                    "id": str(p.id), "label": label,
                     "full_name": f"{p.first_name or ''} {p.last_name or ''}".strip(),
-                    "gender": p.gender, 
+                    "gender": p.gender.value if p.gender else None, # Access .value for Enum
                     "dob": p.birth_date.isoformat() if p.birth_date else None,
-                    "dod": p.death_date.isoformat() if p.death_date else None, 
+                    "dod": p.death_date.isoformat() if p.death_date else None,
                     "is_living": p.is_living,
-                    # Add any other person details needed for the node
                 }
             })
 
-        # 3. Fetch all GLOBAL relationships involving these persons
-        # A relationship is relevant if EITHER person1_id OR person2_id is in our set of person_ids_in_tree
+        # 3. Fetch GLOBAL relationships involving these persons (from the current page)
+        # A relationship is relevant if EITHER person1_id OR person2_id is in our set of person_ids_in_current_page
         relationships_query = db.query(Relationship).filter(
-            or_(Relationship.person1_id.in_(person_ids_in_tree), Relationship.person2_id.in_(person_ids_in_tree))
+            or_(Relationship.person1_id.in_(person_ids_in_current_page), Relationship.person2_id.in_(person_ids_in_current_page))
         )
         all_relevant_relationships = relationships_query.all()
 
-        # 4. Filter relationships to only include those where BOTH persons are in the current tree context for visualization
+        # 4. Filter relationships: only include those where BOTH persons are in the current page context
         links = []
         for r in all_relevant_relationships:
-            if r.person1_id in person_ids_in_tree and r.person2_id in person_ids_in_tree:
+            # This condition ensures links are only between nodes currently visible
+            if r.person1_id in person_ids_in_current_page and r.person2_id in person_ids_in_current_page:
                 links.append({
                     "id": str(r.id), "source": str(r.person1_id), "target": str(r.person2_id),
-                    "type": "customEdge", # Or determine dynamically based on r.relationship_type
-                    "label": r.relationship_type.value.replace("_", " ").title(),
-                    "data": r.to_dict() # Relationship.to_dict() no longer has tree_id
+                    "type": "customEdge", 
+                    "label": r.relationship_type.value.replace("_", " ").title(), # Access .value for Enum
+                    "data": r.to_dict()
                 })
         
-        # 5. Fetch all GLOBAL events for persons in this tree
-        # Event model no longer has tree_id
-        events_query = db.query(Event).filter(Event.person_id.in_(person_ids_in_tree))
-        event_list_for_tree_persons = events_query.all()
-        
-        # Prepare events data for the response (optional, but good for consistency)
-        events_data = [event.to_dict() for event in event_list_for_tree_persons]
+        # 5. Fetch all GLOBAL events for persons in this tree (current page)
+        # For simplicity, events are still fetched for the persons on the current page only.
+        # A more complete solution might paginate events separately or fetch all events for all known nodes.
+        events_data = []
+        if person_ids_in_current_page: # Only query if there are persons
+            events_query = db.query(Event).filter(Event.person_id.in_(person_ids_in_current_page))
+            event_list_for_current_page_persons = events_query.all()
+            events_data = [event.to_dict() for event in event_list_for_current_page_persons]
 
-        logger.info("Full tree data fetched for viz.", tree_id=tree_id, nodes_count=len(nodes), links_count=len(links), events_count=len(events_data))
-        return {"nodes": nodes, "links": links, "events": events_data} # Added events to response
+        logger.info("Paginated tree data fetched for viz.", tree_id=tree_id, page=page,
+                    nodes_count=len(nodes), links_count=len(links), events_count=len(events_data))
+        
+        # Return nodes (from current page persons), links (between current page persons),
+        # and pagination metadata for the persons query.
+        return {
+            "nodes": nodes, 
+            "links": links, 
+            "events": events_data, # Events for current page persons
+            "pagination": { # Pass through pagination details from paginate_query
+                'total_items': paginated_persons_result['total_items'],
+                'total_pages': paginated_persons_result['total_pages'],
+                'current_page': paginated_persons_result['current_page'],
+                'per_page': paginated_persons_result['per_page'],
+                'has_next_page': paginated_persons_result['has_next_page'],
+                'has_prev_page': paginated_persons_result['has_prev_page'],
+            }
+        }
 
     except SQLAlchemyError as e:
-        _handle_sqlalchemy_error(e, f"fetching tree data for visualization for tree {tree_id}", db)
+        _handle_sqlalchemy_error(e, f"fetching paginated tree data for visualization for tree {tree_id}", db)
     except Exception as e:
-        logger.error("Unexpected error fetching tree data for visualization.", tree_id=tree_id, exc_info=True)
-        abort(500, "Error fetching tree data for visualization.")
+        logger.error("Unexpected error fetching paginated tree data for visualization.", tree_id=tree_id, exc_info=True)
+        abort(500, "Error fetching paginated tree data for visualization.")
     return {} # Should be unreachable
 
 # --- New functions for Person-Tree association ---

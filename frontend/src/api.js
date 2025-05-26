@@ -112,9 +112,9 @@ const api = {
     return response.data;
   },
 
-  getTreeData: async (activeTreeId) => {
-    // Backend expects tree_id via session
-    const response = await axios.get(`${BASE_URL}/tree_data`, { withCredentials: true });
+  getTreeData: async (activeTreeId, page = 1, perPage = 10) => {
+    // Backend expects tree_id via session, page and perPage as query params
+    const response = await axios.get(`${BASE_URL}/tree_data?page=${page}&per_page=${perPage}`, { withCredentials: true });
     return response.data;
   },
 

@@ -79,9 +79,19 @@ def set_active_tree_endpoint():
 @limiter.limit("600 per minute")  # Increased from 10 to 60 requests per minute
 def get_tree_data_endpoint():
     db = g.db; tree_id = g.active_tree_id
-    logger.info("Get tree_data for visualization", tree_id=tree_id)
+    page, per_page, sort_by, sort_order = get_pagination_params()
+    # Default sort_by for persons in visualization, e.g., 'created_at' or 'first_name'
+    # 'sort_by' from request could be used if applicable to Person model fields
+    # For this example, let's set a default if not provided, or ensure it's valid for Person.
+    # The service layer now handles default sort_by for Person if an invalid one is passed.
+    sort_by_person = sort_by if sort_by else "created_at" # Default for initial person query
+    sort_order_person = sort_order if sort_order else "asc"
+
+    logger.info("Get tree_data for visualization", tree_id=tree_id, page=page, per_page=per_page, sort_by=sort_by_person, sort_order=sort_order_person)
     try:
-        return jsonify(get_tree_data_for_visualization_db(db, tree_id)), 200
+        # Pass page, per_page, and potentially sort_by, sort_order for the Person query
+        data = get_tree_data_for_visualization_db(db, tree_id, page, per_page, sort_by_person, sort_order_person)
+        return jsonify(data), 200
     except Exception as e:
         logger.error("Error fetching tree_data for viz.", tree_id=tree_id, exc_info=True)
         if not isinstance(e, HTTPException): abort(500, "Error fetching tree data for visualization.")
