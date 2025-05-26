@@ -32,7 +32,7 @@ def register_user_db(db: DBSession,
     try: _validate_password_complexity(password)
     except ValueError as e: abort(400, str(e))
     hashed_password = _hash_password(password)
-    try: user_role_enum = UserRole(user_data.get('role', UserRole.USER.value))
+    try: user_role_enum = UserRole(user_data.get('role', UserRole.user.value))
     except ValueError: abort(400, f"Invalid role. Valid: {[r.value for r in UserRole]}.")
     try:
         new_user = User(username=username, email=email.lower(), password_hash=hashed_password,

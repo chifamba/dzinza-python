@@ -27,7 +27,9 @@ function DashboardPage() {
       try {
         const treesData = await api.getUserTrees();
         if (isMounted) {
-          setUserTrees(Array.isArray(treesData) ? treesData : []);
+          // Handle both array responses and paginated responses with items property
+          const trees = treesData.items || (Array.isArray(treesData) ? treesData : []);
+          setUserTrees(trees);
         }
       } catch (err) {
         console.error("Failed to fetch user trees:", err);

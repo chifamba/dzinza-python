@@ -11,7 +11,7 @@ def create_mock_user(user_id, username, role, is_active=True):
     mock_user = MagicMock(spec=User)
     mock_user.id = user_id
     mock_user.username = username
-    mock_user.role = role # This should be a UserRole enum member, e.g., UserRole.ADMIN
+    mock_user.role = role # This should be a UserRole enum member, e.g., UserRole.admin
     mock_user.is_active = is_active
     return mock_user
 
@@ -106,7 +106,7 @@ class TestDecorators(unittest.TestCase):
         with self.client.session_transaction() as sess:
             sess['user_id'] = str(self.user_id_normal)
             # Add role as require_admin (which calls require_auth) might expect it
-            sess['role'] = UserRole.USER.value 
+            sess['role'] = UserRole.user.value 
         response = self.client.get('/protected_auth_test')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json['user_id_in_session'], str(self.user_id_normal))
@@ -119,7 +119,7 @@ class TestDecorators(unittest.TestCase):
     def test_require_admin_non_admin_user(self):
         with self.client.session_transaction() as sess:
             sess['user_id'] = str(self.user_id_normal)
-            sess['role'] = UserRole.USER.value # Non-admin role
+            sess['role'] = UserRole.user.value # Non-admin role
         response = self.client.get('/protected_admin_test')
         self.assertEqual(response.status_code, 403)
         self.assertIn("Administrator access is required", response.json['description'])
@@ -127,11 +127,11 @@ class TestDecorators(unittest.TestCase):
     def test_require_admin_admin_user(self):
         with self.client.session_transaction() as sess:
             sess['user_id'] = str(self.user_id_admin)
-            sess['role'] = UserRole.ADMIN.value # Admin role
+            sess['role'] = UserRole.admin.value # Admin role
         response = self.client.get('/protected_admin_test')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json['user_id_in_session'], str(self.user_id_admin))
-        self.assertEqual(response.json['role_in_session'], UserRole.ADMIN.value)
+        self.assertEqual(response.json['role_in_session'], UserRole.admin.value)
 
     # --- Tests for @require_tree_access ---
     # Patch 'g' where the decorator is defined
@@ -145,7 +145,7 @@ class TestDecorators(unittest.TestCase):
     def test_require_tree_access_no_tree_id(self, mock_g_decorator):
         with self.client.session_transaction() as sess:
             sess['user_id'] = str(self.user_id_normal)
-            sess['role'] = UserRole.USER.value
+            sess['role'] = UserRole.user.value
             # 'active_tree_id' is NOT set in session for this route
         
         # Mock g.db for the decorator if it's reached
@@ -188,7 +188,7 @@ class TestDecorators(unittest.TestCase):
         
         with self.client.session_transaction() as sess:
             sess['user_id'] = str(self.other_user_id) # A user who is not owner
-            sess['role'] = UserRole.USER.value
+            sess['role'] = UserRole.user.value
 
         mock_db_session = MagicMock()
         mock_db_session.query(Tree).filter(Tree.id == test_tree_id).one_or_none.return_value = mock_tree
@@ -209,7 +209,7 @@ class TestDecorators(unittest.TestCase):
 
         with self.client.session_transaction() as sess:
             sess['user_id'] = str(self.tree_owner_id)
-            sess['role'] = UserRole.USER.value # Owner doesn't need to be system admin
+            sess['role'] = UserRole.user.value # Owner doesn't need to be system admin
 
         mock_db_session = MagicMock()
         mock_db_session.query(Tree).filter(Tree.id == test_tree_id).one_or_none.return_value = mock_tree
@@ -230,7 +230,7 @@ class TestDecorators(unittest.TestCase):
 
         with self.client.session_transaction() as sess:
             sess['user_id'] = str(self.user_id_normal)
-            sess['role'] = UserRole.USER.value
+            sess['role'] = UserRole.user.value
             sess['active_tree_id'] = str(test_tree_id) # Use session-based route
 
         mock_db_session = MagicMock()
@@ -251,7 +251,7 @@ class TestDecorators(unittest.TestCase):
 
         with self.client.session_transaction() as sess:
             sess['user_id'] = str(self.user_id_normal)
-            sess['role'] = UserRole.USER.value
+            sess['role'] = UserRole.user.value
             sess['active_tree_id'] = str(test_tree_id)
 
         mock_db_session = MagicMock()
@@ -270,7 +270,7 @@ class TestDecorators(unittest.TestCase):
 
         with self.client.session_transaction() as sess:
             sess['user_id'] = str(self.other_user_id) # Not the owner
-            sess['role'] = UserRole.USER.value
+            sess['role'] = UserRole.user.value
         
         mock_db_session = MagicMock()
         mock_db_session.query(Tree).filter(Tree.id == test_tree_id).one_or_none.return_value = mock_tree
