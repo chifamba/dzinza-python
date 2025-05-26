@@ -76,7 +76,7 @@ def set_active_tree_endpoint():
 
 @trees_bp.route('/tree_data', methods=['GET'])
 @require_tree_access('view')
-@limiter.limit("10 per minute")
+@limiter.limit("600 per minute")  # Increased from 10 to 60 requests per minute
 def get_tree_data_endpoint():
     db = g.db; tree_id = g.active_tree_id
     logger.info("Get tree_data for visualization", tree_id=tree_id)

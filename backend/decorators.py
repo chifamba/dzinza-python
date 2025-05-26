@@ -29,11 +29,11 @@ def require_auth(f):
     return decorated_function
 
 def require_admin(f):
-    """Decorator to ensure the authenticated user has an ADMIN role."""
+    """Decorator to ensure the authenticated user has an admin role."""
     @wraps(f)
     @require_auth 
     def decorated_function(*args, **kwargs):
-        if session.get('role') != models.UserRole.ADMIN.value: # Use models.UserRole
+        if session.get('role') != models.UserRole.admin.value: # Use models.UserRole
             logger.warning("Admin access required, but user is not admin.",
                            user_id=session.get('user_id'),
                            user_role=session.get('role'))
