@@ -3,7 +3,7 @@
 ## Project Structure
 
 - **backend/**: Contains the Flask backend code.
-- **frontend/**: Contains the React frontend code.
+- **frontend/**: Contains the  frontend code.
 - **docs/**: Documentation files.
 - **tests/**: Test cases for backend and frontend.
 

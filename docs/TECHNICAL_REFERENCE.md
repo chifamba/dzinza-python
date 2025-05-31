@@ -19,8 +19,8 @@ Refer to `docs/sequence_diagram.md` for visual representations of workflows like
 
 ## Frontend Architecture
 
-- React application with components for tree visualization and user interaction.
-- State management using Context API (planned migration to Redux).
+- TODO
+
 
 ## Advanced Features
 
