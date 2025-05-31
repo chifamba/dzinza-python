@@ -1,4 +1,68 @@
-import { Person, PrivacyLevel } from '../types';
+import { Person, PrivacyLevel, Relationship, RelationshipType } from '../types';
+
+export const mockRelationships: Relationship[] = [
+  {
+    id: 'rel-1',
+    person1Id: '1',
+    person2Id: '2',
+    relationshipType: RelationshipType.SPOUSE_CURRENT,
+    startDate: '1898-03-15',
+    location: 'Warsaw, Poland',
+    notes: 'Married for over 40 years',
+    createdAt: '2023-01-01T12:00:00Z',
+    updatedAt: '2023-01-01T12:00:00Z'
+  },
+  {
+    id: 'rel-2',
+    person1Id: '3',
+    person2Id: '4',
+    relationshipType: RelationshipType.SPOUSE_CURRENT,
+    startDate: '1896-06-20',
+    location: 'Berlin, Germany',
+    createdAt: '2023-01-01T12:00:00Z',
+    updatedAt: '2023-01-01T12:00:00Z'
+  },
+  {
+    id: 'rel-3',
+    person1Id: '1',
+    person2Id: '5',
+    relationshipType: RelationshipType.BIOLOGICAL_PARENT,
+    createdAt: '2023-01-01T12:00:00Z',
+    updatedAt: '2023-01-01T12:00:00Z'
+  },
+  {
+    id: 'rel-4',
+    person1Id: '1',
+    person2Id: '6',
+    relationshipType: RelationshipType.BIOLOGICAL_PARENT,
+    createdAt: '2023-01-01T12:00:00Z',
+    updatedAt: '2023-01-01T12:00:00Z'
+  },
+  {
+    id: 'rel-5',
+    person1Id: '2',
+    person2Id: '5',
+    relationshipType: RelationshipType.BIOLOGICAL_PARENT,
+    createdAt: '2023-01-01T12:00:00Z',
+    updatedAt: '2023-01-01T12:00:00Z'
+  },
+  {
+    id: 'rel-6',
+    person1Id: '2',
+    person2Id: '6',
+    relationshipType: RelationshipType.BIOLOGICAL_PARENT,
+    createdAt: '2023-01-01T12:00:00Z',
+    updatedAt: '2023-01-01T12:00:00Z'
+  },
+  {
+    id: 'rel-7',
+    person1Id: '5',
+    person2Id: '6',
+    relationshipType: RelationshipType.SIBLING_FULL,
+    createdAt: '2023-01-01T12:00:00Z',
+    updatedAt: '2023-01-01T12:00:00Z'
+  }
+];
 
 export const mockPersons: Person[] = [
   { 
