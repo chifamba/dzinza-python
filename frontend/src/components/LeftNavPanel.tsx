@@ -18,9 +18,10 @@ const LeftNavPanel: React.FC<LeftNavPanelProps> = ({
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
-  const filteredPersons = persons.filter(person =>
-    person.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredPersons = persons.filter(person => {
+    const displayName = person.name || `${person.firstName || ''} ${person.lastName || ''}`.trim();
+    return displayName.toLowerCase().includes(searchTerm.toLowerCase());
+  });
 
   return (
     <div 
@@ -91,14 +92,16 @@ const LeftNavPanel: React.FC<LeftNavPanelProps> = ({
               >
                 {isCollapsed ? (
                   <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
-                    {person.name.charAt(0)}
+                    {(person.name || `${person.firstName || ''} ${person.lastName || ''}`.trim()).charAt(0)}
                   </div>
                 ) : (
                   <div className="flex items-center">
                     <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
-                      {person.name.charAt(0)}
+                      {(person.name || `${person.firstName || ''} ${person.lastName || ''}`.trim()).charAt(0)}
                     </div>
-                    <span className="ml-2 text-sm">{person.name}</span>
+                    <span className="ml-2 text-sm">
+                      {person.name || `${person.firstName || ''} ${person.lastName || ''}`.trim()}
+                    </span>
                   </div>
                 )}
               </button>

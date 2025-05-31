@@ -137,6 +137,12 @@ const InfoPanel: React.FC<InfoPanelProps> = ({ person, onEdit, onDelete }) => {
                 <span className="font-medium">Status:</span> {person.isLiving ? 'Living' : 'Deceased'}
               </div>
               
+              {person.privacyLevel && (
+                <div>
+                  <span className="font-medium">Privacy:</span> {person.privacyLevel.charAt(0).toUpperCase() + person.privacyLevel.slice(1)}
+                </div>
+              )}
+              
               {person.parentId && (
                 <div>
                   <span className="font-medium">Parent ID:</span> {person.parentId}

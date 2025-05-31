@@ -1,5 +1,5 @@
 import React, { useState, useEffect, ChangeEvent, FormEvent } from 'react';
-import { Person } from '../types';
+import { Person, PrivacyLevel } from '../types';
 
 interface PersonFormProps {
   person?: Person;
@@ -29,6 +29,7 @@ const PersonForm: React.FC<PersonFormProps> = ({
     birthDate: '',
     birthPlace: '',
     isLiving: true,
+    privacyLevel: PrivacyLevel.INHERIT, // Default privacy level using enum
     // Legacy fields
     name: '',
     color: 'blue',
@@ -63,6 +64,7 @@ const PersonForm: React.FC<PersonFormProps> = ({
         isLiving: person.isLiving !== false, // Default to true if undefined
         notes: person.notes || '',
         biography: person.biography || '',
+        privacyLevel: person.privacyLevel || PrivacyLevel.INHERIT, // Initialize privacy level with enum
         
         // Legacy fields
         name: person.name || `${person.firstName || ''} ${person.lastName || ''}`.trim(),
@@ -151,9 +153,11 @@ const PersonForm: React.FC<PersonFormProps> = ({
     e.preventDefault();
     
     // Process children data if needed
-    // Note: In a real implementation, you'd need to create the children as separate
-    // persons and establish the parent-child relationship properly
+    // In a real implementation, we'd create the children as separate persons
+    // and establish the parent-child relationship
+    // This would typically be handled by backend logic or in a separate function
     
+    // For now, we'll just save the parent's data
     onSave(formData);
   };
 
@@ -515,6 +519,25 @@ const PersonForm: React.FC<PersonFormProps> = ({
                     <option value="orange">Orange</option>
                     <option value="pink">Pink</option>
                   </select>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Privacy Level</label>
+                  <select
+                    name="privacyLevel"
+                    value={formData.privacyLevel || PrivacyLevel.INHERIT}
+                    onChange={handleChange}
+                    className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value={PrivacyLevel.INHERIT}>Inherit from Tree</option>
+                    <option value={PrivacyLevel.PRIVATE}>Private</option>
+                    <option value={PrivacyLevel.CONNECTIONS}>Connections Only</option>
+                    <option value={PrivacyLevel.RESEARCHERS}>Researchers</option>
+                    <option value={PrivacyLevel.PUBLIC}>Public</option>
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Controls who can see details about this person
+                  </p>
                 </div>
               </div>
             </div>

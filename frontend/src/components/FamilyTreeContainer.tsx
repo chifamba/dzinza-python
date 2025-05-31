@@ -29,11 +29,13 @@ const FamilyTreeContainer: React.FC = () => {
   const handleAddPerson = (parentId?: string) => {
     setEditingPerson(undefined);
     if (parentId) {
+      // Find the parent to get their last name
+      const parent = state.persons.find(p => p.id === parentId);
       // Create a basic template for the new person with parentId
       setEditingPerson({ 
         id: '', 
         firstName: '',
-        lastName: '',
+        lastName: parent?.lastName || '', // Auto-fill parent's last name
         name: '', 
         parentId, 
         color: 'blue',

@@ -38,11 +38,11 @@ const PersonCard: React.FC<PersonCardProps> = ({
   })();
   
   const getProfileImage = () => {
-    if (person.photo) {
-      return person.photo;
-    }
     if (person.profilePictureUrl) {
       return person.profilePictureUrl;
+    }
+    if (person.photo) { // Legacy field as fallback
+      return person.photo;
     }
     if (person.category) {
       return getDefaultImage(person.category);
