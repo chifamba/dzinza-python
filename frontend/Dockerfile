@@ -16,7 +16,7 @@ RUN npm install
 # Copy the rest of the application
 COPY . .
 
-# Build the React application for production
+# Build the React application for production using Vite
 RUN npm run build
 
 # --- Production Stage ---
