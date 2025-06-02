@@ -1,4 +1,5 @@
 import React from 'react';
+import { useDraggable } from '@dnd-kit/core';
 import { Person } from '../types';
 import { UserCircle } from 'lucide-react';
 import { getDefaultImage } from '../utils/defaultImages';
@@ -18,6 +19,14 @@ const PersonCard: React.FC<PersonCardProps> = ({
   onSelect,
   selected = false
 }) => {
+  const {attributes, listeners, setNodeRef, transform} = useDraggable({
+    id: person.id,
+  });
+
+  const style = transform ? {
+    transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
+  } : undefined;
+
   const colorClasses = {
     blue: 'bg-sky-100 border-sky-300',
     green: 'bg-lime-100 border-lime-300',
@@ -52,6 +61,10 @@ const PersonCard: React.FC<PersonCardProps> = ({
 
   return (
     <div 
+      ref={setNodeRef}
+      style={style}
+      {...listeners}
+      {...attributes}
       className={`relative w-32 h-16 rounded-md border-2 p-2 cursor-pointer transition-all 
       ${colorClass} ${selected ? 'ring-2 ring-offset-2 ring-blue-500' : ''}`}
       onClick={onSelect}

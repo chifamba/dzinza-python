@@ -25,6 +25,7 @@ export interface Person {
   createdBy?: string;
   createdAt?: string;
   updatedAt?: string;
+  displayOrder?: number;
 
   // Legacy fields for compatibility with existing code
   name?: string;

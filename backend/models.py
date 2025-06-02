@@ -215,6 +215,7 @@ class Person(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     profile_picture_url = Column(String(512))  # Added profile_picture_url field
     custom_fields = Column(JSONB, nullable=True, default=dict)  # Added custom_fields
+    display_order = Column(Integer, nullable=True, index=True) # New field for ordering
 
     def to_dict(self):
         return {"id": str(self.id), "first_name": self.first_name,
@@ -230,6 +231,7 @@ class Person(Base):
             "is_living": self.is_living, "notes": self.notes, "biography": self.biography, "custom_attributes": self.custom_attributes,
             "profile_picture_url": self.profile_picture_url,  # Added to to_dict
             "custom_fields": self.custom_fields,  # Added custom_fields to to_dict
+            "display_order": self.display_order, # Added to to_dict
             "created_by": str(self.created_by),
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None}

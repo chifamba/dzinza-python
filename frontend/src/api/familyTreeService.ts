@@ -39,6 +39,7 @@ const convertBackendPersonToFrontend = (backendPerson: any): Person => {
     createdBy: backendPerson.created_by,
     createdAt: backendPerson.created_at,
     updatedAt: backendPerson.updated_at,
+    displayOrder: backendPerson.display_order,
     
     // Legacy fields from UI data
     name: `${backendPerson.first_name || ''} ${backendPerson.last_name || ''}`.trim(),
@@ -83,7 +84,12 @@ const convertFrontendPersonToBackend = (person: Partial<Person>): any => {
         is_placeholder: person.isPlaceholder,
         category: person.category
       }
-    }
+    },
+    // Include display_order if defined, otherwise backend default will apply
+    // For new persons, displayOrder should be set by FamilyTreeContainer
+    // For updates, if displayOrder is not part of personData, it won't be sent,
+    // which is fine as ordering is handled by /api/people/order
+    ...(person.displayOrder !== undefined && { display_order: person.displayOrder }),
   };
 };
 
@@ -148,7 +154,13 @@ export const getFamilyTree = async (filters?: Record<string, any>): Promise<Pers
     
     const backendPersons = await response.json();
     // Convert backend data to frontend format
-    return backendPersons.map(convertBackendPersonToFrontend);
+    const frontendPersons = backendPersons.map(convertBackendPersonToFrontend);
+    // Sort by displayOrder, handling undefined or null values safely
+    return frontendPersons.sort((a: Person, b: Person) => {
+      const orderA = a.displayOrder ?? Infinity;
+      const orderB = b.displayOrder ?? Infinity;
+      return orderA - orderB;
+    });
   } catch (error) {
     console.error('Error fetching family tree:', error);
     return [];
@@ -196,7 +208,10 @@ export const addPerson = async (personData: Omit<Person, 'id'>): Promise<Person 
     const newPerson = {
       ...personData,
       id: `mock-${Math.random().toString(36).substr(2, 9)}`,
+      displayOrder: personData.displayOrder ?? mockPersons.length, // Mock display order
     };
+    mockPersons.push(newPerson as Person);
+    mockPersons.sort((a,b) => (a.displayOrder ?? Infinity) - (b.displayOrder ?? Infinity));
     return Promise.resolve(newPerson as Person);
   }
 
@@ -239,7 +254,17 @@ export const updatePerson = async (id: string, personData: Partial<Person>): Pro
   
   if (config.useMockData) {
     // Simulate updating a person
-    return Promise.resolve({ ...personData, id } as Person);
+    const updatedMockPerson = {
+      ...(mockPersons.find(p => p.id === id) || {}),
+      ...personData,
+      id
+    } as Person;
+    mockPersons = mockPersons.map(p => p.id === id ? updatedMockPerson : p);
+    // If displayOrder was part of the update, re-sort
+    if (personData.displayOrder !== undefined) {
+      mockPersons.sort((a,b) => (a.displayOrder ?? Infinity) - (b.displayOrder ?? Infinity));
+    }
+    return Promise.resolve(updatedMockPerson);
   }
 
   try {
@@ -704,6 +729,46 @@ export const deleteRelationship = async (id: string): Promise<boolean> => {
     return response.ok;
   } catch (error) {
     console.error('Error deleting relationship:', error);
+    return false;
+  }
+};
+
+export const updatePersonOrder = async (persons: Person[]): Promise<boolean> => {
+  if (config.useMockData) {
+    // Simulate reordering in mock data
+    persons.forEach((personUpdate, index) => {
+      const mockPerson = mockPersons.find(p => p.id === personUpdate.id);
+      if (mockPerson) {
+        mockPerson.displayOrder = index; // Update displayOrder based on new array index
+      }
+    });
+    // Re-sort mockPersons based on new displayOrder
+    mockPersons.sort((a, b) => (a.displayOrder ?? Infinity) - (b.displayOrder ?? Infinity));
+    return Promise.resolve(true);
+  }
+
+  try {
+    // We need to send only id and displayOrder to the backend for this specific operation
+    const orderUpdatePayload = persons.map(p => ({
+      id: p.id,
+      // Ensure display_order is sent, even if it's null/undefined (though it should be set by map index)
+      display_order: p.displayOrder,
+    }));
+
+    const response = await fetch(`${config.backendUrl}/api/people/order`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(orderUpdatePayload),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.text();
+      console.error('Failed to update person order:', response.status, errorData);
+      throw new Error(`Failed to update person order: ${errorData}`);
+    }
+    return response.ok;
+  } catch (error) {
+    console.error('Error updating person order:', error);
     return false;
   }
 };

@@ -8,7 +8,8 @@ from decorators import require_tree_access, require_auth # require_auth might be
 from services.person_service import (
     get_all_people_db, get_person_db, create_person_db,
     update_person_db, delete_person_db,
-    upload_profile_picture_db
+    upload_profile_picture_db,
+    update_person_order_db # Added for reordering
 )
 from services.media_service import get_media_for_entity_db # Added for person media
 from services.event_service import get_events_for_person_db # Added for person events
@@ -23,7 +24,7 @@ people_bp = Blueprint('people_api', __name__, url_prefix='/api/people')
 def get_all_people_endpoint():
     db = g.db; tree_id = g.active_tree_id
     page, per_page, sort_by, sort_order = get_pagination_params()
-    sort_by = sort_by or "last_name"
+    sort_by = sort_by or "display_order" # Default to display_order
     filters = {}
     # Existing filters
     if request.args.get('is_living') is not None: 
@@ -113,12 +114,46 @@ def delete_person_endpoint(person_id_param: uuid.UUID):
     db = g.db; tree_id = g.active_tree_id
     logger.info("Delete person", person_id=person_id_param, tree_id=tree_id)
     try:
-        delete_person_db(db, person_id_param, tree_id)
+        # Pass actor_user_id for audit logging
+        actor_user_id = uuid.UUID(session['user_id']) if 'user_id' in session else None
+        delete_person_db(db, person_id_param, tree_id, actor_user_id=actor_user_id)
         return '', 204
     except Exception as e:
         logger.error("Error in delete_person.", person_id=person_id_param, tree_id=tree_id, exc_info=True)
         if not isinstance(e, HTTPException): abort(500, "Error deleting person.")
         raise
+
+@people_bp.route('/order', methods=['PUT']) # Changed from /api/people/order to just /order relative to blueprint
+@require_tree_access('edit') # Ensure user has edit rights for the tree
+def update_people_order_endpoint():
+    data = request.get_json()
+    if not isinstance(data, list):
+        abort(400, description="Request body must be a list of person objects.")
+
+    db_session = g.db
+    active_tree_id = g.active_tree_id
+    actor_user_id = uuid.UUID(session['user_id']) if 'user_id' in session else None
+
+    logger.info("Update people order endpoint", tree_id=active_tree_id, num_persons_to_order=len(data), actor_user_id=actor_user_id)
+    try:
+        success = update_person_order_db(
+            db=db_session,
+            tree_id=active_tree_id,
+            persons_data=data,
+            actor_user_id=actor_user_id
+        )
+        if success:
+            return jsonify({"message": "Person order updated successfully."}), 200
+        else:
+            # This path might not be reached if service aborts on failure
+            abort(500, description="Failed to update person order for unknown reasons.")
+    except HTTPException as e:
+        raise
+    except Exception as e:
+        logger.error("Error updating people order.", tree_id=active_tree_id, exc_info=True)
+        abort(500, description="An error occurred while updating person order.")
+    return {} # Should be unreachable
+
 
 @people_bp.route('/<uuid:person_id_param>/profile_picture', methods=['POST'])
 @require_auth # Ensure user is logged in

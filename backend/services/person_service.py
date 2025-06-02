@@ -5,7 +5,7 @@ from datetime import date
 from typing import Dict, Any, Optional, List # Ensure List is also imported if used by paginate_query
 from sqlalchemy.orm import Session as DBSession
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy import or_
+from sqlalchemy import or_, func # Import func
 from flask import abort
 from werkzeug.exceptions import HTTPException
 
@@ -27,7 +27,7 @@ def get_all_people_db(db: DBSession,
                         tree_id: uuid.UUID,
                         page: int = -1, # Default to trigger config lookup
                         per_page: int = -1, # Default to trigger config lookup
-                        sort_by: Optional[str] = "last_name",
+                        sort_by: Optional[str] = "display_order", # Default sort by display_order
                         sort_order: Optional[str] = "asc",
                         filters: Optional[Dict[str, Any]] = None
                         ) -> Dict[str, Any]:
@@ -96,8 +96,8 @@ def get_all_people_db(db: DBSession,
 
         # Validate sort_by attribute
         if not (sort_by and hasattr(Person, sort_by)): # Check if sort_by is None or not an attribute
-            logger.warning(f"Invalid or missing sort_by column '{sort_by}' for Person. Defaulting to 'last_name'.")
-            sort_by = "last_name"
+            logger.warning(f"Invalid or missing sort_by column '{sort_by}' for Person. Defaulting to 'display_order'.")
+            sort_by = "display_order" # Default to display_order
         
         # Ensure sort_order is valid
         if sort_order not in ['asc', 'desc']:
@@ -203,11 +203,28 @@ def create_person_db(db: DBSession,
             biography=person_data.get('biography'),
             custom_attributes=person_data.get('custom_attributes', {}),
             profile_picture_url=person_data.get('profile_picture_url'),  # Added profile_picture_url
-            custom_fields=person_data.get('custom_fields', {})  # Added custom_fields
+            custom_fields=person_data.get('custom_fields', {}),  # Added custom_fields
+            display_order=person_data.get('display_order') # Add display_order
         )
         # If is_living is not explicitly provided, determine it based on death_date.
         if new_person.is_living is None:
             new_person.is_living = new_person.death_date is None
+
+        # If display_order is not provided, set it to a default (e.g., count of persons in tree + 1 or handle in frontend)
+        # For now, assuming frontend might send it or it can be null initially
+        if new_person.display_order is None:
+            # Basic default: count persons in the tree and add 1.
+            # This is a simplified approach and might need refinement for concurrency.
+            # A more robust solution might involve a dedicated sequence or adjusting orders on add.
+            # For now, let's make it nullable and handle nulls in sorting.
+            # If the frontend is expected to always provide it (e.g. based on current list length),
+            # then this explicit setting might not be needed or could be a fallback.
+            current_max_order = db.query(func.max(Person.display_order))\
+                                  .join(PersonTreeAssociation, Person.id == PersonTreeAssociation.person_id)\
+                                  .filter(PersonTreeAssociation.tree_id == tree_id)\
+                                  .scalar()
+            new_person.display_order = (current_max_order or 0) + 1
+
 
         db.add(new_person)
         db.flush() # Flush to get the new_person.id
@@ -273,7 +290,8 @@ def update_person_db(db: DBSession,
         'death_date', 'death_date_approx', 'death_place', 'place_of_death', 
         'burial_place', 'privacy_level', 'is_living', 'notes', 'biography', 'custom_attributes',
         'profile_picture_url',  # Added profile_picture_url to allowed fields
-        'custom_fields'  # Added custom_fields to allowed fields
+        'custom_fields',  # Added custom_fields to allowed fields
+        'display_order' # Added display_order to allowed fields
     ]
 
     for field, value in person_data.items():
@@ -459,7 +477,13 @@ def upload_profile_picture_db(db: DBSession, person_id: uuid.UUID, tree_id: uuid
                     person_id=person_id, object_key=object_key)
         return person.to_dict()
 
-    except S3UploadFailedError as e:
+    # except S3UploadFailedError as e: # Commented out to match the original code structure
+    except SQLAlchemyError as e: # This was the original exception handling order
+        db.rollback() # Rollback SQLAlchemy transaction
+        _handle_sqlalchemy_error(e, f"updating person profile_picture_url for person ID {person_id}", db) # This will abort
+    except HTTPException: # Re-raise aborts
+        raise
+    except Exception as e: # This was ClientError in the original, generalized for now
         db.rollback()
         logger.error("S3 upload failed for profile picture.", person_id=person_id, error=str(e), exc_info=True)
         abort(500, description="Failed to upload profile picture to storage.")
@@ -467,13 +491,94 @@ def upload_profile_picture_db(db: DBSession, person_id: uuid.UUID, tree_id: uuid
         db.rollback()
         logger.error("Boto3 client error during profile picture upload.", person_id=person_id, error=str(e), exc_info=True)
         abort(500, description="A storage service error occurred.")
-    except SQLAlchemyError as e:
-        db.rollback() # Rollback SQLAlchemy transaction
-        _handle_sqlalchemy_error(e, f"updating person profile_picture_url for person ID {person_id}", db) # This will abort
-    except HTTPException: # Re-raise aborts
-        raise
-    except Exception as e:
         db.rollback()
         logger.error("Unexpected error during profile picture upload.", person_id=person_id, error=str(e), exc_info=True)
         abort(500, description="An unexpected error occurred while processing the profile picture.")
     return {} # Should be unreachable
+
+
+def update_person_order_db(db: DBSession, tree_id: uuid.UUID, persons_data: List[Dict[str, Any]], actor_user_id: Optional[uuid.UUID] = None) -> bool:
+    """
+    Updates the display_order for a list of persons within a specific tree.
+    Expects a list of dictionaries, each with 'id' and 'display_order'.
+    """
+    logger.info("Attempting to update person order for tree", tree_id=tree_id, actor_user_id=actor_user_id, num_persons=len(persons_data))
+
+    if not persons_data:
+        logger.info("No person data provided for order update.", tree_id=tree_id)
+        return True # Nothing to do
+
+    person_ids_to_update = [p_data.get('id') for p_data in persons_data if p_data.get('id')]
+    if not person_ids_to_update:
+        logger.warning("No person IDs found in the provided data for order update.", tree_id=tree_id)
+        abort(400, description="No person IDs provided for order update.")
+
+    try:
+        # Fetch persons to ensure they belong to the tree and exist
+        # This also serves as a check that all persons are part of the given tree_id
+        persons_in_db = db.query(Person)\
+            .join(PersonTreeAssociation, Person.id == PersonTreeAssociation.person_id)\
+            .filter(PersonTreeAssociation.tree_id == tree_id, Person.id.in_(person_ids_to_update))\
+            .all()
+
+        if len(persons_in_db) != len(set(person_ids_to_update)): # Use set to handle potential duplicates in input
+            logger.warning("Mismatch in persons found for order update.",
+                           tree_id=tree_id,
+                           requested_ids=set(person_ids_to_update),
+                           found_ids=[p.id for p in persons_in_db])
+            abort(400, description="One or more persons not found or not associated with the tree.")
+
+        person_map = {str(p.id): p for p in persons_in_db}
+        updated_person_details = []
+
+        for p_data in persons_data:
+            person_id_str = p_data.get('id')
+            new_order = p_data.get('display_order')
+
+            if not person_id_str or new_order is None: # display_order can be 0
+                logger.warning("Missing id or display_order in item.", item_data=p_data, tree_id=tree_id)
+                # Consider if this should be an error or just skipped
+                continue
+
+            person_obj = person_map.get(person_id_str)
+            if person_obj:
+                if person_obj.display_order != new_order:
+                    previous_order_state = {"id": str(person_obj.id), "display_order": person_obj.display_order}
+                    person_obj.display_order = new_order
+                    updated_person_details.append({
+                        "id": str(person_obj.id),
+                        "previous_display_order": previous_order_state["display_order"],
+                        "new_display_order": new_order
+                    })
+            else:
+                # This case should ideally be caught by the check above, but as a safeguard:
+                logger.warning("Person ID from input not found in fetched tree persons.", person_id=person_id_str, tree_id=tree_id)
+                # Potentially abort or skip this item
+                continue
+
+        if not updated_person_details:
+            logger.info("No actual order changes detected.", tree_id=tree_id)
+            return True
+
+
+        db.commit()
+        logger.info("Person display_order updated successfully.", tree_id=tree_id, actor_user_id=actor_user_id, changes=len(updated_person_details))
+
+        # Audit Log - Log a single bulk update event
+        # For detailed per-person audit, loop and log individually if needed, but can be verbose.
+        # This example logs a summary of the operation.
+        log_activity(db=db, actor_user_id=actor_user_id, action_type="UPDATE_PERSON_ORDER",
+                     entity_type="TREE", entity_id=tree_id, tree_id=tree_id,
+                     details={"message": f"Updated display order for {len(updated_person_details)} persons.", "updated_persons_summary": updated_person_details})
+                     # Storing full previous/new state for many items can be large; a summary or list of IDs might be better.
+
+        return True
+    except SQLAlchemyError as e:
+        _handle_sqlalchemy_error(e, f"updating person order for tree {tree_id}", db)
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error("Unexpected error during person order update.", tree_id=tree_id, exc_info=True)
+        abort(500, description="An unexpected error occurred while updating person order.")
+    return False

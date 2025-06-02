@@ -11,8 +11,7 @@ from werkzeug.exceptions import BadRequest, InternalServerError, Forbidden, NotF
 # Adjust paths as necessary
 from blueprints.people import people_bp 
 # Import the actual services that will be mocked
-# import services.person_service as person_service_module # Not needed if patching via string path
-from services.person_service import get_all_people_db # Import the actual service for one test
+from services.person_service import get_all_people_db, update_person_order_db # Import for actual service call test and new service
 
 class TestPeopleAPI(unittest.TestCase):
 
@@ -37,6 +36,7 @@ class TestPeopleAPI(unittest.TestCase):
         self.patcher_get_media_for_entity_db = patch('blueprints.people.get_media_for_entity_db')
         self.patcher_get_events_for_person_db = patch('blueprints.people.get_events_for_person_db')
         self.patcher_get_all_people_db = patch('blueprints.people.get_all_people_db') # Patch for most filter tests
+        self.patcher_update_person_order_db = patch('blueprints.people.update_person_order_db') # Patch for new endpoint
 
 
         self.patcher_require_tree_access = patch('blueprints.people.require_tree_access')
@@ -50,6 +50,7 @@ class TestPeopleAPI(unittest.TestCase):
         self.mock_get_media_for_entity_db = self.patcher_get_media_for_entity_db.start()
         self.mock_get_events_for_person_db = self.patcher_get_events_for_person_db.start()
         self.mock_get_all_people_db = self.patcher_get_all_people_db.start() # Start patch
+        self.mock_update_person_order_db = self.patcher_update_person_order_db.start() # Start patch for new service
         
         self.mock_require_tree_access_decorator = self.patcher_require_tree_access.start()
         self.mock_require_auth_decorator = self.patcher_require_auth.start()
@@ -70,9 +71,96 @@ class TestPeopleAPI(unittest.TestCase):
         self.patcher_get_media_for_entity_db.stop()
         self.patcher_get_events_for_person_db.stop() 
         self.patcher_get_all_people_db.stop() # Stop patch
+        self.patcher_update_person_order_db.stop() # Stop patch for new service
         self.patcher_require_tree_access.stop()
         self.patcher_require_auth.stop()
         patch.stopall() # Stop any other patches started in tests
+
+    # --- Tests for PUT /api/people/order ---
+    def test_update_people_order_success(self):
+        self.mock_update_person_order_db.return_value = True
+        order_payload = [
+            {"id": str(uuid.uuid4()), "display_order": 1},
+            {"id": str(uuid.uuid4()), "display_order": 0},
+        ]
+        with self.client as client:
+            with client.session_transaction() as sess:
+                sess['user_id'] = self.test_user_id
+                sess['active_tree_id'] = self.test_tree_id
+            with self.app.app_context():
+                g.db = MagicMock()
+                g.active_tree_id = self.test_tree_id
+                response = client.put('/api/people/order', json=order_payload)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json, {"message": "Person order updated successfully."})
+        self.mock_update_person_order_db.assert_called_once_with(
+            db=g.db,
+            tree_id=self.test_tree_id,
+            persons_data=order_payload,
+            actor_user_id=uuid.UUID(self.test_user_id)
+        )
+
+    def test_update_people_order_invalid_payload_not_a_list(self):
+        with self.client as client:
+            with client.session_transaction() as sess:
+                sess['user_id'] = self.test_user_id
+                sess['active_tree_id'] = self.test_tree_id
+            with self.app.app_context():
+                g.db = MagicMock()
+                g.active_tree_id = self.test_tree_id
+                response = client.put('/api/people/order', json={"not": "a list"})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Request body must be a list", response.json['description'])
+
+    def test_update_people_order_service_returns_false(self):
+        self.mock_update_person_order_db.return_value = False # Simulate service failure
+        order_payload = [{"id": str(uuid.uuid4()), "display_order": 0}]
+        with self.client as client:
+            with client.session_transaction() as sess:
+                sess['user_id'] = self.test_user_id
+                sess['active_tree_id'] = self.test_tree_id
+            with self.app.app_context():
+                g.db = MagicMock()
+                g.active_tree_id = self.test_tree_id
+                response = client.put('/api/people/order', json=order_payload)
+        self.assertEqual(response.status_code, 500) # As per blueprint's current error handling
+        self.assertIn("Failed to update person order", response.json['description'])
+
+    def test_update_people_order_service_raises_httpexception(self):
+        # Simulate service raising BadRequest (e.g., person not found)
+        self.mock_update_person_order_db.side_effect = BadRequest("Person not found in tree.")
+        order_payload = [{"id": str(uuid.uuid4()), "display_order": 0}]
+        with self.client as client:
+            with client.session_transaction() as sess:
+                sess['user_id'] = self.test_user_id
+                sess['active_tree_id'] = self.test_tree_id
+            with self.app.app_context():
+                g.db = MagicMock()
+                g.active_tree_id = self.test_tree_id
+                response = client.put('/api/people/order', json=order_payload)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Person not found in tree.", response.json['description'])
+
+    def test_update_people_order_no_edit_permission(self):
+        # Simulate require_tree_access decorator raising Forbidden
+        self.mock_require_tree_access_decorator.side_effect = lambda level: (_ for _ in ()).throw(Forbidden("User does not have edit access.")) if level == 'edit' else (lambda func: func)
+
+        order_payload = [{"id": str(uuid.uuid4()), "display_order": 0}]
+        with self.client as client:
+            with client.session_transaction() as sess:
+                sess['user_id'] = self.test_user_id
+                sess['active_tree_id'] = self.test_tree_id
+            with self.app.app_context():
+                g.db = MagicMock()
+                g.active_tree_id = self.test_tree_id
+                response = client.put('/api/people/order', json=order_payload)
+
+        self.assertEqual(response.status_code, 403)
+        self.assertIn("User does not have edit access.", response.json['description'])
+        # Restore default side_effect for other tests
+        self.mock_require_tree_access_decorator.side_effect = lambda level: (lambda func: func)
+
 
     # --- Tests for GET /api/people with new filters ---
     def test_get_all_people_with_search_term_filter(self):
@@ -147,29 +235,58 @@ class TestPeopleAPI(unittest.TestCase):
 
 
     @patch('blueprints.people.get_all_people_db', side_effect=get_all_people_db) # Use actual service for this test
-    def test_get_all_people_invalid_date_format_raises_400(self, mock_actual_service_call):
-        # This test expects the service layer to raise an HTTPException (abort 400)
-        # So, we don't fully mock get_all_people_db, or make its mock raise the error.
-        # Here, we let the actual service be called but mock the DB session it uses.
+    @patch('services.person_service.paginate_query') # Mock paginate_query at service level
+    @patch('services.person_service.db') # Mock db at service level
+    def test_get_all_people_invalid_date_format_raises_400(self, mock_db_in_service, mock_paginate_query_in_service):
+        # This test needs to ensure that the actual get_all_people_db service function is called,
+        # but its internal DB interactions are controlled.
+        # We patch get_all_people_db at the blueprint level to use the *actual* service function.
         
-        with self.client as client:
-            with client.session_transaction() as sess:
-                sess['user_id'] = self.test_user_id
-                sess['active_tree_id'] = self.test_tree_id
-            with self.app.app_context():
-                g.db = MagicMock() # Service will use g.db
-                g.active_tree_id = self.test_tree_id
-                
-                # Mock the query and paginate_query within the actual service for this specific test
-                with patch('services.person_service.db.query') as mock_query, \
-                     patch('services.person_service.paginate_query') as mock_paginate:
-                    mock_query.return_value.filter.return_value = MagicMock() # Mock the chain
-                    mock_paginate.return_value = {"items": []} # Return valid pagination
-                    
-                    response = client.get('/api/people?birth_start_date=invalid-date-format')
+        # Temporarily stop the general mock of get_all_people_db for this specific test
+        self.patcher_get_all_people_db.stop()
 
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("Invalid date format", response.json['message']['details']['birth_date_range_start'])
+        # Configure mocks for the *actual* service's dependencies
+        # The actual service will attempt db.query(...).join(...).filter(...)
+        # We need to mock this chain.
+        mock_query_obj = MagicMock()
+        mock_join_obj = MagicMock()
+        mock_filter_obj = MagicMock()
+
+        mock_db_in_service.query.return_value = mock_query_obj
+        mock_query_obj.join.return_value = mock_join_obj
+        mock_join_obj.filter.return_value = mock_filter_obj # This is what paginate_query will receive
+
+        # paginate_query should return a valid structure even if no items match
+        mock_paginate_query_in_service.return_value = {
+            "items": [], "total_items": 0, "page": 1,
+            "per_page": 10, "total_pages": 0
+        }
+
+        response = None
+        try:
+            with self.client as client:
+                with client.session_transaction() as sess:
+                    sess['user_id'] = self.test_user_id
+                    sess['active_tree_id'] = self.test_tree_id
+                with self.app.app_context():
+                    g.db = mock_db_in_service # Ensure g.db is the service-level mock for the endpoint context
+                    g.active_tree_id = self.test_tree_id
+                    
+                    # Call the endpoint which should now use the actual service due to stopped patcher
+                    # The blueprint decorator will still pass g.db (which is mock_db_in_service)
+                    # to the actual get_all_people_db service function.
+                    with patch('blueprints.people.get_all_people_db', side_effect=get_all_people_db) as temp_patch:
+                         response = client.get('/api/people?birth_start_date=invalid-date-format')
+
+            self.assertIsNotNone(response, "Response was not captured.")
+            self.assertEqual(response.status_code, 400)
+            # The service aborts with a specific structure
+            self.assertIn("Validation failed", response.json['description']['message'])
+            self.assertIn("Invalid date format", response.json['description']['details']['birth_date_range_start'])
+        finally:
+            # Restart the general mock for other tests
+            self.mock_get_all_people_db = self.patcher_get_all_people_db.start()
+            self.mock_get_all_people_db.return_value = {"items": [], "total_items": 0, "page": 1, "per_page": 10, "total_pages": 0} # Restore default mock behavior
 
 
     def test_get_all_people_combined_filters(self):

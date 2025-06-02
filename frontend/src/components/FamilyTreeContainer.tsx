@@ -1,17 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Person, FamilyTreeState } from '../types';
 import FamilyTreeView from './FamilyTreeView';
 import PersonForm from './PersonForm';
 import Header from './Header';
 import InfoPanel from './InfoPanel';
 import LeftNavPanel from './LeftNavPanel';
-import { getFamilyTree, addPerson, updatePerson, deletePerson } from '../api/familyTreeService';
+import { getFamilyTree, addPerson, updatePerson, deletePerson, updatePersonOrder } from '../api/familyTreeService';
 
 const FamilyTreeContainer: React.FC = () => {
-  const [state, setState] = useState<FamilyTreeState>({
-    persons: [],
-    selectedPersonId: null,
-  });
+  const [persons, setPersons] = useState<Person[]>([]);
+  const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
   
   const [showForm, setShowForm] = useState(false);
   const [editingPerson, setEditingPerson] = useState<Person | undefined>(undefined);
@@ -19,18 +17,49 @@ const FamilyTreeContainer: React.FC = () => {
   // Fetch initial data
   useEffect(() => {
     const loadData = async () => {
-      const persons = await getFamilyTree();
-      setState(prev => ({ ...prev, persons }));
+      const fetchedPersons = await getFamilyTree();
+      // Sort by displayOrder, handling undefined values
+      const sortedPersons = fetchedPersons.sort((a, b) => {
+        const orderA = a.displayOrder === undefined ? Infinity : a.displayOrder;
+        const orderB = b.displayOrder === undefined ? Infinity : b.displayOrder;
+        return orderA - orderB;
+      });
+      setPersons(sortedPersons);
     };
     
     loadData();
   }, []);
+
+  const handleSetPersons = useCallback((newPersons: Person[] | ((prevPersons: Person[]) => Person[])) => {
+    setPersons(prevPersons => {
+      const updatedPersons = typeof newPersons === 'function' ? newPersons(prevPersons) : newPersons;
+      // Call the function to update backend here
+      handleUpdatePersonOrder(updatedPersons);
+      return updatedPersons;
+    });
+  }, []);
+
+  const handleUpdatePersonOrder = async (orderedPersons: Person[]) => {
+    const personsWithOrder = orderedPersons.map((person, index) => ({
+      ...person,
+      displayOrder: index,
+    }));
+    try {
+      await updatePersonOrder(personsWithOrder);
+      // Optimistically updated the frontend, backend call confirms or could trigger rollback
+      setPersons(personsWithOrder); // Ensure local state reflects the new order immediately
+    } catch (error) {
+      console.error("Failed to update person order:", error);
+      // Optionally: revert to previous order or show error to user
+      // For now, we'll keep the optimistic update.
+    }
+  };
   
   const handleAddPerson = (parentId?: string) => {
     setEditingPerson(undefined);
     if (parentId) {
       // Find the parent to get their last name
-      const parent = state.persons.find(p => p.id === parentId);
+      const parent = persons.find(p => p.id === parentId);
       // Create a basic template for the new person with parentId
       setEditingPerson({ 
         id: '', 
@@ -46,7 +75,7 @@ const FamilyTreeContainer: React.FC = () => {
   };
   
   const handleEditPerson = (personId: string) => {
-    const person = state.persons.find(p => p.id === personId);
+    const person = persons.find(p => p.id === personId);
     if (person) {
       // Make sure firstName and lastName are populated if only name exists
       if (!person.firstName && !person.lastName && person.name) {
@@ -72,35 +101,34 @@ const FamilyTreeContainer: React.FC = () => {
     if (window.confirm('Are you sure you want to delete this person?')) {
       const success = await deletePerson(personId);
       if (success) {
-        setState(prev => ({
-          ...prev,
-          persons: prev.persons.filter(p => p.id !== personId),
-          selectedPersonId: prev.selectedPersonId === personId ? null : prev.selectedPersonId,
-        }));
+        setPersons(prevPersons => prevPersons.filter(p => p.id !== personId));
+        if (selectedPersonId === personId) {
+          setSelectedPersonId(null);
+        }
       }
     }
   };
   
   const handleSavePerson = async (data: Partial<Person>) => {
+    let savedPerson: Person | null = null;
     if (editingPerson?.id) {
       // Update existing person
-      const updated = await updatePerson(editingPerson.id, data);
-      if (updated) {
-        setState(prev => ({
-          ...prev,
-          persons: prev.persons.map(p => 
-            p.id === editingPerson.id ? { ...p, ...data } : p
-          ),
-        }));
+      savedPerson = await updatePerson(editingPerson.id, data);
+      if (savedPerson) {
+        setPersons(prevPersons =>
+          prevPersons.map(p => (p.id === editingPerson.id ? { ...p, ...savedPerson } : p))
+        );
       }
     } else {
       // Add new person
-      const newPerson = await addPerson(data as Omit<Person, 'id'>);
-      if (newPerson) {
-        setState(prev => ({
-          ...prev,
-          persons: [...prev.persons, newPerson],
-        }));
+      // Ensure displayOrder is set for new persons
+      const newPersonData = {
+        ...data,
+        displayOrder: persons.length
+      } as Omit<Person, 'id'>;
+      savedPerson = await addPerson(newPersonData);
+      if (savedPerson) {
+        setPersons(prevPersons => [...prevPersons, savedPerson!]);
       }
     }
     
@@ -109,11 +137,11 @@ const FamilyTreeContainer: React.FC = () => {
   };
   
   const handleSelectPerson = (personId: string) => {
-    setState(prev => ({ ...prev, selectedPersonId: personId }));
+    setSelectedPersonId(personId);
   };
   
-  const selectedPerson = state.selectedPersonId 
-    ? state.persons.find(p => p.id === state.selectedPersonId) || null
+  const selectedPerson = selectedPersonId
+    ? persons.find(p => p.id === selectedPersonId) || null
     : null;
   
   return (
@@ -122,20 +150,21 @@ const FamilyTreeContainer: React.FC = () => {
       
       <main className="flex-1 flex overflow-hidden">
         <LeftNavPanel
-          persons={state.persons}
+          persons={persons}
           onPersonSelect={handleSelectPerson}
           onAddPerson={() => handleAddPerson()}
-          selectedPersonId={state.selectedPersonId}
+          selectedPersonId={selectedPersonId}
         />
         
         <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
           <div className="md:w-3/4 h-full overflow-hidden relative">
             <FamilyTreeView 
-              persons={state.persons}
+              persons={persons}
+              setPersons={handleSetPersons} // Pass setPersons for dnd-kit updates
               onAddPerson={handleAddPerson}
               onEditPerson={handleEditPerson}
               onSelectPerson={handleSelectPerson}
-              selectedPersonId={state.selectedPersonId}
+              selectedPersonId={selectedPersonId}
             />
           </div>
           
@@ -157,7 +186,7 @@ const FamilyTreeContainer: React.FC = () => {
             setShowForm(false);
             setEditingPerson(undefined);
           }}
-          availableParents={state.persons.filter(p => 
+          availableParents={persons.filter(p =>
             !editingPerson || p.id !== editingPerson.id
           )}
         />

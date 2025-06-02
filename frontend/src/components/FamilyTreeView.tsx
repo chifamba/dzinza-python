@@ -1,4 +1,19 @@
 import React, { useEffect, useState, useRef } from 'react';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  // rectSortingStrategy, // Or other strategies
+} from '@dnd-kit/sortable';
 import { Person } from '../types';
 import PersonCard from './PersonCard';
 import TreeConnector from './TreeConnector';
@@ -6,6 +21,7 @@ import { SkipBack, Play, SkipForward, Pause } from 'lucide-react';
 
 interface FamilyTreeViewProps {
   persons: Person[];
+  setPersons: React.Dispatch<React.SetStateAction<Person[]>>; // Added to update state
   onAddPerson: (parentId?: string) => void;
   onEditPerson: (personId: string) => void;
   onSelectPerson: (personId: string) => void;
@@ -14,6 +30,7 @@ interface FamilyTreeViewProps {
 
 const FamilyTreeView: React.FC<FamilyTreeViewProps> = ({
   persons,
+  setPersons, // Added to update state
   onAddPerson,
   onEditPerson,
   onSelectPerson,
@@ -25,6 +42,25 @@ const FamilyTreeView: React.FC<FamilyTreeViewProps> = ({
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  function handleDragEnd(event: DragEndEvent) {
+    const {active, over} = event;
+
+    if (over && active.id !== over.id) {
+      setPersons((items) => {
+        const oldIndex = items.findIndex((item) => item.id === active.id);
+        const newIndex = items.findIndex((item) => item.id === over.id);
+        return arrayMove(items, oldIndex, newIndex);
+      });
+    }
+  }
 
   // Group persons by generation level
   const getGenerationLevel = (person: Person, level = 0, visited = new Set<string>()): number => {
@@ -194,30 +230,41 @@ const FamilyTreeView: React.FC<FamilyTreeViewProps> = ({
       >
         {renderTreeConnections()}
         
-        <div className="flex flex-col items-center space-y-12 pt-12">
-          {generations.map((generation, genIndex) => (
-            <div key={`gen-${genIndex}`} className="flex flex-wrap justify-center gap-10">
-              {generation.persons.map((person, personIndex) => (
-                <div key={person.id} className="flex flex-col items-center">
-                  <PersonCard 
-                    person={person}
-                    onAddChild={() => onAddPerson(person.id)}
-                    onEdit={() => onEditPerson(person.id)}
-                    onSelect={() => onSelectPerson(person.id)}
-                    selected={selectedPersonId === person.id}
-                  />
-                  
-                  {/* Show connector if not the last generation */}
-                  {genIndex < generations.length - 1 && 
-                    persons.some(p => p.parentId === person.id) && (
-                      <TreeConnector type="vertical\" length={30} />
-                    )
-                  }
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext
+            items={persons.map(p => p.id)}
+            // strategy={rectSortingStrategy} // Consider if needed
+          >
+            <div className="flex flex-col items-center space-y-12 pt-12">
+              {generations.map((generation, genIndex) => (
+                <div key={`gen-${genIndex}`} className="flex flex-wrap justify-center gap-10">
+                  {generation.persons.map((person) => (
+                    <div key={person.id} className="flex flex-col items-center">
+                      <PersonCard
+                        person={person}
+                        onAddChild={() => onAddPerson(person.id)}
+                        onEdit={() => onEditPerson(person.id)}
+                        onSelect={() => onSelectPerson(person.id)}
+                        selected={selectedPersonId === person.id}
+                      />
+
+                      {/* Show connector if not the last generation */}
+                      {genIndex < generations.length - 1 &&
+                        persons.some(p => p.parentId === person.id) && (
+                          <TreeConnector type="vertical\" length={30} />
+                        )
+                      }
+                    </div>
+                  ))}
                 </div>
               ))}
             </div>
-          ))}
-        </div>
+          </SortableContext>
+        </DndContext>
       </div>
       
       {/* Navigation controls */}
