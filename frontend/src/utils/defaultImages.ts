@@ -10,6 +10,12 @@ export const defaultImages = {
 
 export type PersonCategory = 'olderMale' | 'olderFemale' | 'adultMale' | 'adultFemale' | 'boy' | 'girl';
 
-export const getDefaultImage = (category: PersonCategory): string => {
-  return defaultImages[category];
+export const getDefaultImage = (category: PersonCategory | string): string => {
+  // Check if category is valid and exists in defaultImages
+  if (category && category in defaultImages) {
+    return defaultImages[category as PersonCategory];
+  }
+  
+  // Fallback to adultMale for any invalid or missing category
+  return defaultImages.adultMale;
 };

@@ -11,6 +11,9 @@ const FamilyTreeContainer: React.FC = () => {
   const [persons, setPersons] = useState<Person[]>([]);
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
   
+  // For now, use a default tree ID. This will be replaced when proper tree management is implemented
+  const currentTreeId = 'default-tree-id';
+  
   const [showForm, setShowForm] = useState(false);
   const [editingPerson, setEditingPerson] = useState<Person | undefined>(undefined);
   
@@ -165,6 +168,7 @@ const FamilyTreeContainer: React.FC = () => {
               onEditPerson={handleEditPerson}
               onSelectPerson={handleSelectPerson}
               selectedPersonId={selectedPersonId}
+              treeId={currentTreeId}
             />
           </div>
           

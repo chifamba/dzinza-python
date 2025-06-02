@@ -1195,3 +1195,231 @@ export const deletePerson = async (personId: string): Promise<boolean> => {
     return false;
   }
 };
+
+/**
+ * TREE LAYOUT API FUNCTIONS
+ * These functions handle saving and loading user-specific tree layouts
+ */
+
+// Get user's layout for a specific tree
+export const getTreeLayout = async (treeId: string): Promise<any | null> => {
+  try {
+    if (config.useMockData) {
+      // Fallback to localStorage
+      const savedPositions = localStorage.getItem('familyTreeCardPositions');
+      if (savedPositions) {
+        const parsedPositions = JSON.parse(savedPositions);
+        return {
+          id: 'local',
+          tree_id: treeId,
+          user_id: 'local',
+          layout_data: parsedPositions,
+          is_default: true
+        };
+      }
+      return null;
+    }
+
+    const response = await fetch(`${config.backendUrl}/api/trees/${treeId}/layouts`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (response.status === 404) {
+      return null; // No layout found
+    }
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error getting tree layout:', error);
+    // Fallback to localStorage on error
+    const savedPositions = localStorage.getItem('familyTreeCardPositions');
+    if (savedPositions) {
+      try {
+        const parsedPositions = JSON.parse(savedPositions);
+        return {
+          id: 'local',
+          tree_id: treeId,
+          user_id: 'local',
+          layout_data: parsedPositions,
+          is_default: true
+        };
+      } catch (parseError) {
+        console.error('Error parsing localStorage positions:', parseError);
+      }
+    }
+    return null;
+  }
+};
+
+// Save user's layout for a specific tree
+export const saveTreeLayout = async (treeId: string, layoutData: Record<string, { x: number; y: number }>): Promise<boolean> => {
+  try {
+    // Always save to localStorage as backup
+    localStorage.setItem('familyTreeCardPositions', JSON.stringify(layoutData));
+
+    if (config.useMockData) {
+      return true; // Only localStorage
+    }
+
+    const response = await fetch(`${config.backendUrl}/api/trees/${treeId}/layouts`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        layout_data: layoutData
+      }),
+    });
+
+    if (!response.ok) {
+      console.warn(`Backend save failed (${response.status}), but localStorage save succeeded`);
+      return true; // Still successful since localStorage worked
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error saving tree layout:', error);
+    // If backend fails but localStorage worked, still consider it a success
+    try {
+      localStorage.setItem('familyTreeCardPositions', JSON.stringify(layoutData));
+      return true;
+    } catch (localError) {
+      console.error('Error saving to localStorage:', localError);
+      return false;
+    }
+  }
+};
+
+// Create a named layout for a tree
+export const createNamedLayout = async (
+  treeId: string,
+  layoutName: string,
+  layoutData: Record<string, { x: number; y: number }>,
+  isDefault: boolean = false
+): Promise<any | null> => {
+  try {
+    if (config.useMockData) {
+      // For non-backend mode, just save to localStorage with a name prefix
+      const namedKey = `familyTreeCardPositions_${layoutName}`;
+      localStorage.setItem(namedKey, JSON.stringify(layoutData));
+      return {
+        id: `local_${layoutName}`,
+        tree_id: treeId,
+        user_id: 'local',
+        layout_data: layoutData,
+        layout_name: layoutName,
+        is_default: isDefault
+      };
+    }
+
+    const response = await fetch(`${config.backendUrl}/api/trees/${treeId}/layouts/named`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        layout_name: layoutName,
+        layout_data: layoutData,
+        is_default: isDefault
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error creating named layout:', error);
+    return null;
+  }
+};
+
+// Get all layouts for a user and tree
+export const getUserLayouts = async (treeId: string): Promise<any[]> => {
+  try {
+    if (config.useMockData) {
+      // For non-backend mode, check localStorage for named layouts
+      const layouts = [];
+      const mainLayout = localStorage.getItem('familyTreeCardPositions');
+      if (mainLayout) {
+        try {
+          layouts.push({
+            id: 'local_default',
+            tree_id: treeId,
+            user_id: 'local',
+            layout_data: JSON.parse(mainLayout),
+            layout_name: 'Default',
+            is_default: true
+          });
+        } catch (e) {
+          console.error('Error parsing main layout:', e);
+        }
+      }
+      return layouts;
+    }
+
+    const response = await fetch(`${config.backendUrl}/api/trees/${treeId}/layouts/all`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const result = await response.json();
+    return result.layouts || [];
+  } catch (error) {
+    console.error('Error getting user layouts:', error);
+    return [];
+  }
+};
+
+// Delete a specific layout
+export const deleteLayout = async (layoutId: string): Promise<boolean> => {
+  try {
+    if (config.useMockData) {
+      // For non-backend mode, try to remove from localStorage
+      if (layoutId.startsWith('local_')) {
+        const layoutName = layoutId.replace('local_', '');
+        if (layoutName === 'default') {
+          localStorage.removeItem('familyTreeCardPositions');
+        } else {
+          localStorage.removeItem(`familyTreeCardPositions_${layoutName}`);
+        }
+      }
+      return true;
+    }
+
+    const response = await fetch(`${config.backendUrl}/api/layouts/${layoutId}`, {
+      method: 'DELETE',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error deleting layout:', error);
+    return false;
+  }
+};

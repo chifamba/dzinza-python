@@ -8,6 +8,7 @@ from .people import people_bp
 from .relationships import relationships_bp
 from .admin import admin_bp
 from .health import health_bp
+from .tree_layouts import tree_layouts_bp
 
 # Optional: A list of all blueprints for easier registration in app.py
 # ALL_BLUEPRINTS = (
