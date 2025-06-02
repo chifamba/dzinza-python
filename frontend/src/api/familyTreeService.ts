@@ -1,6 +1,39 @@
-import { Person, PrivacyLevel, Relationship, RelationshipType } from '../types';
+import { Person, Relationship } from '../types';
 import config from '../config';
 import { mockPersons, mockRelationships } from '../data/mockData';
+
+// Define locally to avoid import issues
+enum PrivacyLevel {
+  INHERIT = "inherit",
+  PRIVATE = "private",
+  PUBLIC = "public",
+  CONNECTIONS = "connections",
+  RESEARCHERS = "researchers"
+}
+
+// Define locally to avoid import issues
+enum RelationshipType {
+  BIOLOGICAL_PARENT = "biological_parent",
+  ADOPTIVE_PARENT = "adoptive_parent",
+  STEP_PARENT = "step_parent",
+  FOSTER_PARENT = "foster_parent",
+  GUARDIAN = "guardian",
+  SPOUSE_CURRENT = "spouse_current",
+  SPOUSE_FORMER = "spouse_former",
+  PARTNER = "partner",
+  BIOLOGICAL_CHILD = "biological_child",
+  ADOPTIVE_CHILD = "adoptive_child",
+  STEP_CHILD = "step_child",
+  FOSTER_CHILD = "foster_child",
+  SIBLING_FULL = "sibling_full",
+  SIBLING_HALF = "sibling_half",
+  SIBLING_STEP = "sibling_step",
+  SIBLING_ADOPTIVE = "sibling_adoptive",
+  OTHER = "other"
+}
+
+// Create local copies of mock data that can be modified
+let localMockPersons = [...mockPersons];
 
 /**
  * CONVERSION FUNCTIONS
@@ -135,7 +168,7 @@ const convertFrontendRelationshipToBackend = (relationship: Partial<Relationship
 export const getFamilyTree = async (filters?: Record<string, any>): Promise<Person[]> => {
   if (config.useMockData) {
     // Use mock data for development
-    return Promise.resolve(mockPersons);
+    return Promise.resolve(localMockPersons);
   }
   
   try {
@@ -170,7 +203,7 @@ export const getFamilyTree = async (filters?: Record<string, any>): Promise<Pers
 export const getPerson = async (id: string): Promise<Person | null> => {
   if (config.useMockData) {
     // Use mock data for development
-    const mockPerson = mockPersons.find(p => p.id === id);
+    const mockPerson = localMockPersons.find(p => p.id === id);
     return Promise.resolve(mockPerson || null);
   }
   
@@ -208,10 +241,10 @@ export const addPerson = async (personData: Omit<Person, 'id'>): Promise<Person 
     const newPerson = {
       ...personData,
       id: `mock-${Math.random().toString(36).substr(2, 9)}`,
-      displayOrder: personData.displayOrder ?? mockPersons.length, // Mock display order
+      displayOrder: personData.displayOrder ?? localMockPersons.length, // Mock display order
     };
-    mockPersons.push(newPerson as Person);
-    mockPersons.sort((a,b) => (a.displayOrder ?? Infinity) - (b.displayOrder ?? Infinity));
+    localMockPersons.push(newPerson as Person);
+    localMockPersons.sort((a,b) => (a.displayOrder ?? Infinity) - (b.displayOrder ?? Infinity));
     return Promise.resolve(newPerson as Person);
   }
 
@@ -255,14 +288,14 @@ export const updatePerson = async (id: string, personData: Partial<Person>): Pro
   if (config.useMockData) {
     // Simulate updating a person
     const updatedMockPerson = {
-      ...(mockPersons.find(p => p.id === id) || {}),
+      ...(localMockPersons.find(p => p.id === id) || {}),
       ...personData,
       id
     } as Person;
-    mockPersons = mockPersons.map(p => p.id === id ? updatedMockPerson : p);
+    localMockPersons = localMockPersons.map(p => p.id === id ? updatedMockPerson : p);
     // If displayOrder was part of the update, re-sort
     if (personData.displayOrder !== undefined) {
-      mockPersons.sort((a,b) => (a.displayOrder ?? Infinity) - (b.displayOrder ?? Infinity));
+      localMockPersons.sort((a,b) => (a.displayOrder ?? Infinity) - (b.displayOrder ?? Infinity));
     }
     return Promise.resolve(updatedMockPerson);
   }
@@ -350,7 +383,7 @@ export interface PersonFilterOptions {
 export const searchPersons = async (options: PersonFilterOptions): Promise<Person[]> => {
   if (config.useMockData) {
     // Simple filter simulation for mock data
-    let filteredPersons = [...mockPersons];
+    let filteredPersons = [...localMockPersons];
     
     if (options.searchTerm) {
       const searchTermLower = options.searchTerm.toLowerCase();
@@ -737,13 +770,13 @@ export const updatePersonOrder = async (persons: Person[]): Promise<boolean> => 
   if (config.useMockData) {
     // Simulate reordering in mock data
     persons.forEach((personUpdate, index) => {
-      const mockPerson = mockPersons.find(p => p.id === personUpdate.id);
+      const mockPerson = localMockPersons.find(p => p.id === personUpdate.id);
       if (mockPerson) {
         mockPerson.displayOrder = index; // Update displayOrder based on new array index
       }
     });
-    // Re-sort mockPersons based on new displayOrder
-    mockPersons.sort((a, b) => (a.displayOrder ?? Infinity) - (b.displayOrder ?? Infinity));
+    // Re-sort localMockPersons based on new displayOrder
+    localMockPersons.sort((a, b) => (a.displayOrder ?? Infinity) - (b.displayOrder ?? Infinity));
     return Promise.resolve(true);
   }
 
@@ -899,7 +932,7 @@ export const buildFamilyTreeForPerson = async (
 ): Promise<FamilyTreeNode | null> => {
   if (config.useMockData) {
     // For mock data, we'll do a simplified version
-    const person = mockPersons.find(p => p.id === personId);
+    const person = localMockPersons.find(p => p.id === personId);
     if (!person) return null;
     
     const result: FamilyTreeNode = {
@@ -911,7 +944,7 @@ export const buildFamilyTreeForPerson = async (
     };
     
     // Simple mock relationships
-    mockPersons.forEach(p => {
+    localMockPersons.forEach(p => {
       if (p.parentId === personId) {
         result.children.push({
           person: p,

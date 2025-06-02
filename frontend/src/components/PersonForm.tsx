@@ -1,5 +1,14 @@
 import React, { useState, useEffect, ChangeEvent, FormEvent } from 'react';
-import { Person, PrivacyLevel } from '../types';
+import { Person } from '../types';
+
+// Define the PrivacyLevel enum directly in this file to avoid import issues
+enum PrivacyLevel {
+  INHERIT = "inherit",
+  PRIVATE = "private",
+  PUBLIC = "public",
+  CONNECTIONS = "connections",
+  RESEARCHERS = "researchers"
+}
 
 interface PersonFormProps {
   person?: Person;

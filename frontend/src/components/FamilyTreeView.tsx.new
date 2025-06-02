@@ -1,0 +1,343 @@
+import React, { useEffect, useState, useRef } from 'react';
+import { Person } from '../types';
+import PersonCard from './PersonCard';
+import TreeConnector from './TreeConnector';
+import { SkipBack, Play, SkipForward, Pause } from 'lucide-react';
+
+interface Position {
+  x: number;
+  y: number;
+}
+
+interface PersonPosition {
+  id: string;
+  position: Position;
+}
+
+interface Connection {
+  source: string;
+  target: string;
+  type: string;
+}
+
+interface FamilyTreeViewProps {
+  persons: Person[];
+  setPersons: React.Dispatch<React.SetStateAction<Person[]>>;
+  onAddPerson: (parentId?: string) => void;
+  onEditPerson: (personId: string) => void;
+  onSelectPerson: (personId: string) => void;
+  selectedPersonId: string | null;
+}
+
+const FamilyTreeView: React.FC<FamilyTreeViewProps> = ({
+  persons,
+  setPersons,
+  onAddPerson,
+  onEditPerson,
+  onSelectPerson,
+  selectedPersonId,
+}) => {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [scale, setScale] = useState(1);
+  const treeContainerRef = useRef<HTMLDivElement>(null);
+  const [viewPosition, setViewPosition] = useState({ x: 0, y: 0 });
+  const [isDraggingView, setIsDraggingView] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  
+  // State for positions of each person
+  const [positions, setPositions] = useState<Record<string, Position>>({});
+  
+  // State for connections between people
+  const [connections, setConnections] = useState<Connection[]>([]);
+  
+  // State for connection creation mode
+  const [connectionMode, setConnectionMode] = useState(false);
+  const [connectionSource, setConnectionSource] = useState<string | null>(null);
+
+  // Initialize positions if they don't exist
+  useEffect(() => {
+    const initialPositions: Record<string, Position> = { ...positions };
+    let updated = false;
+    
+    persons.forEach((person, index) => {
+      if (!initialPositions[person.id]) {
+        // Position in a grid if no position exists
+        initialPositions[person.id] = {
+          x: 100 + (index % 4) * 150,
+          y: 100 + Math.floor(index / 4) * 100
+        };
+        updated = true;
+      }
+    });
+    
+    if (updated) {
+      setPositions(initialPositions);
+    }
+  }, [persons]);
+
+  // Handle zoom
+  const handleZoom = (delta: number) => {
+    setScale(prevScale => {
+      const newScale = prevScale + delta * 0.1;
+      return Math.max(0.5, Math.min(2, newScale));
+    });
+  };
+
+  // Handle drag for the entire view
+  const handleViewMouseDown = (e: React.MouseEvent) => {
+    // Only start dragging if the click is directly on the background
+    if (e.target === e.currentTarget) {
+      setIsDraggingView(true);
+      setDragStart({ x: e.clientX - viewPosition.x, y: e.clientY - viewPosition.y });
+    }
+  };
+
+  const handleViewMouseMove = (e: React.MouseEvent) => {
+    if (isDraggingView) {
+      setViewPosition({
+        x: e.clientX - dragStart.x,
+        y: e.clientY - dragStart.y,
+      });
+    }
+  };
+
+  const handleViewMouseUp = () => {
+    setIsDraggingView(false);
+  };
+
+  // Handle position change for a person
+  const handlePositionChange = (id: string, position: Position) => {
+    setPositions(prev => ({
+      ...prev,
+      [id]: position
+    }));
+  };
+
+  // Handle starting a connection from a person
+  const handleStartConnection = (personId: string) => {
+    setConnectionMode(true);
+    setConnectionSource(personId);
+  };
+
+  // Handle completing a connection
+  const handleCompleteConnection = (targetId: string) => {
+    if (connectionMode && connectionSource && connectionSource !== targetId) {
+      // Create a new connection
+      setConnections(prev => [
+        ...prev,
+        {
+          source: connectionSource,
+          target: targetId,
+          type: 'generic' // Can be refined with a type selector UI
+        }
+      ]);
+      
+      // Exit connection mode
+      setConnectionMode(false);
+      setConnectionSource(null);
+    }
+  };
+
+  // Handle auto play
+  useEffect(() => {
+    if (!isPlaying) return;
+    
+    const interval = setInterval(() => {
+      // Implementation for auto-play animation
+      if (selectedPersonId) {
+        const currentIndex = persons.findIndex(p => p.id === selectedPersonId);
+        const nextIndex = (currentIndex + 1) % persons.length;
+        onSelectPerson(persons[nextIndex].id);
+      } else if (persons.length > 0) {
+        onSelectPerson(persons[0].id);
+      }
+    }, 3000);
+    
+    return () => clearInterval(interval);
+  }, [isPlaying, selectedPersonId, persons, onSelectPerson]);
+
+  // Render connections between people
+  const renderConnections = () => {
+    return connections.map((connection, index) => {
+      const sourcePos = positions[connection.source];
+      const targetPos = positions[connection.target];
+      
+      if (!sourcePos || !targetPos) return null;
+      
+      // Calculate the line between the two points
+      const dx = targetPos.x - sourcePos.x;
+      const dy = targetPos.y - sourcePos.y;
+      const length = Math.sqrt(dx * dx + dy * dy);
+      const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+      
+      return (
+        <div 
+          key={`connection-${index}`}
+          style={{
+            position: 'absolute',
+            left: sourcePos.x + 64, // half card width
+            top: sourcePos.y + 8, // half card height
+            width: length,
+            height: 2,
+            backgroundColor: '#ccc',
+            transform: `rotate(${angle}deg)`,
+            transformOrigin: '0 0'
+          }}
+        />
+      );
+    });
+  };
+
+  return (
+    <div 
+      className="relative w-full h-full overflow-hidden"
+      onWheel={(e) => handleZoom(e.deltaY > 0 ? -1 : 1)}
+      onMouseDown={handleViewMouseDown}
+      onMouseMove={handleViewMouseMove}
+      onMouseUp={handleViewMouseUp}
+      onMouseLeave={handleViewMouseUp}
+    >
+      {/* Connection mode indicator */}
+      {connectionMode && (
+        <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-yellow-100 px-4 py-2 rounded-md shadow-md z-50">
+          <p className="text-sm">Select a person to connect to</p>
+          <button 
+            className="mt-1 text-xs text-blue-600 hover:underline"
+            onClick={() => {
+              setConnectionMode(false);
+              setConnectionSource(null);
+            }}
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+      
+      {/* Tree container with transform for zoom and pan */}
+      <div 
+        ref={treeContainerRef}
+        className="absolute inset-0"
+        style={{
+          transform: `translate(${viewPosition.x}px, ${viewPosition.y}px) scale(${scale})`,
+          transformOrigin: 'center',
+          transition: isDraggingView ? 'none' : 'transform 0.3s ease',
+        }}
+      >
+        {/* Render connections */}
+        {renderConnections()}
+        
+        {/* Render person cards */}
+        {persons.map(person => (
+          <PersonCard
+            key={person.id}
+            person={person}
+            position={positions[person.id]}
+            onPositionChange={handlePositionChange}
+            onAddChild={() => onAddPerson(person.id)}
+            onEdit={() => onEditPerson(person.id)}
+            onSelect={() => {
+              if (connectionMode) {
+                handleCompleteConnection(person.id);
+              } else {
+                onSelectPerson(person.id);
+              }
+            }}
+            selected={selectedPersonId === person.id}
+            onStartConnection={handleStartConnection}
+          />
+        ))}
+      </div>
+      
+      {/* Navigation controls */}
+      <div className="absolute left-1/2 bottom-10 transform -translate-x-1/2 flex items-center space-x-4 bg-white bg-opacity-70 p-2 rounded-full shadow-md z-50">
+        <button 
+          className="p-2 rounded-full hover:bg-gray-200 transition-colors"
+          onClick={() => {
+            if (selectedPersonId) {
+              const currentIndex = persons.findIndex(p => p.id === selectedPersonId);
+              if (currentIndex > 0) {
+                onSelectPerson(persons[currentIndex - 1].id);
+              }
+            }
+          }}
+        >
+          <SkipBack size={24} />
+        </button>
+        
+        <button 
+          className="p-2 rounded-full hover:bg-gray-200 transition-colors"
+          onClick={() => setIsPlaying(!isPlaying)}
+        >
+          {isPlaying ? <Pause size={24} /> : <Play size={24} />}
+        </button>
+        
+        <button 
+          className="p-2 rounded-full hover:bg-gray-200 transition-colors"
+          onClick={() => {
+            if (selectedPersonId) {
+              const currentIndex = persons.findIndex(p => p.id === selectedPersonId);
+              if (currentIndex < persons.length - 1) {
+                onSelectPerson(persons[currentIndex + 1].id);
+              }
+            } else if (persons.length > 0) {
+              onSelectPerson(persons[0].id);
+            }
+          }}
+        >
+          <SkipForward size={24} />
+        </button>
+      </div>
+      
+      {/* Zoom controls */}
+      <div className="absolute right-10 bottom-10 flex flex-col bg-white bg-opacity-70 p-2 rounded-lg shadow-md z-50">
+        <button 
+          className="p-1 hover:bg-gray-200 transition-colors"
+          onClick={() => handleZoom(1)}
+        >
+          +
+        </button>
+        <div className="h-0.5 w-full bg-gray-300 my-1"></div>
+        <button 
+          className="p-1 hover:bg-gray-200 transition-colors"
+          onClick={() => handleZoom(-1)}
+        >
+          -
+        </button>
+      </div>
+
+      {/* Add a button to add a new person on the canvas */}
+      <div className="absolute left-10 top-10 z-50">
+        <button
+          className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md shadow-md transition-colors"
+          onClick={() => onAddPerson()}
+        >
+          Add Person
+        </button>
+      </div>
+      
+      {/* Add a button to create a new connection */}
+      <div className="absolute left-10 top-20 z-50">
+        <button
+          className={`${
+            connectionMode ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-blue-500 hover:bg-blue-600'
+          } text-white px-4 py-2 rounded-md shadow-md transition-colors`}
+          onClick={() => {
+            if (!connectionMode) {
+              // Can't start connection mode directly from button
+              // User needs to click on a person's connection button
+              alert('Click the connection button (↗️) on a person card to start a connection');
+            } else {
+              // Cancel connection mode
+              setConnectionMode(false);
+              setConnectionSource(null);
+            }
+          }}
+        >
+          {connectionMode ? 'Cancel Connection' : 'Connect People'}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+export default FamilyTreeView;

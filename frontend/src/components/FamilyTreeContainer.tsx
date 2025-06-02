@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Person, FamilyTreeState } from '../types';
-import FamilyTreeView from './FamilyTreeView';
+import FamilyTreeView from './FamilyTreeViewExport';
 import PersonForm from './PersonForm';
 import Header from './Header';
 import InfoPanel from './InfoPanel';

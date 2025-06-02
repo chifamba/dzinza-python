@@ -1,4 +1,34 @@
-import { Person, PrivacyLevel, Relationship, RelationshipType } from '../types';
+import { Person, Relationship } from '../types';
+
+// Define locally to avoid import issues
+enum PrivacyLevel {
+  INHERIT = "inherit",
+  PRIVATE = "private",
+  PUBLIC = "public",
+  CONNECTIONS = "connections",
+  RESEARCHERS = "researchers"
+}
+
+// Define locally to avoid import issues
+enum RelationshipType {
+  BIOLOGICAL_PARENT = "biological_parent",
+  ADOPTIVE_PARENT = "adoptive_parent",
+  STEP_PARENT = "step_parent",
+  FOSTER_PARENT = "foster_parent",
+  GUARDIAN = "guardian",
+  SPOUSE_CURRENT = "spouse_current",
+  SPOUSE_FORMER = "spouse_former",
+  PARTNER = "partner",
+  BIOLOGICAL_CHILD = "biological_child",
+  ADOPTIVE_CHILD = "adoptive_child",
+  STEP_CHILD = "step_child",
+  FOSTER_CHILD = "foster_child",
+  SIBLING_FULL = "sibling_full",
+  SIBLING_HALF = "sibling_half",
+  SIBLING_STEP = "sibling_step",
+  SIBLING_ADOPTIVE = "sibling_adoptive",
+  OTHER = "other"
+}
 
 export const mockRelationships: Relationship[] = [
   {
