@@ -23,14 +23,38 @@ const FamilyTreeView: React.FC<FamilyTreeViewProps> = (props) => {
   const [cardDragStart, setCardDragStart] = useState({ x: 0, y: 0 });
   const [cardPositions, setCardPositions] = useState<Record<string, { x: number, y: number }>>({});
 
-  // Initialize card positions from props.persons or use default positions
+  // Initialize card positions from localStorage first, then from props.persons, or use default positions (0,0)
   useEffect(() => {
-    const initialPositions: Record<string, { x: number, y: number }> = {};
+    // Try to load saved positions from localStorage
+    const savedPositions = localStorage.getItem('familyTreeCardPositions');
+    let initialPositions: Record<string, { x: number, y: number }> = {};
+    
+    if (savedPositions) {
+      try {
+        const parsedPositions = JSON.parse(savedPositions);
+        initialPositions = parsedPositions;
+      } catch (error) {
+        console.error('Error parsing saved card positions:', error);
+      }
+    }
+    
+    // Only initialize positions for persons that don't already have them in state
     props.persons.forEach(person => {
-      // Use existing position data if available, otherwise use default position (0,0)
-      initialPositions[person.id] = person.position || { x: 0, y: 0 };
+      if (!initialPositions[person.id]) {
+        initialPositions[person.id] = person.position || { x: 0, y: 0 };
+      }
     });
-    setCardPositions(initialPositions);
+    
+    // Only update state if we actually have new positions to set
+    setCardPositions(prevPositions => {
+      const hasChanges = props.persons.some(person => 
+        !prevPositions[person.id] || 
+        (prevPositions[person.id].x !== initialPositions[person.id].x ||
+         prevPositions[person.id].y !== initialPositions[person.id].y)
+      );
+      
+      return hasChanges ? { ...prevPositions, ...initialPositions } : prevPositions;
+    });
   }, [props.persons]);
 
   // Handle individual card drag
@@ -62,22 +86,38 @@ const FamilyTreeView: React.FC<FamilyTreeViewProps> = (props) => {
     e.stopPropagation(); // Prevent tree panning when dragging a card
     
     if (draggedPersonId) {
-      // Update the person's position in the state
-      props.setPersons(currentPersons => {
-        return currentPersons.map(person => {
-          if (person.id === draggedPersonId) {
-            return {
-              ...person,
-              position: cardPositions[draggedPersonId]
-            };
-          }
-          return person;
-        });
-      });
-      
+      // Just end the drag - don't update props.persons here
+      // We'll update props.persons only when saving positions
       setDraggedPersonId(null);
     }
   };
+  
+  // Save positions to localStorage
+  const savePositions = () => {
+    try {
+      localStorage.setItem('familyTreeCardPositions', JSON.stringify(cardPositions));
+      
+      // Also update the persons props to ensure consistency
+      props.setPersons(currentPersons => {
+        return currentPersons.map(person => ({
+          ...person,
+          position: cardPositions[person.id] || { x: 0, y: 0 }
+        }));
+      });
+      
+      // Show a temporary success message
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (error) {
+      console.error('Error saving card positions:', error);
+      setSaveError(true);
+      setTimeout(() => setSaveError(false), 3000);
+    }
+  };
+  
+  // State for save feedback
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveError, setSaveError] = useState(false);
 
   // Group persons by generation (parent-child relationships)
   const getGenerationLevel = (person: Person, level = 0, visited = new Set<string>()): number => {
@@ -139,6 +179,30 @@ const FamilyTreeView: React.FC<FamilyTreeViewProps> = (props) => {
     setScale(1);
     setPosition({ x: 0, y: 0 });
   };
+  
+  // Reset all card positions
+  const resetPositions = () => {
+    if (window.confirm('Are you sure you want to reset all card positions? This cannot be undone.')) {
+      const defaultPositions: Record<string, { x: number, y: number }> = {};
+      props.persons.forEach(person => {
+        defaultPositions[person.id] = { x: 0, y: 0 };
+      });
+      
+      // Update state
+      setCardPositions(defaultPositions);
+      
+      // Update persons
+      props.setPersons(currentPersons => {
+        return currentPersons.map(person => ({
+          ...person,
+          position: { x: 0, y: 0 }
+        }));
+      });
+      
+      // Clear localStorage
+      localStorage.removeItem('familyTreeCardPositions');
+    }
+  };
 
   useEffect(() => {
     const handleMouseUp = () => {
@@ -166,31 +230,69 @@ const FamilyTreeView: React.FC<FamilyTreeViewProps> = (props) => {
   return (
     <div 
       className="family-tree-view w-full h-full overflow-hidden relative bg-gradient-to-br from-gray-50 to-gray-100"
-      style={{ minHeight: "600px" }}
+      style={{ 
+        minHeight: "600px",
+        "--tw-animate-duration": "3s" // for fade-out animation
+      } as React.CSSProperties}
     >
-      {/* Zoom controls */}
-      <div className="absolute top-4 right-4 z-10 bg-white rounded-lg shadow-md p-2 flex flex-col">
-        <button 
-          className="mb-1 px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
-          onClick={() => handleZoom(0.1)}
-          title="Zoom in"
-        >
-          <span className="text-lg">+</span>
-        </button>
-        <button 
-          className="mb-1 px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
-          onClick={() => handleZoom(-0.1)}
-          title="Zoom out"
-        >
-          <span className="text-lg">−</span>
-        </button>
-        <button 
-          className="px-2 py-1 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 transition-colors text-xs"
-          onClick={resetZoom}
-          title="Reset view"
-        >
-          Reset
-        </button>
+      {/* Zoom and position controls in the top right */}
+      <div className="absolute top-4 right-4 z-10 bg-white rounded-lg shadow-md p-3 flex flex-col gap-3">
+        {/* Zoom controls */}
+        <div className="flex flex-col">
+          <div className="text-xs text-gray-600 mb-1 font-medium">Zoom</div>
+          <div className="flex gap-1 mb-2">
+            <button 
+              className="px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+              onClick={() => handleZoom(0.1)}
+              title="Zoom in"
+            >
+              <span className="text-lg">+</span>
+            </button>
+            <button 
+              className="px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+              onClick={() => handleZoom(-0.1)}
+              title="Zoom out"
+            >
+              <span className="text-lg">−</span>
+            </button>
+            <button 
+              className="px-2 py-1 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 transition-colors text-xs"
+              onClick={resetZoom}
+              title="Reset view"
+            >
+              Reset
+            </button>
+          </div>
+        </div>
+        
+        {/* Positions controls */}
+        <div className="flex flex-col border-t pt-3">
+          <div className="text-xs text-gray-600 mb-1 font-medium">Card Positions</div>
+          <button 
+            className="mb-1 px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors flex items-center"
+            onClick={savePositions}
+            title="Save card positions"
+          >
+            <span className="mr-1">💾</span> Save Positions
+          </button>
+          <button 
+            className="px-3 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors flex items-center"
+            onClick={resetPositions}
+            title="Reset all card positions"
+          >
+            <span className="mr-1">↺</span> Reset Positions
+          </button>
+          {saveSuccess && (
+            <div className="mt-2 px-3 py-2 bg-green-100 text-green-800 rounded text-sm animate-fade-out">
+              Positions saved successfully!
+            </div>
+          )}
+          {saveError && (
+            <div className="mt-2 px-3 py-2 bg-red-100 text-red-800 rounded text-sm animate-fade-out">
+              Error saving positions!
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Information panel */}
@@ -198,6 +300,7 @@ const FamilyTreeView: React.FC<FamilyTreeViewProps> = (props) => {
         <p>Click and drag to pan</p>
         <p>Use + and - buttons to zoom</p>
         <p>Drag individual cards to reposition them</p>
+        <p>Click "Save Positions" to persist card positions</p>
       </div>
 
       {/* Tree container with pan & zoom */}
