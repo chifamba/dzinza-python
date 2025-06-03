@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Person, FamilyTreeState } from '../types';
-import FamilyTreeView from './FamilyTreeViewExport';
+import { Person, FamilyTreeState } from '../types'; // Assuming FamilyTreeState is still relevant
+import FamilyTreeView, { ZoomControlFunctions, LayoutControlFunctions } from './FamilyTreeViewExport'; // Updated import for new interfaces
 import PersonForm from './PersonForm';
 import Header from './Header';
 import InfoPanel from './InfoPanel';
@@ -12,16 +12,30 @@ const FamilyTreeContainer: React.FC = () => {
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
   
   // For now, use a default tree ID. This will be replaced when proper tree management is implemented
-  const currentTreeId = 'default-tree-id';
+  // For the purpose of integrating layout/zoom controls, let's use the same defaults as the deleted container
+  const [treeId] = useState<string>("tree123"); // Using treeId from the deleted container
+  const [userId] = useState<string>("user123"); // Using userId from the deleted container
   
   const [showForm, setShowForm] = useState(false);
   const [editingPerson, setEditingPerson] = useState<Person | undefined>(undefined);
+
+  // State for controls passed up from FamilyTreeView
+  const [activeZoomControls, setActiveZoomControls] = useState<ZoomControlFunctions | null>(null);
+  const [activeLayoutControls, setActiveLayoutControls] = useState<LayoutControlFunctions | null>(null);
+
+  // Callbacks to receive controls from FamilyTreeView
+  const handleZoomControlsAvailable = useCallback((controls: ZoomControlFunctions) => {
+    setActiveZoomControls(controls);
+  }, []);
+
+  const handleLayoutControlsAvailable = useCallback((controls: LayoutControlFunctions) => {
+    setActiveLayoutControls(controls);
+  }, []);
   
-  // Fetch initial data
+  // Fetch initial data (persons) - this is existing logic
   useEffect(() => {
     const loadData = async () => {
-      const fetchedPersons = await getFamilyTree();
-      // Sort by displayOrder, handling undefined values
+      const fetchedPersons = await getFamilyTree(); // This service call might need treeId
       const sortedPersons = fetchedPersons.sort((a, b) => {
         const orderA = a.displayOrder === undefined ? Infinity : a.displayOrder;
         const orderB = b.displayOrder === undefined ? Infinity : b.displayOrder;
@@ -29,32 +43,24 @@ const FamilyTreeContainer: React.FC = () => {
       });
       setPersons(sortedPersons);
     };
-    
     loadData();
-  }, []);
+  }, []); // Consider adding treeId to dependency array if getFamilyTree uses it
 
   const handleSetPersons = useCallback((newPersons: Person[] | ((prevPersons: Person[]) => Person[])) => {
     setPersons(prevPersons => {
       const updatedPersons = typeof newPersons === 'function' ? newPersons(prevPersons) : newPersons;
-      // Call the function to update backend here
       handleUpdatePersonOrder(updatedPersons);
       return updatedPersons;
     });
   }, []);
 
   const handleUpdatePersonOrder = async (orderedPersons: Person[]) => {
-    const personsWithOrder = orderedPersons.map((person, index) => ({
-      ...person,
-      displayOrder: index,
-    }));
+    const personsWithOrder = orderedPersons.map((person, index) => ({ ...person, displayOrder: index }));
     try {
-      await updatePersonOrder(personsWithOrder);
-      // Optimistically updated the frontend, backend call confirms or could trigger rollback
-      setPersons(personsWithOrder); // Ensure local state reflects the new order immediately
+      await updatePersonOrder(personsWithOrder); // This service call might need treeId
+      setPersons(personsWithOrder);
     } catch (error) {
       console.error("Failed to update person order:", error);
-      // Optionally: revert to previous order or show error to user
-      // For now, we'll keep the optimistic update.
     }
   };
   
@@ -149,7 +155,11 @@ const FamilyTreeContainer: React.FC = () => {
   
   return (
     <div className="flex flex-col h-screen">
-      <Header onAddPerson={() => handleAddPerson()} />
+      <Header
+        onAddPerson={() => handleAddPerson()}
+        zoomControls={activeZoomControls || undefined}
+        layoutControls={activeLayoutControls || undefined}
+      />
       
       <main className="flex-1 flex overflow-hidden">
         <LeftNavPanel
@@ -161,14 +171,22 @@ const FamilyTreeContainer: React.FC = () => {
         
         <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
           <div className="md:w-3/4 h-full overflow-hidden relative">
+            {/*
+              Assuming FamilyTreeViewExport is the component that should receive the new props.
+              If FamilyTreeView.tsx is the one actually used/rendered via FamilyTreeViewExport,
+              then the props will flow correctly.
+            */}
             <FamilyTreeView 
-              persons={persons}
-              setPersons={handleSetPersons} // Pass setPersons for dnd-kit updates
-              onAddPerson={handleAddPerson}
-              onEditPerson={handleEditPerson}
-              onSelectPerson={handleSelectPerson}
-              selectedPersonId={selectedPersonId}
-              treeId={currentTreeId}
+              persons={persons} // Existing prop
+              setPersons={handleSetPersons} // Existing prop
+              onAddPerson={handleAddPerson} // Existing prop
+              onEditPerson={handleEditPerson} // Existing prop
+              onSelectPerson={handleSelectPerson} // Existing prop
+              selectedPersonId={selectedPersonId} // Existing prop
+              treeId={treeId} // Use treeId state
+              userId={userId} // Add userId prop
+              onZoomControlsAvailable={handleZoomControlsAvailable} // New prop
+              onLayoutControlsAvailable={handleLayoutControlsAvailable} // New prop
             />
           </div>
           
