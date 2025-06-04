@@ -1,5 +1,19 @@
+// filepath: /Users/robert/projects/python/dzinza-python/frontend/src/components/FamilyTreeViewExport.tsx
 import React, { useState, useRef, useEffect } from 'react';
-import { Person } from '../types';
+import { Person, Relationship, RelationshipType } from '../types';
+import { getRelationships } from '../api/familyTreeService';
+
+// Export interfaces that FamilyTreeContainer expects
+export interface ZoomControlFunctions {
+  zoomIn: () => void;
+  zoomOut: () => void;
+  resetZoom: () => void;
+}
+
+export interface LayoutControlFunctions {
+  save: () => Promise<void>;
+  reset: () => Promise<void>;
+}
 
 // Create a new component that wraps the functionality needed by FamilyTreeContainer
 interface FamilyTreeViewProps {
@@ -22,6 +36,10 @@ const FamilyTreeView: React.FC<FamilyTreeViewProps> = (props) => {
   const [draggedPersonId, setDraggedPersonId] = useState<string | null>(null);
   const [cardDragStart, setCardDragStart] = useState({ x: 0, y: 0 });
   const [cardPositions, setCardPositions] = useState<Record<string, { x: number, y: number }>>({});
+  
+  // State for relationships data
+  const [relationships, setRelationships] = useState<Relationship[]>([]);
+  const [connectionsVisible, setConnectionsVisible] = useState(true);
 
   // Initialize card positions from localStorage first, then from props.persons, or use default positions (0,0)
   useEffect(() => {
@@ -56,6 +74,23 @@ const FamilyTreeView: React.FC<FamilyTreeViewProps> = (props) => {
       return hasChanges ? { ...prevPositions, ...initialPositions } : prevPositions;
     });
   }, [props.persons]);
+
+  // Fetch relationships data
+  useEffect(() => {
+    const fetchRelationships = async () => {
+      try {
+        // In a real implementation, you would fetch relationships from the API
+        // For now, we'll use mock data or assume relationships are passed as props
+        const allRelationships = await getRelationships({});
+        setRelationships(allRelationships);
+      } catch (error) {
+        console.error('Error fetching relationships:', error);
+        setRelationships([]);
+      }
+    };
+
+    fetchRelationships();
+  }, []);
 
   // Handle individual card drag
   const handleCardDragStart = (e: React.MouseEvent, personId: string) => {
@@ -119,31 +154,145 @@ const FamilyTreeView: React.FC<FamilyTreeViewProps> = (props) => {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState(false);
 
-  // Group persons by generation (parent-child relationships)
-  const getGenerationLevel = (person: Person, level = 0, visited = new Set<string>()): number => {
-    if (visited.has(person.id)) return level;
-    visited.add(person.id);
+  // Connection rendering functions
+  const getPersonPosition = (personId: string) => {
+    const person = props.persons.find(p => p.id === personId);
+    if (!person) return null;
     
-    if (!person.parentId) return 0;
+    const generationIndex = getGenerationLevel(person);
+    const generationPersons = generations.find(g => g.level === generationIndex)?.persons || [];
+    const positionInGeneration = generationPersons.findIndex(p => p.id === personId);
     
-    const parent = props.persons.find(p => p.id === person.parentId);
-    if (!parent) return level;
+    const cardPosition = cardPositions[personId] || { x: 0, y: 0 };
+    const baseX = positionInGeneration * 320; // 64px gap + 256px card width
+    const baseY = generationIndex * 448; // 112px gap + 336px for card + connectors
     
-    return getGenerationLevel(parent, level + 1, visited);
+    return {
+      x: baseX + cardPosition.x,
+      y: baseY + cardPosition.y,
+      generationIndex,
+      positionInGeneration
+    };
   };
 
-  const generationMap: Record<number, Person[]> = {};
-  props.persons.forEach(person => {
-    const level = getGenerationLevel(person);
-    if (!generationMap[level]) {
-      generationMap[level] = [];
+  const getSpouseRelationships = () => {
+    return relationships.filter(rel => 
+      rel.relationshipType === RelationshipType.SPOUSE_CURRENT ||
+      rel.relationshipType === RelationshipType.SPOUSE_FORMER ||
+      rel.relationshipType === RelationshipType.PARTNER
+    );
+  };
+
+  const getSiblingRelationships = () => {
+    return relationships.filter(rel => 
+      rel.relationshipType === RelationshipType.SIBLING_FULL ||
+      rel.relationshipType === RelationshipType.SIBLING_HALF ||
+      rel.relationshipType === RelationshipType.SIBLING_STEP ||
+      rel.relationshipType === RelationshipType.SIBLING_ADOPTIVE
+    );
+  };
+
+  const getParentChildPairs = () => {
+    const pairs: Array<{ parentId: string; childId: string }> = [];
+    
+    // From legacy parentId field
+    props.persons.forEach(person => {
+      if (person.parentId) {
+        pairs.push({ parentId: person.parentId, childId: person.id });
+      }
+    });
+    
+    // From relationships data
+    relationships.forEach(rel => {
+      if (rel.relationshipType === RelationshipType.BIOLOGICAL_PARENT ||
+          rel.relationshipType === RelationshipType.ADOPTIVE_PARENT ||
+          rel.relationshipType === RelationshipType.STEP_PARENT ||
+          rel.relationshipType === RelationshipType.FOSTER_PARENT ||
+          rel.relationshipType === RelationshipType.GUARDIAN) {
+        pairs.push({ parentId: rel.person1Id, childId: rel.person2Id });
+      } else if (rel.relationshipType === RelationshipType.BIOLOGICAL_CHILD ||
+                 rel.relationshipType === RelationshipType.ADOPTIVE_CHILD ||
+                 rel.relationshipType === RelationshipType.STEP_CHILD ||
+                 rel.relationshipType === RelationshipType.FOSTER_CHILD) {
+        pairs.push({ parentId: rel.person2Id, childId: rel.person1Id });
+      }
+    });
+    
+    return pairs;
+  };
+
+  // Helper function to calculate age from birthDate
+  const calculateAge = (birthDate: string | undefined): number => {
+    if (!birthDate) return 0;
+    
+    try {
+      const birth = new Date(birthDate);
+      const today = new Date();
+      let age = today.getFullYear() - birth.getFullYear();
+      const monthDiff = today.getMonth() - birth.getMonth();
+      
+      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+        age--;
+      }
+      
+      return age;
+    } catch {
+      return 0;
     }
-    generationMap[level].push(person);
+  };
+
+  // Group persons by age-based generations
+  const getAgeGenerationLevel = (person: Person): number => {
+    const age = calculateAge(person.birthDate);
+    
+    // Define age ranges for generations (older people at top = lower generation number)
+    if (age >= 80) return 0;      // Greatest generation
+    if (age >= 60) return 1;      // Silent generation / early boomers
+    if (age >= 40) return 2;      // Generation X / late boomers
+    if (age >= 20) return 3;      // Millennials / Generation Y
+    if (age >= 0) return 4;       // Generation Z / Alpha
+    
+    return 4; // Default to youngest generation
+  };
+
+  const ageGenerationMap: Record<number, Person[]> = {};
+  props.persons.forEach(person => {
+    const level = getAgeGenerationLevel(person);
+    if (!ageGenerationMap[level]) {
+      ageGenerationMap[level] = [];
+    }
+    ageGenerationMap[level].push(person);
   });
 
-  const generations = Object.entries(generationMap)
+  // Sort persons within each generation by age (oldest first)
+  Object.values(ageGenerationMap).forEach(generationPersons => {
+    generationPersons.sort((a, b) => {
+      const ageA = calculateAge(a.birthDate);
+      const ageB = calculateAge(b.birthDate);
+      return ageB - ageA; // Descending order (oldest first)
+    });
+  });
+
+  const generations = Object.entries(ageGenerationMap)
     .sort(([levelA], [levelB]) => Number(levelA) - Number(levelB))
     .map(([level, persons]) => ({ level: Number(level), persons }));
+
+  // Helper function to get generation label based on age level
+  const getGenerationLabel = (level: number): string => {
+    switch (level) {
+      case 0: return "Greatest Generation (80+)";
+      case 1: return "Silent Generation (60-79)";
+      case 2: return "Baby Boomers/Gen X (40-59)";
+      case 3: return "Millennials (20-39)";
+      case 4: return "Gen Z/Alpha (0-19)";
+      default: return `Generation ${level + 1}`;
+    }
+  };
+
+  // Updated function for backward compatibility with connection rendering
+  const getGenerationLevel = (person: Person): number => {
+    return getAgeGenerationLevel(person);
+  };
 
   // Handle zoom
   const handleZoom = (delta: number) => {
@@ -227,6 +376,166 @@ const FamilyTreeView: React.FC<FamilyTreeViewProps> = (props) => {
     };
   }, [isDragging, dragStart, draggedPersonId]);
 
+  // Render marriage connection lines
+  const renderMarriageConnections = () => {
+    if (!connectionsVisible) return null;
+    
+    const spouseRelationships = getSpouseRelationships();
+    
+    return spouseRelationships.map(relationship => {
+      const person1Pos = getPersonPosition(relationship.person1Id);
+      const person2Pos = getPersonPosition(relationship.person2Id);
+      
+      if (!person1Pos || !person2Pos || person1Pos.generationIndex !== person2Pos.generationIndex) {
+        return null;
+      }
+      
+      // Calculate positions for marriage line above the cards
+      const leftX = Math.min(person1Pos.x, person2Pos.x) + 128; // Center of left card
+      const rightX = Math.max(person1Pos.x, person2Pos.x) + 128; // Center of right card
+      const y = person1Pos.y - 20; // Above the cards
+      
+      return (
+        <g key={`marriage-${relationship.id}`}>
+          {/* Horizontal marriage line */}
+          <line
+            x1={leftX}
+            y1={y}
+            x2={rightX}
+            y2={y}
+            stroke="#e74c3c"
+            strokeWidth="3"
+            className="marriage-line"
+          />
+          {/* Marriage indicator circles */}
+          <circle cx={leftX} cy={y} r="4" fill="#e74c3c" />
+          <circle cx={rightX} cy={y} r="4" fill="#e74c3c" />
+          {/* Marriage symbol in the middle */}
+          <circle 
+            cx={(leftX + rightX) / 2} 
+            cy={y} 
+            r="6" 
+            fill="white" 
+            stroke="#e74c3c" 
+            strokeWidth="2"
+          />
+          <text
+            x={(leftX + rightX) / 2}
+            y={y + 2}
+            textAnchor="middle"
+            fontSize="8"
+            fill="#e74c3c"
+            fontWeight="bold"
+          >
+            ♥
+          </text>
+        </g>
+      );
+    });
+  };
+
+  // Render sibling connection lines
+  const renderSiblingConnections = () => {
+    if (!connectionsVisible) return null;
+    
+    const siblingRelationships = getSiblingRelationships();
+    
+    return siblingRelationships.map(relationship => {
+      const person1Pos = getPersonPosition(relationship.person1Id);
+      const person2Pos = getPersonPosition(relationship.person2Id);
+      
+      if (!person1Pos || !person2Pos || person1Pos.generationIndex !== person2Pos.generationIndex) {
+        return null;
+      }
+      
+      // Calculate positions for sibling line below the cards
+      const leftX = Math.min(person1Pos.x, person2Pos.x) + 128; // Center of left card
+      const rightX = Math.max(person1Pos.x, person2Pos.x) + 128; // Center of right card
+      const y = person1Pos.y + 160; // Below the cards
+      
+      return (
+        <g key={`sibling-${relationship.id}`}>
+          {/* Horizontal sibling line */}
+          <line
+            x1={leftX}
+            y1={y}
+            x2={rightX}
+            y2={y}
+            stroke="#3498db"
+            strokeWidth="2"
+            strokeDasharray="5,5"
+            className="sibling-line"
+          />
+          {/* Sibling indicator circles */}
+          <circle cx={leftX} cy={y} r="3" fill="#3498db" />
+          <circle cx={rightX} cy={y} r="3" fill="#3498db" />
+        </g>
+      );
+    });
+  };
+
+  // Render parent-child connection lines
+  const renderParentChildConnections = () => {
+    if (!connectionsVisible) return null;
+    
+    const parentChildPairs = getParentChildPairs();
+    
+    return parentChildPairs.map((pair, index) => {
+      const parentPos = getPersonPosition(pair.parentId);
+      const childPos = getPersonPosition(pair.childId);
+      
+      if (!parentPos || !childPos) return null;
+      
+      // Calculate connection points
+      const parentX = parentPos.x + 128; // Center of parent card
+      const parentY = parentPos.y + 160; // Bottom of parent card
+      const childX = childPos.x + 128; // Center of child card
+      const childY = childPos.y; // Top of child card
+      
+      // Calculate middle point for the connector
+      const midY = parentY + (childY - parentY) / 2;
+      
+      return (
+        <g key={`parent-child-${index}`}>
+          {/* Vertical line from parent */}
+          <line
+            x1={parentX}
+            y1={parentY}
+            x2={parentX}
+            y2={midY}
+            stroke="#2ecc71"
+            strokeWidth="2"
+            className="parent-child-line"
+          />
+          {/* Horizontal line */}
+          <line
+            x1={parentX}
+            y1={midY}
+            x2={childX}
+            y2={midY}
+            stroke="#2ecc71"
+            strokeWidth="2"
+            className="parent-child-line"
+          />
+          {/* Vertical line to child */}
+          <line
+            x1={childX}
+            y1={midY}
+            x2={childX}
+            y2={childY}
+            stroke="#2ecc71"
+            strokeWidth="2"
+            className="parent-child-line"
+          />
+          {/* Connection indicators */}
+          <circle cx={parentX} cy={parentY} r="3" fill="#2ecc71" />
+          <circle cx={childX} cy={childY} r="3" fill="#2ecc71" />
+          <circle cx={childX} cy={midY} r="2" fill="#2ecc71" />
+        </g>
+      );
+    });
+  };
+
   return (
     <div 
       className="family-tree-view w-full h-full overflow-hidden relative bg-gradient-to-br from-gray-50 to-gray-100"
@@ -235,8 +544,8 @@ const FamilyTreeView: React.FC<FamilyTreeViewProps> = (props) => {
         "--tw-animate-duration": "3s" // for fade-out animation
       } as React.CSSProperties}
     >
-      {/* Zoom and position controls in the top right */}
-      <div className="absolute top-4 right-4 z-10 bg-white rounded-lg shadow-md p-3 flex flex-col gap-3">
+      {/* Zoom and position controls in the top left */}
+      <div className="absolute top-4 left-4 z-10 bg-white rounded-lg shadow-md p-3 flex flex-col gap-3">
         {/* Zoom controls */}
         <div className="flex flex-col">
           <div className="text-xs text-gray-600 mb-1 font-medium">Zoom</div>
@@ -293,6 +602,23 @@ const FamilyTreeView: React.FC<FamilyTreeViewProps> = (props) => {
             </div>
           )}
         </div>
+
+        {/* Connection controls */}
+        <div className="flex flex-col border-t pt-3">
+          <div className="text-xs text-gray-600 mb-1 font-medium">Connections</div>
+          <button 
+            className={`px-3 py-2 rounded transition-colors flex items-center ${
+              connectionsVisible 
+                ? 'bg-blue-600 text-white hover:bg-blue-700' 
+                : 'bg-gray-200 text-gray-800 hover:bg-gray-300'
+            }`}
+            onClick={() => setConnectionsVisible(!connectionsVisible)}
+            title="Toggle family connections"
+          >
+            <span className="mr-1">{connectionsVisible ? '🔗' : '📎'}</span> 
+            {connectionsVisible ? 'Hide' : 'Show'} Connections
+          </button>
+        </div>
       </div>
 
       {/* Information panel */}
@@ -301,6 +627,7 @@ const FamilyTreeView: React.FC<FamilyTreeViewProps> = (props) => {
         <p>Use + and - buttons to zoom</p>
         <p>Drag individual cards to reposition them</p>
         <p>Click "Save Positions" to persist card positions</p>
+        <p>Toggle connections to show/hide family relationships</p>
       </div>
 
       {/* Tree container with pan & zoom */}
@@ -323,16 +650,31 @@ const FamilyTreeView: React.FC<FamilyTreeViewProps> = (props) => {
             padding: '60px'
           }}
         >
+          {/* SVG overlay for connection lines */}
+          <svg 
+            className="absolute top-0 left-0 pointer-events-none z-0"
+            style={{
+              width: '100%',
+              height: '100%',
+              minWidth: '2000px',
+              minHeight: '2000px'
+            }}
+          >
+            {renderMarriageConnections()}
+            {renderSiblingConnections()}
+            {renderParentChildConnections()}
+          </svg>
+
           {/* Render the family tree by generations */}
-          <div className="generations-container flex flex-col items-center space-y-28">
-            {generations.map((generation, genIndex) => (
+          <div className="generations-container flex flex-col items-center space-y-28 relative z-10">
+            {generations.map((generation) => (
               <div 
                 key={`gen-${generation.level}`} 
                 className="generation-row flex justify-center gap-16 relative"
               >
-                {/* Optional generation label */}
+                {/* Age-based generation label */}
                 <div className="absolute -top-8 left-0 text-xs text-gray-400 font-medium">
-                  Generation {generation.level + 1}
+                  {getGenerationLabel(generation.level)}
                 </div>
                 
                 {generation.persons.map((person) => {
@@ -403,7 +745,14 @@ const FamilyTreeView: React.FC<FamilyTreeViewProps> = (props) => {
                           
                           <div className="text-sm text-gray-600 flex-grow">
                             {person.birthDate && (
-                              <p className="mb-1">Birth: {person.birthDate}</p>
+                              <p className="mb-1">
+                                Birth: {person.birthDate}
+                                {person.isLiving && (
+                                  <span className="ml-2 text-blue-600 font-medium">
+                                    (Age {calculateAge(person.birthDate)})
+                                  </span>
+                                )}
+                              </p>
                             )}
                             {person.birthPlace && (
                               <p className="truncate mb-1">Place: {person.birthPlace}</p>
@@ -438,16 +787,6 @@ const FamilyTreeView: React.FC<FamilyTreeViewProps> = (props) => {
                           </button>
                         </div>
                       </div>
-                      
-                      {/* Connection line to children */}
-                      {genIndex < generations.length - 1 && 
-                        props.persons.some(p => p.parentId === person.id) && (
-                        <div className="connector-container flex flex-col items-center">
-                          <div className="connector-line w-0.5 h-10 bg-gray-300 mt-2"></div>
-                          <div className="connector-dot w-2 h-2 rounded-full bg-gray-300"></div>
-                          <div className="connector-line w-0.5 h-16 bg-gray-300"></div>
-                        </div>
-                      )}
                     </div>
                   );
                 })}

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Person, FamilyTreeState } from '../types'; // Assuming FamilyTreeState is still relevant
-import FamilyTreeView, { ZoomControlFunctions, LayoutControlFunctions } from './FamilyTreeViewExport'; // Updated import for new interfaces
+import { Person } from '../types';
+import FamilyTreeView from './FamilyTreeViewExport';
 import PersonForm from './PersonForm';
 import Header from './Header';
 import InfoPanel from './InfoPanel';
@@ -11,26 +11,8 @@ const FamilyTreeContainer: React.FC = () => {
   const [persons, setPersons] = useState<Person[]>([]);
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
   
-  // For now, use a default tree ID. This will be replaced when proper tree management is implemented
-  // For the purpose of integrating layout/zoom controls, let's use the same defaults as the deleted container
-  const [treeId] = useState<string>("tree123"); // Using treeId from the deleted container
-  const [userId] = useState<string>("user123"); // Using userId from the deleted container
-  
   const [showForm, setShowForm] = useState(false);
   const [editingPerson, setEditingPerson] = useState<Person | undefined>(undefined);
-
-  // State for controls passed up from FamilyTreeView
-  const [activeZoomControls, setActiveZoomControls] = useState<ZoomControlFunctions | null>(null);
-  const [activeLayoutControls, setActiveLayoutControls] = useState<LayoutControlFunctions | null>(null);
-
-  // Callbacks to receive controls from FamilyTreeView
-  const handleZoomControlsAvailable = useCallback((controls: ZoomControlFunctions) => {
-    setActiveZoomControls(controls);
-  }, []);
-
-  const handleLayoutControlsAvailable = useCallback((controls: LayoutControlFunctions) => {
-    setActiveLayoutControls(controls);
-  }, []);
   
   // Fetch initial data (persons) - this is existing logic
   useEffect(() => {
@@ -157,8 +139,6 @@ const FamilyTreeContainer: React.FC = () => {
     <div className="flex flex-col h-screen">
       <Header
         onAddPerson={() => handleAddPerson()}
-        zoomControls={activeZoomControls || undefined}
-        layoutControls={activeLayoutControls || undefined}
       />
       
       <main className="flex-1 flex overflow-hidden">
@@ -177,16 +157,12 @@ const FamilyTreeContainer: React.FC = () => {
               then the props will flow correctly.
             */}
             <FamilyTreeView 
-              persons={persons} // Existing prop
-              setPersons={handleSetPersons} // Existing prop
-              onAddPerson={handleAddPerson} // Existing prop
-              onEditPerson={handleEditPerson} // Existing prop
-              onSelectPerson={handleSelectPerson} // Existing prop
-              selectedPersonId={selectedPersonId} // Existing prop
-              treeId={treeId} // Use treeId state
-              userId={userId} // Add userId prop
-              onZoomControlsAvailable={handleZoomControlsAvailable} // New prop
-              onLayoutControlsAvailable={handleLayoutControlsAvailable} // New prop
+              persons={persons}
+              setPersons={handleSetPersons}
+              onAddPerson={handleAddPerson}
+              onEditPerson={handleEditPerson}
+              onSelectPerson={handleSelectPerson}
+              selectedPersonId={selectedPersonId}
             />
           </div>
           
