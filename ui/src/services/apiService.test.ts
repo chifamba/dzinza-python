@@ -1,18 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 // Import specific functions and types you want to test
-import { getTreeData, Person, Relationship } from './apiService';
+import { getTreeData } from './apiService';
+// Person and Relationship types removed as they were unused in current tests
+// import type { Person, Relationship } from './apiService';
 
 // Mock global fetch if your apiService actually uses fetch.
 // If apiService directly returns mock data (as it does now), this won't be hit by those functions.
-global.fetch = vi.fn();
+vi.stubGlobal('fetch', vi.fn());
 
-function createFetchResponse<T>(data: T, ok = true, status = 200) {
-  return Promise.resolve({
-    ok,
-    status,
-    json: () => Promise.resolve(data),
-  } as Response);
-}
+// createFetchResponse removed as it was unused in current tests
+// function createFetchResponse<T>(data: T, ok = true, status = 200) {
+//   return Promise.resolve({
+//     ok,
+//     status,
+//     json: () => Promise.resolve(data),
+//   } as Response);
+// }
 
 describe('apiService', () => {
   beforeEach(() => {

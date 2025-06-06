@@ -34,7 +34,7 @@ describe('FamilyTreeCanvas', () => {
     });
     // Mock addRelationship if it's called during tests (e.g. onConnect)
     mockedAddRelationship.mockResolvedValue({
-        id: 'new-rel-1', type: 'related', person1Id: 'p1', person2Id: 'p2'
+        id: 'new-rel-1', type: 'parent-child', person1Id: 'p1', person2Id: 'p2' // Corrected type
     });
   });
 

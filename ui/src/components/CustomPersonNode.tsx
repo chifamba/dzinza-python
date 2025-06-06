@@ -1,8 +1,10 @@
-import React, { memo, FC } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import { memo } from 'react'; // React removed, FC will be type import
+import type { FC } from 'react'; // FC as type import
+import { Handle, Position } from 'reactflow';
+import type { NodeProps } from 'reactflow'; // NodeProps as type import
 
 // Data structure expected by this custom node
-export interface PersonNodeData {
+export type PersonNodeData = { // Changed to type alias for consistency
   name: string;
   birthDate?: string;
   deathDate?: string;

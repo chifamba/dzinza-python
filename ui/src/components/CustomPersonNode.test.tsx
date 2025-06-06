@@ -1,7 +1,9 @@
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
-import CustomPersonNode, { PersonNodeData } from './CustomPersonNode';
-import { NodeProps, Position } from 'reactflow'; // Added Position
+import CustomPersonNode from './CustomPersonNode';
+import type { PersonNodeData } from './CustomPersonNode'; // Type import
+import { Position } from 'reactflow'; // Position is a value
+import type { NodeProps } from 'reactflow'; // Type import
 
 // Minimal NodeProps required for testing CustomPersonNode
 const defaultNodeProps: Omit<NodeProps<PersonNodeData>, 'data'> = {

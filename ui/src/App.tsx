@@ -1,5 +1,5 @@
-import React from 'react';
-import { ReactFlowProvider, Node, Edge } from 'reactflow';
+import { ReactFlowProvider } from 'reactflow';
+import type { Node, Edge } from 'reactflow'; // Use type import
 import FamilyTreeCanvas from './components/FamilyTreeCanvas';
 import './App.css';
 

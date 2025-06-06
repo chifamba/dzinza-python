@@ -1,8 +1,16 @@
-import React, { useState, useEffect, useCallback, FC, useRef, useMemo } from 'react'; // Added useMemo
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'; // React and FC removed
+import type { FC } from 'react'; // FC as type import
 import ReactFlow, {
   addEdge,
   applyNodeChanges,
   applyEdgeChanges,
+  MarkerType, // MarkerType can be value or type, check usage. Assuming value for now, adjust if it's only a type.
+  Controls,
+  Background,
+  MiniMap,
+  BackgroundVariant,
+} from 'reactflow';
+import type { // Explicit type imports
   Node,
   Edge,
   OnNodesChange,
@@ -10,23 +18,20 @@ import ReactFlow, {
   OnConnect,
   DefaultEdgeOptions,
   FitViewOptions,
-  MarkerType,
   NodeMouseHandler,
   EdgeMouseHandler,
   ReactFlowInstance,
   Viewport,
   NodeChange,
   OnMoveEnd,
-  Controls,
-  Background,
-  MiniMap,
-  BackgroundVariant,
-  NodeTypes, // Added NodeTypes
+  NodeTypes
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
-import { getTreeData, Person, Relationship, TreeLayout, getTreeLayout, saveTreeLayout, NodePosition, addRelationship } from '../services/apiService';
-import CustomPersonNode, { PersonNodeData } from './CustomPersonNode'; // Import custom node
+import { getTreeData, getTreeLayout, saveTreeLayout, addRelationship } from '../services/apiService';
+import type { Person, Relationship, TreeLayout, NodePosition } from '../services/apiService'; // Types from apiService
+import CustomPersonNode from './CustomPersonNode'; // CustomPersonNode is a component
+import type { PersonNodeData } from './CustomPersonNode'; // PersonNodeData is a type
 
 interface FamilyTreeCanvasProps {
   treeId: string;
@@ -144,7 +149,8 @@ const FamilyTreeCanvas: FC<FamilyTreeCanvasProps> = ({
 
   const handleConnect: OnConnect = useCallback(async (connection) => {
     if (!connection.source || !connection.target) return;
-    const newRelData = { person1Id: connection.source, person2Id: connection.target, type: 'related' as 'parent-child' }; // Temp type
+    // Default to 'parent-child', or prompt user for type in a real app
+    const newRelData = { person1Id: connection.source, person2Id: connection.target, type: 'parent-child' as 'parent-child' | 'spouse' | 'sibling' };
     try {
       const newRelationship = await addRelationship(treeId, newRelData);
       setEdges((eds) => addEdge({ ...connection, id: newRelationship.id, label: newRelationship.type, type: 'smoothstep' }, eds));
