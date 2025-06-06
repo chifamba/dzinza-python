@@ -7,6 +7,26 @@ x-default-logging: &logging
     tag: "{{.Name}}"
   
 services:
+
+  app_ui:
+    image: dzinza-app-ui:${DZINZA_VERSION:-latest}
+    build:
+      context: ./ui # Context is relative to docker-compose.yml location
+      dockerfile: Dockerfile
+      args:
+        VERSION: ${DZINZA_VERSION:-latest}
+    container_name: dzinza-app-ui
+    ports:
+      - "3000:80"
+    depends_on:
+      backend:
+        condition: service_started
+    environment:
+      VITE_API_BASE_URL: /api
+    restart: unless-stopped
+    logging: *logging
+    networks:
+      - dzinza-net
   redis:
     image: redis:8.0.1-alpine
     container_name: dzinza-redis
