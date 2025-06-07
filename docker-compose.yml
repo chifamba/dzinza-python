@@ -7,6 +7,123 @@ x-default-logging: &logging
     tag: "{{.Name}}"
   
 services:
+  redis:
+    image: redis:8.0.1-alpine
+    container_name: dzinza-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "--raw", "incr", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    logging: *logging
+    networks:
+      - dzinza-net
+
+  dbservice:
+    image: postgres:15-alpine
+    container_name: dzinza-db
+    ports:
+      - "5432:5432"
+    command: ["postgres", "-c", "listen_addresses=*", "-c", "logging_collector=on", "-c", "log_statement=all"]
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=dzinza
+      - INITIAL_ADMIN_PASSWORD=01Admin_2025
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    logging: *logging
+    networks:
+      - dzinza-net
+
+  backend:
+    image: dzinza-backend:v0.2
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      no_cache: true
+    container_name: dzinza-backend
+    ports:
+      - "8090:8090"
+    depends_on:
+      dbservice:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8090/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=dzinza
+      - POSTGRES_HOST=dbservice
+      - DATABASE_URL=postgresql+psycopg://postgres:postgres@dbservice:5432/dzinza
+      - INITIAL_ADMIN_PASSWORD=01Admin_2025
+      - REDIS_URL=redis://redis:6379/0
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
+      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+      # Changed from localhost to service name for consistency
+      - REACT_APP_API_URL=http://localhost:8090/api
+      - FRONTEND_APP_URL=http://localhost:5173
+    restart: unless-stopped
+    logging: *logging
+    networks:
+      - dzinza-net
+
+  frontend:
+    image: dzinza-frontend:v0.2
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: dzinza-frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      backend:
+        condition: service_started
+    environment:
+      - REACT_APP_API_URL=http://localhost:8090/api
+      - FRONTEND_APP_URL=http://localhost:5173
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
+    restart: unless-stopped
+    logging: *logging
+    networks:
+      - dzinza-net
+
+  # demo_service:
+  #   build:
+  #     context: ./demo_service
+  #     dockerfile: Dockerfile
+  #   container_name: dzinza-demo-service
+  #   depends_on:
+  #     dbservice:
+  #       condition: service_healthy
+  #     # backend:
+  #     #   condition: service_healthy
+  #   environment:
+  #     - DATABASE_URL=postgresql://postgres:postgres@dbservice:5432/dzinza
+  #     - ENABLE_DEMO_MODE=${ENABLE_DEMO_MODE:-true}
+  #   restart: unless-stopped
+  #   logging: *logging
+
+  # ********************
 
   app_ui:
     image: dzinza-app-ui:${DZINZA_VERSION:-latest}
@@ -23,6 +140,88 @@ services:
       backend:
         condition: service_started
     restart: unless-stopped
-    logging: *logging # Using the YAML anchor for logging
+    logging: *logging
     networks:
       - dzinza-net
+
+  # Telemetry Components
+  # ********************
+  opensearch-node1:
+    image: opensearchproject/opensearch:2
+    container_name: opensearch-node1
+    environment:
+      - cluster.name=opensearch-cluster
+      - node.name=opensearch-node1
+      - discovery.seed_hosts=opensearch-node1,opensearch-node2
+      - cluster.initial_cluster_manager_nodes=opensearch-node1,opensearch-node2
+      - bootstrap.memory_lock=true  # along with the memlock settings below, disables swapping
+      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m  # minimum and maximum Java heap size, recommend setting both to 50% of system RAM
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_INITIAL_ADMIN_PASSWORD}    # Sets the demo admin user password when using demo configuration, required for OpenSearch 2.12 and higher
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536  # maximum number of open files for the OpenSearch user, set to at least 65536 on modern systems
+        hard: 65536
+    volumes:
+      - opensearch_data1:/usr/share/opensearch/data
+    ports:
+      - 9200:9200
+      - 9600:9600  # required for Performance Analyzer
+    networks:
+      - dzinza-net
+  opensearch-node2:
+    image: opensearchproject/opensearch:2
+    container_name: opensearch-node2
+    environment:
+      - cluster.name=opensearch-cluster
+      - node.name=opensearch-node2
+      - discovery.seed_hosts=opensearch-node1,opensearch-node2
+      - cluster.initial_cluster_manager_nodes=opensearch-node1,opensearch-node2
+      - bootstrap.memory_lock=true
+      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_INITIAL_ADMIN_PASSWORD}
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - opensearch_data2:/usr/share/opensearch/data
+    networks:
+      - dzinza-net
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:2
+    container_name: opensearch-dashboards
+    ports:
+      - 5601:5601
+    expose:
+      - '5601'
+    environment:
+      OPENSEARCH_HOSTS: '["https://opensearch-node1:9200","https://opensearch-node2:9200"]'
+    networks:
+      - dzinza-net
+
+
+volumes:
+  db_data:
+    driver: local
+    name: "dzinza_db_data"
+  redis_data:
+    driver: local
+    name: "dzinza_redis_data"
+  otel-config:
+    driver: local
+    name: "dzinza_otel_config"
+  opensearch_data1:
+    driver: local
+    name: "dzinza_opensearch_data1"
+  opensearch_data2:
+    driver: local
+    name: "dzinza_opensearch_data2"
+
+networks:
+  dzinza-net:
