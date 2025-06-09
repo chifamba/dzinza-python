@@ -1,19 +1,30 @@
 # backend/services/user_service.py
+
+# Standard Library Imports
 import uuid
-import structlog
-from datetime import datetime, timedelta
+import copy
 import secrets
+from datetime import datetime, timedelta
+from typing import Dict, Any, Optional
+
+# Third-Party Imports
+import structlog
 from sqlalchemy.orm import Session as DBSession # Renamed to avoid conflict
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from sqlalchemy import or_
 from flask import abort
+from werkzeug.exceptions import HTTPException
 
-# Import type hints
-from typing import Dict, Any, Optional # Added this line
-
+# Local Application Imports
 from models import User, UserRole
-from utils import (_validate_password_complexity, _hash_password, _verify_password,
-                     _get_or_404, _handle_sqlalchemy_error, paginate_query)
+from utils import (
+    _validate_password_complexity,
+    _hash_password,
+    _verify_password,
+    _get_or_404,
+    _handle_sqlalchemy_error,
+    paginate_query
+)
 import config as app_config_module
 import extensions # For metrics and get_fernet
 from services.activity_service import log_activity # For audit logging
@@ -124,9 +135,6 @@ def get_all_users_db(db: DBSession, page: int = -1, per_page: int = -1,
 def request_password_reset_db(db: DBSession, email_or_username: str) -> bool:
     logger.info("Password reset request", identifier=email_or_username)
     
-    # Fernet is not directly used for token generation here, using secrets.token_urlsafe
-    # extensions.get_fernet() is primarily for EncryptedString type in models
-    
     normalized_identifier = email_or_username.lower()
     user = db.query(User).filter(or_(User.username == email_or_username, User.email == normalized_identifier)).one_or_none()
     if not user or not user.is_active:
@@ -139,7 +147,6 @@ def request_password_reset_db(db: DBSession, email_or_username: str) -> bool:
         db.commit()
         reset_link = f"{app_config_module.config.FRONTEND_APP_URL}/reset-password/{raw_token}"
         
-        # Construct HTML email body
         html_body = f"""
         <p>Hello {user.username or 'user'},</p>
         <p>You requested a password reset for your Dzinza account.</p>
@@ -149,36 +156,28 @@ def request_password_reset_db(db: DBSession, email_or_username: str) -> bool:
         <p>This link will expire in 1 hour.</p>
         <p>Thanks,<br>The Dzinza Team</p>
         """
-        
         subject = "Password Reset Request for Dzinza"
-
-        # Check if essential email configurations are present before attempting to send
         email_cfg = app_config_module.config
         if not all([email_cfg.EMAIL_SERVER, email_cfg.MAIL_SENDER_EMAIL]):
             logger.warning("Email server or sender email not configured. Cannot send password reset email.", 
                            user_id=user.id, reset_link_for_log=reset_link)
-            # Depending on policy, you might still return True to not reveal if an email was sent or not
-            # For this implementation, we'll log the token was generated but email failed.
             logger.info("Password reset token generated, but email not sent due to missing configuration.", user_id=user.id)
-            return True # Token generation was successful, even if email sending part failed due to config
+            return True
 
         email_sent = send_email(to_email=user.email, subject=subject, html_body=html_body)
         
         if email_sent:
             logger.info("Password reset email sent successfully.", user_id=user.id, email=user.email)
         else:
-            # send_email logs its own errors, here we log the context of the failure.
             logger.error("Failed to send password reset email.", user_id=user.id, email=user.email, reset_link_for_log=reset_link)
-            # Even if email fails, the token is generated. Consider if this should still be True.
-            # For this task, we'll say the request was processed, token generated, email *attempted*.
         
         logger.info("Password reset token generated and email processed.", user_id=user.id)
-        return True # Return True because the token generation part was successful
+        return True
     except SQLAlchemyError as e: _handle_sqlalchemy_error(e, "requesting password reset", db)
     except Exception as e:
         db.rollback(); logger.error("Unexpected error during pwd reset request.", user_id=getattr(user, 'id', None), exc_info=True)
         abort(500, "Error during password reset.")
-    return False # Should be unreachable
+    return False
 
 def reset_password_db(db: DBSession, token: str, new_password: str) -> bool:
     logger.info("Resetting password with token", token_prefix=token[:8])
@@ -186,24 +185,24 @@ def reset_password_db(db: DBSession, token: str, new_password: str) -> bool:
     try:
         user = db.query(User).filter(User.password_reset_token == token, User.password_reset_expires > datetime.utcnow()).one_or_none()
         if not user: abort(400, "Invalid or expired password reset token.")
-        _validate_password_complexity(new_password) # Raises ValueError if complexity not met
+        _validate_password_complexity(new_password)
         user.password_hash = _hash_password(new_password)
         user.password_reset_token = None; user.password_reset_expires = None
-        user.email_verified = True # Optionally verify email on successful password reset
+        user.email_verified = True
         db.commit()
         logger.info("Password reset successful.", user_id=user.id)
         return True
-    except ValueError as ve: abort(400, str(ve)) # Password complexity error
+    except ValueError as ve: abort(400, str(ve))
     except SQLAlchemyError as e: _handle_sqlalchemy_error(e, "resetting password", db)
     except Exception as e:
         db.rollback(); logger.error("Unexpected error resetting password.", exc_info=True)
         abort(500, "Error resetting password.")
-    return False # Should be unreachable
+    return False
 
 def update_user_role_db(db: DBSession, 
-                          user_id: uuid.UUID, # ID of the user whose role is being updated
+                          user_id: uuid.UUID,
                           new_role_str: str,
-                          actor_user_id: Optional[uuid.UUID] = None, # ID of the admin performing the action
+                          actor_user_id: Optional[uuid.UUID] = None,
                           ip_address: Optional[str] = None,
                           user_agent: Optional[str] = None
                           ) -> Dict[str, Any]:
@@ -211,21 +210,20 @@ def update_user_role_db(db: DBSession,
     try: new_role_enum = UserRole(new_role_str)
     except ValueError: abort(400, f"Invalid role: {new_role_str}. Valid: {[r.value for r in UserRole]}.")
     
-    user = _get_or_404(db, User, user_id) # Ensure user exists
+    user = _get_or_404(db, User, user_id)
     previous_state = {"role": user.role.value if user.role else None}
 
     if user.role == new_role_enum: 
         logger.info("User role is already set to target role. No update performed.", user_id=user.id)
-        return user.to_dict() # No change needed
+        return user.to_dict()
     
     user.role = new_role_enum
     try:
         db.commit(); db.refresh(user)
-        updated_user_dict = user.to_dict() # Get dict after refresh
+        updated_user_dict = user.to_dict()
         if extensions.role_change_counter: extensions.role_change_counter.add(1, {"target_user_id": str(user_id), "new_role": new_role_str})
         logger.info("User role updated.", user_id=user.id, new_role=user.role.value, actor_user_id=actor_user_id)
 
-        # Audit Log
         log_activity(db=db, actor_user_id=actor_user_id, action_type="ROLE_CHANGE",
                      entity_type="USER", entity_id=user.id,
                      previous_state=previous_state, new_state={"role": updated_user_dict["role"]},
@@ -236,34 +234,214 @@ def update_user_role_db(db: DBSession,
     except Exception as e:
         db.rollback(); logger.error("Unexpected error updating user role.", user_id=user_id, actor_user_id=actor_user_id, exc_info=True)
         abort(500, "Error updating user role.")
-    return {} # Should be unreachable
+    return {}
 
 def delete_user_db(db: DBSession, 
-                     user_id: uuid.UUID, # ID of the user being deleted
-                     actor_user_id: Optional[uuid.UUID] = None, # ID of the admin performing the action
+                     user_id: uuid.UUID,
+                     actor_user_id: Optional[uuid.UUID] = None,
                      ip_address: Optional[str] = None,
                      user_agent: Optional[str] = None
                      ) -> None:
     logger.info("Deleting user", target_user_id=user_id, actor_user_id=actor_user_id)
-    user = _get_or_404(db, User, user_id) # Ensure user exists
-    previous_state = user.to_dict(include_sensitive=False) # Capture non-sensitive state before delete
+    user = _get_or_404(db, User, user_id)
+    previous_state = user.to_dict(include_sensitive=False)
 
     try:
         db.delete(user); db.commit()
         logger.info("User deleted.", user_id=user_id, actor_user_id=actor_user_id)
 
-        # Audit Log
         log_activity(db=db, actor_user_id=actor_user_id, action_type="DELETE_USER",
                      entity_type="USER", entity_id=user_id,
                      previous_state=previous_state,
                      ip_address=ip_address, user_agent=user_agent)
         
-    except IntegrityError as ie: # Catch foreign key violations specifically
+    except IntegrityError as ie:
         db.rollback()
-        if "violates foreign key constraint" in str(ie.orig).lower(): # Basic check
+        if "violates foreign key constraint" in str(ie.orig).lower():
             abort(409, "Cannot delete user: user owns data (e.g., trees). Reassign or delete their data first.")
-        _handle_sqlalchemy_error(ie, "deleting user (integrity)", db) # General integrity error
+        _handle_sqlalchemy_error(ie, "deleting user (integrity)", db)
     except SQLAlchemyError as e: _handle_sqlalchemy_error(e, "deleting user", db)
     except Exception as e:
         db.rollback(); logger.error("Unexpected error deleting user.", target_user_id=user_id, actor_user_id=actor_user_id, exc_info=True)
         abort(500, "Error deleting user.")
+
+# --- User Profile and Settings Functions ---
+
+def get_user_profile_by_id_db(db: DBSession, user_id: uuid.UUID) -> Optional[User]:
+    '''
+    Retrieves a user profile by their ID.
+    The blueprint will convert this User object to a Pydantic schema.
+    '''
+    logger.info("Fetching user profile by ID", user_id=str(user_id))
+    try:
+        user = _get_or_404(db, User, user_id)
+        return user
+    except HTTPException:
+        raise
+    except SQLAlchemyError as e:
+        _handle_sqlalchemy_error(e, "fetching user profile by ID", db)
+    except Exception as e:
+        logger.error("Unexpected error fetching user profile by ID.", user_id=str(user_id), exc_info=True)
+        abort(500, f"An unexpected error occurred while fetching user profile {user_id}.")
+    return None
+
+def update_user_profile_db(db: DBSession,
+                           user_id: uuid.UUID,
+                           update_data: Dict[str, Any],
+                           actor_user_id: Optional[uuid.UUID] = None,
+                           ip_address: Optional[str] = None,
+                           user_agent: Optional[str] = None
+                           ) -> Optional[User]:
+    '''
+    Updates a user's profile (full_name, email).
+    If email is changed, email_verified is set to False.
+    '''
+    logger.info("Updating user profile", user_id=str(user_id), update_data=update_data)
+    user = _get_or_404(db, User, user_id)
+
+    actual_actor_id = actor_user_id if actor_user_id else user_id
+    previous_state = {
+        "full_name": user.full_name,
+        "email": user.email,
+        "email_verified": user.email_verified
+    }
+    changed_fields = {}
+
+    if "full_name" in update_data and user.full_name != update_data["full_name"]:
+        user.full_name = update_data["full_name"]
+        changed_fields["full_name"] = user.full_name
+
+    if "email" in update_data and user.email != update_data["email"].lower():
+        user.email = update_data["email"].lower()
+        user.email_verified = False
+        changed_fields["email"] = user.email
+        changed_fields["email_verified"] = user.email_verified
+
+    if not changed_fields:
+        logger.info("No changes detected for user profile update.", user_id=str(user_id))
+        return user
+
+    try:
+        db.commit()
+        db.refresh(user)
+        logger.info("User profile updated successfully.", user_id=str(user.id), changed_fields=changed_fields)
+
+        log_activity(db=db, actor_user_id=actual_actor_id, action_type="UPDATE_PROFILE",
+                     entity_type="USER", entity_id=user.id,
+                     previous_state=previous_state, new_state=changed_fields,
+                     ip_address=ip_address, user_agent=user_agent)
+        return user
+    except IntegrityError as e:
+        _handle_sqlalchemy_error(e, "updating user profile (integrity)", db)
+    except SQLAlchemyError as e:
+        _handle_sqlalchemy_error(e, "updating user profile", db)
+    except Exception as e:
+        db.rollback()
+        logger.error("Unexpected error updating user profile.", user_id=str(user_id), exc_info=True)
+        abort(500, f"An unexpected error occurred while updating profile for user {user_id}.")
+    return None
+
+def update_user_avatar_path_db(db: DBSession,
+                               user_id: uuid.UUID,
+                               avatar_path: str,
+                               actor_user_id: Optional[uuid.UUID] = None,
+                               ip_address: Optional[str] = None,
+                               user_agent: Optional[str] = None
+                               ) -> Optional[User]:
+    '''Updates the user's profile_image_path.'''
+    logger.info("Updating user avatar path", user_id=str(user_id), new_path=avatar_path)
+    user = _get_or_404(db, User, user_id)
+
+    actual_actor_id = actor_user_id if actor_user_id else user_id
+    previous_state = {"profile_image_path": user.profile_image_path}
+
+    if user.profile_image_path == avatar_path:
+        logger.info("Avatar path is the same. No update performed.", user_id=str(user_id))
+        return user
+
+    user.profile_image_path = avatar_path
+
+    try:
+        db.commit()
+        db.refresh(user)
+        logger.info("User avatar path updated successfully.", user_id=str(user.id))
+
+        log_activity(db=db, actor_user_id=actual_actor_id, action_type="UPDATE_AVATAR",
+                     entity_type="USER", entity_id=user.id,
+                     previous_state=previous_state, new_state={"profile_image_path": avatar_path},
+                     ip_address=ip_address, user_agent=user_agent)
+        return user
+    except SQLAlchemyError as e:
+        _handle_sqlalchemy_error(e, "updating user avatar path", db)
+    except Exception as e:
+        db.rollback()
+        logger.error("Unexpected error updating avatar path.", user_id=str(user_id), exc_info=True)
+        abort(500, f"An unexpected error occurred while updating avatar for user {user_id}.")
+    return None
+
+def get_user_settings_db(db: DBSession, user_id: uuid.UUID) -> Dict[str, Any]:
+    '''Retrieves user preferences/settings.'''
+    logger.info("Fetching user settings", user_id=str(user_id))
+    user = _get_or_404(db, User, user_id)
+    return user.preferences if user.preferences is not None else {}
+
+def _deep_update_dict(original_dict: Dict[Any, Any], update_with: Dict[Any, Any]) -> Dict[Any, Any]:
+    '''
+    Recursively updates a dictionary.
+    Items in update_with override items in original_dict.
+    If a value in update_with is a dictionary, it recursively updates the corresponding value in original_dict.
+    '''
+    updated = copy.deepcopy(original_dict)
+    for key, value in update_with.items():
+        if isinstance(value, dict) and isinstance(updated.get(key), dict):
+            updated[key] = _deep_update_dict(updated[key], value)
+        else:
+            updated[key] = value
+    return updated
+
+def update_user_settings_db(db: DBSession,
+                            user_id: uuid.UUID,
+                            settings_data: Dict[str, Any],
+                            actor_user_id: Optional[uuid.UUID] = None,
+                            ip_address: Optional[str] = None,
+                            user_agent: Optional[str] = None
+                            ) -> Optional[Dict[str, Any]]:
+    '''
+    Updates user preferences (JSONB field).
+    Performs a deep merge of the new settings_data into existing preferences.
+    '''
+    logger.info("Updating user settings", user_id=str(user_id), new_settings_data=settings_data)
+    user = _get_or_404(db, User, user_id)
+
+    actual_actor_id = actor_user_id if actor_user_id else user_id
+    previous_preferences = copy.deepcopy(user.preferences) if user.preferences is not None else {}
+
+    if user.preferences is None:
+        user.preferences = {}
+
+    current_prefs = copy.deepcopy(user.preferences)
+    updated_prefs = _deep_update_dict(current_prefs, settings_data)
+
+    if updated_prefs == previous_preferences:
+        logger.info("No changes detected for user settings update.", user_id=str(user_id))
+        return updated_prefs
+
+    user.preferences = updated_prefs
+    try:
+        db.commit()
+        db.refresh(user)
+        logger.info("User settings updated successfully.", user_id=str(user.id))
+
+        log_activity(db=db, actor_user_id=actual_actor_id, action_type="UPDATE_SETTINGS",
+                     entity_type="USER", entity_id=user.id,
+                     previous_state={"preferences": previous_preferences},
+                     new_state={"preferences": user.preferences},
+                     ip_address=ip_address, user_agent=user_agent)
+        return user.preferences if user.preferences is not None else {}
+    except SQLAlchemyError as e:
+        _handle_sqlalchemy_error(e, "updating user settings", db)
+    except Exception as e:
+        db.rollback()
+        logger.error("Unexpected error updating user settings.", user_id=str(user_id), exc_info=True)
+        abort(500, f"An unexpected error occurred while updating settings for user {user_id}.")
+    return None

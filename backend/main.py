@@ -79,6 +79,7 @@ def create_app(app_config_obj=app_config_module.config):
     app.register_blueprint(relationships_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(health_bp)
+    app.register_blueprint(user_profile_bp)
     app.register_blueprint(media_bp) 
     app.register_blueprint(events_bp) # Registered events_bp
 

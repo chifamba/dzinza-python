@@ -22,6 +22,8 @@ PAGINATION_DEFAULTS = {
 
 # --- Application Configuration ---
 class Config:
+    UPLOAD_FOLDER = os.environ.get("UPLOAD_FOLDER") or os.path.join(os.getcwd(), "uploads")
+    MAX_CONTENT_LENGTH = 16 * 1000 * 1000  # 16MB
     SECRET_KEY = os.getenv("FLASK_SECRET_KEY", "your_default_secret_key_for_session_signing")
     
     # Default pagination values
